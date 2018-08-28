@@ -35,6 +35,7 @@
 #include "Bond.h"
 
 #include "Conformer.h"
+#include "Sgroup.h"
 
 namespace RDKit {
 class Atom;
@@ -230,6 +231,10 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
 
   typedef CONF_SPTR_LIST_I ConformerIterator;
   typedef CONF_SPTR_LIST_CI ConstConformerIterator;
+
+  typedef std::vector<SGROUP_SPTR> SGROUP_SPTR_VECT;
+  typedef SGROUP_SPTR_VECT::iterator SGroupIterator;
+  typedef SGROUP_SPTR_VECT::const_iterator ConstSGroupIterator;
 
   //@}
   //! \endcond
@@ -436,6 +441,45 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
     return rdcast<unsigned int>(d_confs.size());
   }
 
+  //! \name SGroups
+  //@{
+
+  //! return the sgroup with a specified ID
+  const SGROUP_SPTR *getSGroup(unsigned int idx) const;
+  SGROUP_SPTR *getSGroup(unsigned int idx);
+
+  //! Delete the sgroup with the specified ID
+  void removeSGroup(unsigned int idx);
+
+  //! Clear all the SGroups on the molecule
+  void clearSGroups() { d_sgroups.clear(); }
+
+  //! Add a new SGroup with the specified ID
+  /*!
+    \param sgroup - SGroup to be added to the molecule; this molecule takes
+    ownership of the sgroup
+    \param id - a unique ID that will be assigned to the sgroup.
+    If the ID is already used by an SGroup, an exception is
+    raised. If 0, an ID will be automatically assigned.
+  */
+  unsigned int addSGroup(SGroup *sgroup);
+
+  inline unsigned int getNumSGroups() const {
+    return rdcast<unsigned int>(d_sgroups.size());
+  }
+
+  //! Check if an ID is free and can be assinged
+  /*!
+    \return if the ID is free
+  */
+  bool isIdFree(unsigned int id) const;
+
+  //! Get the smallest yet unassigned ID.
+  /*!
+    \return the smallest available ID.
+  */
+  unsigned int getNextFreeId() const;
+
   //@}
 
   //! \name Topology
@@ -616,6 +660,14 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
 
   inline ConstConformerIterator endConformers() const { return d_confs.end(); }
 
+  inline SGroupIterator beginSGroups() { return d_sgroups.begin(); }
+
+  inline SGroupIterator endSGroups() { return d_sgroups.end(); }
+
+  inline ConstSGroupIterator beginSGroups() const { return d_sgroups.begin(); }
+
+  inline ConstSGroupIterator endSGroups() const { return d_sgroups.end(); }
+
   //@}
 
   //! \name Properties
@@ -654,6 +706,7 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
   BOND_BOOKMARK_MAP d_bondBookmarks;
   RingInfo *dp_ringInfo;
   CONF_SPTR_LIST d_confs;
+  SGROUP_SPTR_VECT d_sgroups;
   ROMol &operator=(
       const ROMol &);  // disable assignment, RWMol's support assignment
 
@@ -708,5 +761,5 @@ typedef std::vector<ROMOL_SPTR> MOL_SPTR_VECT;
 typedef MOL_PTR_VECT::const_iterator MOL_PTR_VECT_CI;
 typedef MOL_PTR_VECT::iterator MOL_PTR_VECT_I;
 
-};  // end of RDKit namespace
+};  // namespace RDKit
 #endif

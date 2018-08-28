@@ -10,6 +10,9 @@ else()
     set (maeparser_var "")
 endif()
 
+find_package(Boost 1.56.0 COMPONENTS regex REQUIRED)
+set (link_regex ${Boost_LIBRARIES})
+
 rdkit_library(FileParsers
               Mol2FileParser.cpp
               MolFileParser.cpp MolFileStereochem.cpp MolFileWriter.cpp
@@ -21,7 +24,7 @@ rdkit_library(FileParsers
               ${maesupplier}
               ProximityBonds.cpp
               SequenceParsers.cpp SequenceWriters.cpp
-              LINK_LIBRARIES Depictor SmilesParse GraphMol ${maeparser_var})
+              LINK_LIBRARIES Depictor SmilesParse GraphMol ${maeparser_var} ${link_regex})
 
 rdkit_headers(FileParsers.h
               FileParserUtils.h
@@ -35,6 +38,8 @@ rdkit_test(fileParsersTest1 test1.cpp
            LINK_LIBRARIES FileParsers SmilesParse
 	   SubstructMatch GraphMol RDGeneral RDGeometryLib ${maeparser_var})
 
+rdkit_test(sGroupTests testSGroup.cpp LINK_LIBRARIES FileParsers GraphMol)
+
 if(RDK_BUILD_TEST_GZIP)
     find_package(Boost 1.56.0 COMPONENTS system iostreams REQUIRED)
     set (link_iostreams ${Boost_LIBRARIES})
@@ -45,6 +50,7 @@ if(RDK_BUILD_TEST_GZIP)
 else()
     set (link_iostreams "")
 endif()
+
 
 rdkit_test(testMolSupplier testMolSupplier.cpp
            LINK_LIBRARIES  FileParsers SmilesParse SubstructMatch

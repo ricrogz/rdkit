@@ -23,6 +23,7 @@ Bond::Bond(BondType bT) : RDProps() {
 
 Bond::Bond(const Bond &other) : RDProps(other) {
   // NOTE: we do *not* copy ownership!
+  // NOTE 2: neither do copy SGroups
   dp_mol = nullptr;
   d_bondType = other.d_bondType;
   d_beginAtomIdx = other.d_beginAtomIdx;
@@ -52,6 +53,8 @@ Bond &Bond::operator=(const Bond &other) {
   } else {
     dp_stereoAtoms = nullptr;
   }
+  const auto &sgroups = other.getSGroups();
+  dp_sgroups.assign(sgroups.begin(), sgroups.end());
   df_isAromatic = other.df_isAromatic;
   df_isConjugated = other.df_isConjugated;
   d_index = other.d_index;
@@ -68,6 +71,31 @@ Bond *Bond::copy() const {
 void Bond::setOwningMol(ROMol *other) {
   // FIX: doesn't update topology
   dp_mol = other;
+}
+
+void Bond::addSGroup(SGroup *other) {
+  PRECONDITION(dp_sgroups.size() < 2, "bond belonging to more than 2 sgroups");
+  // this doesn't update the sgroup
+  dp_sgroups.push_back(other);
+}
+
+//! check if the bond is SGroup XBOND or CBOND
+Bond::SGroupBondType Bond::getSGroupBondType() const {
+  Atom *atom1 = getBeginAtom();
+  Atom *atom2 = getEndAtom();
+  SGroup *sgroup1 = atom1->getSGroup();
+  SGroup *sgroup2 = atom2->getSGroup();
+  bool sameSGroup = (sgroup1 == sgroup2);
+
+  if (dp_sgroups.size() == 1 && sameSGroup && (sgroup1 != nullptr)) {
+    return SGroupBondType::CBOND;
+  } else if (!dp_sgroups.empty() && !sameSGroup) {  // Any of the atoms might not have an SGroup set;
+    return SGroupBondType::XBOND;
+  } else {
+    std::ostringstream errout;
+    errout << "Unexpected SGroup Bond Type condition for bond " << getIdx();
+    throw SGroupException(errout.str());
+  }
 }
 
 unsigned int Bond::getOtherAtomIdx(const unsigned int thisIdx) const {
@@ -297,7 +325,7 @@ void Bond::setStereoAtoms(unsigned int bgnIdx, unsigned int endIdx) {
   atoms.push_back(endIdx);
 };
 
-};  // end o' namespace
+};  // namespace RDKit
 
 std::ostream &operator<<(std::ostream &target, const RDKit::Bond &bond) {
   target << bond.getIdx() << " ";

@@ -30,6 +30,7 @@
 namespace RDKit {
 class ROMol;
 class RWMol;
+class SGroup;
 class AtomMonomerInfo;
 
 //! The class for representing atoms
@@ -70,6 +71,7 @@ class RDKIT_GRAPHMOL_EXPORT Atom : public RDProps {
   friend class MolPickler;  //!< the pickler needs access to our privates
   friend class ROMol;
   friend class RWMol;
+  friend class SGroup;
 
  public:
   // FIX: grn...
@@ -377,11 +379,19 @@ class RDKIT_GRAPHMOL_EXPORT Atom : public RDProps {
     return mapno;
   }
 
+  //! Gets the SGroup the atom is assigned to, or nullptr if not assigned
+  inline SGroup *getSGroup() const { return dp_sgroup; }
+
  protected:
   //! sets our owning molecule
   void setOwningMol(ROMol *other);
   //! sets our owning molecule
   void setOwningMol(ROMol &other) { setOwningMol(&other); };
+
+  //! sets sgroup
+  void setSGroup(SGroup *other);
+  //! sets sgroup
+  void setSGroup(SGroup &other) { setSGroup(&other); };
 
   bool df_isAromatic;
   bool df_noImplicit;
@@ -400,6 +410,7 @@ class RDKIT_GRAPHMOL_EXPORT Atom : public RDProps {
   atomindex_t d_index;
 
   ROMol *dp_mol;
+  SGroup *dp_sgroup = nullptr;
   AtomMonomerInfo *dp_monomerInfo;
   void initAtom();
 };
@@ -422,10 +433,12 @@ RDKIT_GRAPHMOL_EXPORT std::string getAtomValue(const Atom *atom);
 
 //! Sets the supplemental label that will follow the atom when writing
 //   smiles strings.
-RDKIT_GRAPHMOL_EXPORT void setSupplementalSmilesLabel(Atom *atom, const std::string &label);
+RDKIT_GRAPHMOL_EXPORT void setSupplementalSmilesLabel(Atom *atom,
+                                                      const std::string &label);
 RDKIT_GRAPHMOL_EXPORT std::string getSupplementalSmilesLabel(const Atom *atom);
-};
+};  // namespace RDKit
 //! allows Atom objects to be dumped to streams
-RDKIT_GRAPHMOL_EXPORT std::ostream &operator<<(std::ostream &target, const RDKit::Atom &at);
+RDKIT_GRAPHMOL_EXPORT std::ostream &operator<<(std::ostream &target,
+                                               const RDKit::Atom &at);
 
 #endif

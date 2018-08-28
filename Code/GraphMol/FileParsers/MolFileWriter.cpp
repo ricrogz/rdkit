@@ -23,6 +23,8 @@
 #include <iomanip>
 #include <cstdio>
 #include <boost/format.hpp>
+#include <boost/algorithm/string/join.hpp>
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/dynamic_bitset.hpp>
 #include <RDGeneral/BadFileException.h>
 #include <GraphMol/SmilesParse/SmartsWrite.h>
@@ -111,13 +113,14 @@ int getQueryBondSymbol(const Bond *bond) {
           }
         }
       }
-    } else if( qry->getDescription() == "SingleOrAromaticBond" && !qry->getNegation()) {
+    } else if (qry->getDescription() == "SingleOrAromaticBond" &&
+               !qry->getNegation()) {
       res = 6;
     }
   }
   return res;
 }
-}
+}  // namespace
 
 const std::string GetMolFileChargeInfo(const RWMol &mol) {
   std::stringstream res;
@@ -276,9 +279,8 @@ const std::string GetMolFileQueryInfo(const RWMol &mol) {
       wrote_query = true;
     }
     std::string molFileValue;
-    if (!wrote_query &&
-        (*atomIt)->getPropIfPresent(common_properties::molFileValue,
-                                    molFileValue))
+    if (!wrote_query && (*atomIt)->getPropIfPresent(
+                            common_properties::molFileValue, molFileValue))
       ss << "V  " << std::setw(3) << (*atomIt)->getIdx() + 1 << " "
          << molFileValue << std::endl;
   }
@@ -510,7 +512,7 @@ unsigned int getAtomParityFlag(const Atom *atom, const Conformer *conf) {
   }
   return 0;
 }
-}
+}  // namespace
 
 bool hasNonDefaultValence(const Atom *atom) {
   if (atom->getNumRadicalElectrons() != 0) return true;
@@ -573,8 +575,8 @@ void GetMolFileAtomProperties(const Atom *atom, const Conformer *conf,
   }
 }
 
-const std::string GetMolFileAtomLine(const Atom *atom,
-                                     const Conformer *conf = nullptr) {
+const std::string GetMolFileAtomLines(const Atom *atom,
+                                      const Conformer *conf = nullptr) {
   PRECONDITION(atom, "");
   std::string res;
   int totValence, atomMapNumber;
@@ -656,7 +658,7 @@ class RequiresV3000Exception : public std::runtime_error {
   explicit RequiresV3000Exception()
       : std::runtime_error("RequiresV3000Exception"){};
 };
-}
+}  // namespace
 
 int BondGetMolFileSymbol(const Bond *bond) {
   PRECONDITION(bond, "");
@@ -778,7 +780,7 @@ void GetMolFileBondStereoInfo(const Bond *bond, const INT_MAP_INT &wedgeBonds,
           boost::tie(beg, end) =
               bond->getOwningMol().getAtomBonds(bond->getBeginAtom());
           while (beg != end && !nbrHasDir) {
-            const Bond* nbrBond = bond->getOwningMol()[*beg];
+            const Bond *nbrBond = bond->getOwningMol()[*beg];
             if (nbrBond->getBondType() == Bond::SINGLE &&
                 (nbrBond->getBondDir() == Bond::ENDUPRIGHT ||
                  nbrBond->getBondDir() == Bond::ENDDOWNRIGHT)) {
@@ -789,7 +791,7 @@ void GetMolFileBondStereoInfo(const Bond *bond, const INT_MAP_INT &wedgeBonds,
           boost::tie(beg, end) =
               bond->getOwningMol().getAtomBonds(bond->getEndAtom());
           while (beg != end && !nbrHasDir) {
-            const Bond* nbrBond = bond->getOwningMol()[*beg];
+            const Bond *nbrBond = bond->getOwningMol()[*beg];
             if (nbrBond->getBondType() == Bond::SINGLE &&
                 (nbrBond->getBondDir() == Bond::ENDUPRIGHT ||
                  nbrBond->getBondDir() == Bond::ENDDOWNRIGHT)) {
@@ -806,9 +808,9 @@ void GetMolFileBondStereoInfo(const Bond *bond, const INT_MAP_INT &wedgeBonds,
   }
 }
 
-const std::string GetMolFileBondLine(const Bond *bond,
-                                     const INT_MAP_INT &wedgeBonds,
-                                     const Conformer *conf) {
+const std::string GetMolFileBondLines(const Bond *bond,
+                                      const INT_MAP_INT &wedgeBonds,
+                                      const Conformer *conf) {
   PRECONDITION(bond, "");
 
   int dirCode;
@@ -838,8 +840,8 @@ const std::string GetMolFileBondLine(const Bond *bond,
   return ss.str();
 }
 
-const std::string GetV3000MolFileAtomLine(const Atom *atom,
-                                          const Conformer *conf = nullptr) {
+const std::string GetV3000MolFileAtomLines(const Atom *atom,
+                                           const Conformer *conf = nullptr) {
   PRECONDITION(atom, "");
   int totValence, atomMapNumber;
   unsigned int parityFlag;
@@ -977,9 +979,9 @@ int BondStereoCodeV2000ToV3000(int dirCode) {
   }
 }
 
-const std::string GetV3000MolFileBondLine(const Bond *bond,
-                                          const INT_MAP_INT &wedgeBonds,
-                                          const Conformer *conf) {
+const std::string GetV3000MolFileBondLines(const Bond *bond,
+                                           const INT_MAP_INT &wedgeBonds,
+                                           const Conformer *conf) {
   PRECONDITION(bond, "");
 
   int dirCode;
@@ -1009,6 +1011,668 @@ const std::string GetV3000MolFileBondLine(const Bond *bond,
   return ss.str();
 }
 
+inline std::string FormatV2000IntField(int value) {
+  char output[5];
+  snprintf(output, 5, " %3d", value);
+  return std::string(output);
+}
+
+inline std::string FormatV2000NumEntriesField(int value) {
+  char output[4];
+  snprintf(output, 4, " %2d", value);
+  return std::string(output);
+}
+
+inline std::string FormatV2000DoubleField(double value) {
+  char output[11];
+  snprintf(output, 11, "%10.4f", value);
+  return std::string(output);
+}
+
+inline std::string FormatV2000StringField(const std::string &value,
+                                          unsigned int fieldSize, bool pad,
+                                          bool addSeparator) {
+  std::ostringstream os;
+  if (addSeparator) {
+    os << ' ';
+  }
+  if (value.size() >= fieldSize) {
+    os << value.substr(0, fieldSize);
+  } else if (pad) {
+    os << std::setw(fieldSize) << std::left << value;
+  } else {
+    os << value;
+  }
+  return os.str();
+}
+
+std::string BuildV2000STYLines(const ROMol &mol) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = 1 + (sGroupItr - mol.beginSGroups());
+    temp << FormatV2000IntField(idx)
+         << FormatV2000StringField((*sGroupItr)->getType(), 3, true, true);
+    if (++count == 8) {
+      ret << "M  STY" << FormatV2000NumEntriesField(8) << temp.str()
+          << std::endl;
+      temp.str("");
+      count = 0;
+    }
+  }
+  if (count) {
+    ret << "M  STY" << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000StringPropLines(const unsigned int entriesPerLine,
+                                      const ROMol &mol,
+                                      const std::string &propName,
+                                      const std::string &propCode,
+                                      const unsigned int fieldWitdh) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    if ((*sGroupItr)->hasStrProp(propName)) {  // Write field only if defined
+      temp << FormatV2000IntField(idx)
+           << FormatV2000StringField((*sGroupItr)->getStrProp(propName),
+                                     fieldWitdh, true, true);
+      if (++count == entriesPerLine) {
+        ret << "M  " << propCode << FormatV2000NumEntriesField(entriesPerLine)
+            << temp.str() << std::endl;
+        temp.str("");
+        count = 0;
+      }
+    }
+  }
+  if (count) {
+    ret << "M  " << propCode << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SLBLines(const ROMol &mol) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    unsigned int id = (*sGroupItr)->getId();
+    if (id > 0) {  // Write field only if specific id was assigned
+      temp << FormatV2000IntField(idx) << FormatV2000IntField(id);
+      if (++count == 8) {
+        ret << "M  SLB" << FormatV2000NumEntriesField(8) << temp.str()
+            << std::endl;
+        temp.str("");
+        count = 0;
+      }
+    }
+  }
+  if (count) {
+    ret << "M  SLB" << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SDSLines(const ROMol &mol) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    // Write field only if defined
+    if ((*sGroupItr)->hasStrProp("ESTATE") &&
+        (*sGroupItr)->getStrProp("ESTATE") == "E") {
+      temp << FormatV2000IntField(idx);
+      if (++count == 15) {
+        ret << "M  SDS EXP" << FormatV2000NumEntriesField(15) << temp.str()
+            << std::endl;
+        temp.str("");
+        count = 0;
+      }
+    }
+  }
+  if (count) {
+    ret << "M  SDS EXP" << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SPLLines(const ROMol &mol) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    SGROUP_SPTR *parent = (*sGroupItr)->getParent();
+    if (parent) {  // Write field only if a parent is defined
+      unsigned int parentIdx = 1 + (*parent)->getIndexInMol();
+      temp << FormatV2000IntField(idx) << FormatV2000IntField(parentIdx);
+      if (++count == 8) {
+        ret << "M  SPL" << FormatV2000NumEntriesField(8) << temp.str()
+            << std::endl;
+        temp.str("");
+        count = 0;
+      }
+    }
+  }
+  if (count) {
+    ret << "M  SPL" << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SBTLines(const ROMol &mol) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    if ((*sGroupItr)->hasStrProp("BRKTYP")) {
+      std::string bracketType = (*sGroupItr)->getStrProp("BRKTYP");
+      if (bracketType == "BRACKET") {
+        temp << FormatV2000IntField(idx) << FormatV2000IntField(0);
+      } else if (bracketType == "PAREN") {
+        temp << FormatV2000IntField(idx) << FormatV2000IntField(1);
+      } else {
+        std::ostringstream errout;
+        errout << "Invalid BRKTYP value '" << bracketType << "' for SGroup "
+               << idx;
+        throw SGroupException(errout.str());
+      }
+      if (++count == 8) {
+        ret << "M  SBT" << FormatV2000NumEntriesField(8) << temp.str()
+            << std::endl;
+        temp.str("");
+        count = 0;
+      }
+    }
+  }
+  if (count) {
+    ret << "M  SBT" << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+template <class T>
+std::string BuildV2000IdxVectorDataLines(const unsigned int entriesPerLine,
+                                         const unsigned int sGroupId,
+                                         const std::string &code,
+                                         const T &dataVector) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  unsigned int count = 0;
+  for (const auto &element : dataVector) {
+    temp << FormatV2000IntField(1 + element->getIdx());
+    if (++count == entriesPerLine) {
+      ret << "M  " << code << FormatV2000IntField(sGroupId)
+          << FormatV2000NumEntriesField(entriesPerLine) << temp.str()
+          << std::endl;
+      temp.str("");
+      count = 0;
+    }
+  }
+  if (count) {
+    ret << "M  " << code << FormatV2000IntField(sGroupId)
+        << FormatV2000NumEntriesField(count) << temp.str() << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SMTLine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  if (sgroup->getType() == "MUL" && sgroup->hasStrProp("MULT")) {
+    ret << "M  SMT" << FormatV2000IntField(idx)
+        << FormatV2000StringField(sgroup->getStrProp("MULT"), 69, false, true)
+        << std::endl;
+  } else if (sgroup->hasStrProp("LABEL")) {
+    ret << "M  SMT" << FormatV2000IntField(idx)
+        << FormatV2000StringField(sgroup->getStrProp("LABEL"), 69, false, true)
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SDILine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  const std::vector<SGroup::Bracket> brackets = sgroup->getBrackets();
+
+  if (brackets.size() == 2) {
+    for (const auto &bracket : brackets) {
+      ret << "M  SDI" << FormatV2000IntField(idx)
+          << FormatV2000NumEntriesField(4);
+
+      for (unsigned int iPoint = 0; iPoint < 2; ++iPoint) {
+        ret << FormatV2000DoubleField(bracket.at(iPoint).x);
+        ret << FormatV2000DoubleField(bracket.at(iPoint).y);
+      }
+      ret << std::endl;
+    }
+  } else if (!brackets.empty()) {
+    std::ostringstream errout;
+    errout << "SGroup " << sgroup->getId()
+           << " has an unsupported number of brackets (" << brackets.size()
+           << ")";
+    throw SGroupException(errout.str());
+  }
+
+  return ret.str();
+}
+
+std::string BuildV2000SBVLine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  for (const auto &cstate : sgroup->getCStates()) {
+    ret << "M  SBV" << FormatV2000IntField(idx) << cstate.bond->getIdx();
+    if (cstate.vector) {
+      ret << FormatV2000DoubleField(cstate.vector->x);
+      ret << FormatV2000DoubleField(cstate.vector->y);
+    } else {
+      ret << FormatV2000DoubleField(0);
+      ret << FormatV2000DoubleField(0);
+    }
+    ret << std::endl;
+  }
+
+  return ret.str();
+}
+
+std::string BuildV2000SDTLine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  if (sgroup->hasStrProp("FIELDNAME")) {
+    ret << "M  SDT" << FormatV2000IntField(idx);
+    ret << FormatV2000StringField(sgroup->getStrProp("FIELDNAME"), 30, true,
+                                  true);
+
+    if (sgroup->hasStrProp("FIELDTYPE")) {
+      ret << FormatV2000StringField(sgroup->getStrProp("FIELDTYPE"), 2, true,
+                                    false);
+    } else {
+      ret << " T";
+    }
+
+    if (sgroup->hasStrProp("FIELDINFO")) {
+      ret << FormatV2000StringField(sgroup->getStrProp("FIELDINFO"), 20, true,
+                                    false);
+    }
+
+    if (sgroup->hasStrProp("QUERYTYPE")) {
+      ret << FormatV2000StringField(sgroup->getStrProp("QUERYTYPE"), 2, true,
+                                    false);
+    }
+    if (sgroup->hasStrProp("QUERYOP")) {
+      ret << FormatV2000StringField(sgroup->getStrProp("QUERYOP"), 15, true,
+                                    false);
+    }
+
+    ret << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SDDLine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  if (sgroup->hasStrProp("FIELDDISP")) {
+    ret << "M  SDD" << FormatV2000IntField(idx);
+    ret << FormatV2000StringField(sgroup->getStrProp("FIELDDISP"), 69, false,
+                                  true);
+    ret << std::endl;
+  }
+
+  return ret.str();
+}
+
+std::string BuildV2000SCDSEDLines(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  for (const auto &data : sgroup->getDataFields()) {
+    unsigned int length = data.size();
+    if (length > 200) {
+      std::ostringstream errout;
+      errout << "Data field '" << data << "' in SGroup " << sgroup->getId()
+             << " is longed than limit of 200 characters.";
+      throw SGroupException(errout.str());
+    }
+    unsigned int start = 0;
+    unsigned int end = 69;
+    for (; length > end; start += 69, end += 69) {
+      std::string dataChunk = data.substr(start, end);
+      ret << "M  SCD" << FormatV2000IntField(idx)
+          << FormatV2000StringField(dataChunk, 69, true, true) << std::endl;
+    }
+    std::string dataChunk = data.substr(start, end);
+    ret << "M  SED" << FormatV2000IntField(idx)
+        << FormatV2000StringField(dataChunk, 69, false, true) << std::endl;
+  }
+
+  return ret.str();
+}
+
+std::string BuildV2000PXALine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  if (sgroup->hasStrProp("PXA")) {
+    ret << "M  PXA" << FormatV2000IntField(idx);
+    ret << FormatV2000StringField(sgroup->getStrProp("PXA"), 69, false, true);
+    ret << std::endl;
+  }
+
+  return ret.str();
+}
+
+std::string BuildV2000SAPLines(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+
+  const std::vector<SGroup::AttachPoint> saps = sgroup->getAttachPoints();
+
+  unsigned int count = 0;
+  unsigned int entriesPerLine = 6;
+  for (const auto &sap : saps) {
+    temp << FormatV2000IntField(sap.aAtom->getIdx());
+    if (sap.lvAtom != nullptr) {
+      temp << FormatV2000IntField(sap.lvAtom->getIdx());
+    } else {
+      temp << FormatV2000IntField(0);
+    }
+    temp << FormatV2000StringField(sap.id, 2, false, true);
+    if (++count == entriesPerLine) {
+      ret << "M  SAP" << FormatV2000IntField(idx)
+          << FormatV2000IntField(entriesPerLine) << temp.str() << std::endl;
+      temp.str("");
+      count = 0;
+    }
+  }
+  if (count) {
+    ret << "M  SAP" << FormatV2000IntField(idx) << FormatV2000IntField(count)
+        << temp.str() << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SCLLine(const int idx, const SGroup *sgroup) {
+  std::ostringstream ret;
+
+  if (sgroup->hasStrProp("CLASS")) {
+    ret << "M  SCL" << FormatV2000IntField(idx);
+    ret << FormatV2000StringField(sgroup->getStrProp("CLASS"), 69, false, true);
+    ret << std::endl;
+  }
+
+  return ret.str();
+}
+
+const std::string GetMolFileSGroupInfo(const RWMol &mol) {
+  std::ostringstream ret;
+
+  // multiple group per line properties
+  ret << BuildV2000STYLines(mol);
+  ret << BuildV2000StringPropLines(8, mol, "SUBTYPE", "SST", 3);
+  ret << BuildV2000SLBLines(mol);
+  ret << BuildV2000StringPropLines(8, mol, "CONNECT", "SCN", 3);
+  ret << BuildV2000SDSLines(mol);
+  ret << BuildV2000SPLLines(mol);
+  ret << BuildV2000StringPropLines(8, mol, "COMPNO", "SNC", 3);
+  ret << BuildV2000SBTLines(mol);
+
+  // single group per line properties
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    ret << BuildV2000IdxVectorDataLines(15, idx, "SAL",
+                                        (*sGroupItr)->getAtoms());
+    ret << BuildV2000IdxVectorDataLines(15, idx, "SPA",
+                                        (*sGroupItr)->getPAtoms());
+    ret << BuildV2000IdxVectorDataLines(15, idx, "SBL",
+                                        (*sGroupItr)->getBonds());
+    ret << BuildV2000SMTLine(idx, sGroupItr->get());
+    // Write CRS line -- CRS still not supported
+    ret << BuildV2000SDILine(idx, sGroupItr->get());
+    ret << BuildV2000SBVLine(idx, sGroupItr->get());
+
+    ret << BuildV2000SDTLine(idx, sGroupItr->get());
+    ret << BuildV2000SDDLine(idx, sGroupItr->get());
+    // SCD/SED must come after SDT
+    ret << BuildV2000SCDSEDLines(idx, sGroupItr->get());
+
+    ret << BuildV2000PXALine(idx, sGroupItr->get());
+    ret << BuildV2000SAPLines(idx, sGroupItr->get());
+    ret << BuildV2000SCLLine(idx, sGroupItr->get());
+  }
+
+  return ret.str();
+}
+
+template <class T>
+std::string BuildV3000IdxVectorDataBlock(const std::string &key,
+                                         const std::vector<T *> &dataVector) {
+  return BuildV3000IdxVectorDataBlock(key, dataVector.begin(),
+                                      dataVector.end());
+}
+
+template <class Iterator>
+std::string BuildV3000IdxVectorDataBlock(const std::string &key,
+                                         const Iterator &dataVectorBegin,
+                                         const Iterator &dataVectorEnd) {
+  using T = typename std::iterator_traits<Iterator>::value_type;
+
+  std::ostringstream ret;
+
+  unsigned int size = dataVectorEnd - dataVectorBegin;
+
+  if (size) {
+    auto getIdx = [](T element) -> std::string {
+      return std::to_string(1 + element->getIdx());
+    };
+
+    std::vector<std::string> tempStr(1 + size);
+    tempStr[0] = std::to_string(size);
+
+    std::transform(dataVectorBegin, dataVectorEnd, tempStr.begin() + 1, getIdx);
+
+    ret << ' ' << key << "=(" << boost::algorithm::join(tempStr, " ") << ')';
+  }
+
+  return ret.str();
+}
+
+/* Classify bonds between XBONDS and CBOfindP work on a copy of
+ * bonds vector to prevent reordering of original vector */
+std::string BuildV3000BondsBlock(std::vector<Bond *> bonds) {
+  std::ostringstream ret;
+
+  auto isXBond = [](Bond *bond) {
+    return Bond::SGroupBondType::XBOND == bond->getSGroupBondType();
+  };
+
+  auto first_cbond = std::partition(bonds.begin(), bonds.end(), isXBond);
+
+  ret << BuildV3000IdxVectorDataBlock("XBONDS", bonds.begin(), first_cbond);
+  ret << BuildV3000IdxVectorDataBlock("CBONDS", first_cbond, bonds.end());
+
+  return ret.str();
+}
+
+std::string FormatV3000StringPropertyBlock(const std::string &prop,
+                                           const SGROUP_SPTR &sgroup) {
+  std::ostringstream ret;
+
+  if (sgroup->hasStrProp(prop)) {
+    ret << ' ' << prop << '=';
+    std::string value = sgroup->getStrProp(prop);
+    bool hasSpaces = (value.end() != find(value.begin(), value.end(), ' '));
+
+    if (hasSpaces || value.empty()) {
+      ret << "\"";
+    }
+
+    ret << value;
+
+    if (hasSpaces || value.empty()) {
+      ret << "\"";
+    }
+  }
+
+  return ret.str();
+}
+
+std::string FormatV3000ParentBlock(const SGROUP_SPTR &sgroup) {
+  std::ostringstream ret;
+
+  SGROUP_SPTR *parent = sgroup->getParent();
+
+  if (parent) {
+    auto mol = sgroup->getOwningMol();
+    unsigned int parentIdx = 1 + (*parent)->getIndexInMol();
+    ret << " PARENT=" << parentIdx;
+  }
+
+  return ret.str();
+}
+
+inline std::string FormatV3000DoubleField(double value) {
+  return boost::trim_copy(FormatV2000DoubleField(value));
+}
+
+std::string FormatV3000BracketBlock(
+    const std::vector<SGroup::Bracket> brackets) {
+  std::ostringstream ret;
+
+  if (!brackets.empty() && brackets.size() != 2) {
+    std::ostringstream errout;
+    errout << "SGroup has an unsupported number of brackets ("
+           << brackets.size() << ")";
+    throw SGroupException(errout.str());
+  }
+
+  for (const auto &bracket : brackets) {
+    ret << " BRKXYZ=(9";
+    for (unsigned int iPoint = 0; iPoint < 2; ++iPoint) {
+      ret << ' ' << FormatV3000DoubleField(bracket.at(iPoint).x);
+      ret << ' ' << FormatV3000DoubleField(bracket.at(iPoint).y);
+      ret << " 0";  // z coordinate is 0 by format specification
+    }
+    ret << " 0 0 0";  // 3rd point is 0 by format specification
+    ret << ")";
+  }
+
+  return ret.str();
+}
+
+std::string FormatV3000CStateBlock(const std::vector<SGroup::CState> &cstates) {
+  std::ostringstream ret;
+
+  for (const auto &cstate : cstates) {
+    unsigned int xbondIdx = 1 + cstate.bond->getIdx();
+    ret << " CSTATE=(";
+    if (cstate.vector) {
+      ret << "4 " << xbondIdx;
+      ret << ' ' << FormatV3000DoubleField(cstate.vector->x);
+      ret << ' ' << FormatV3000DoubleField(cstate.vector->y);
+      ret << " 0";
+    } else {
+      ret << "1 " << xbondIdx;
+    }
+    ret << ")";
+  }
+
+  return ret.str();
+}
+
+std::string FormatV3000AttachPointBlock(
+    const std::vector<SGroup::AttachPoint> &saps) {
+  std::ostringstream ret;
+
+  for (const auto &sap : saps) {
+    ret << " SAP=(3 " << (1 + sap.aAtom->getIdx());
+
+    if (sap.aAtom == sap.lvAtom) {
+      ret << " aidx";
+    } else {
+      ret << ' ' << (1 + sap.lvAtom->getIdx());
+    }
+
+    ret << ' ' << sap.id << ")";
+  }
+
+  return ret.str();
+}
+
+const std::string GetV3000MolFileSGroupLines(const unsigned int idx,
+                                             const SGROUP_SPTR &sgroup) {
+  std::ostringstream os;
+
+  os << ' ' << idx;
+  os << ' ' << sgroup->getType();
+  os << ' ' << sgroup->getId();
+
+  os << BuildV3000IdxVectorDataBlock("ATOMS", sgroup->getAtoms());
+  os << BuildV3000BondsBlock(sgroup->getBonds());
+  os << BuildV3000IdxVectorDataBlock("PATOMS", sgroup->getPAtoms());
+  os << FormatV3000StringPropertyBlock("SUBTYPE", sgroup);
+  os << FormatV3000StringPropertyBlock("MULT", sgroup);
+  os << FormatV3000StringPropertyBlock("CONNECT", sgroup);
+  os << FormatV3000ParentBlock(sgroup);
+  os << FormatV3000StringPropertyBlock("COMPNO", sgroup);
+  // XBHEAD -> part of V2000 CRS, not supported yet
+  // XBCORR -> part of V2000 CRS, not supported yet
+  os << FormatV3000StringPropertyBlock("LABEL", sgroup);
+  os << FormatV3000BracketBlock(sgroup->getBrackets());
+  os << FormatV3000StringPropertyBlock("ESTATE", sgroup);
+  os << FormatV3000CStateBlock(sgroup->getCStates());
+  os << FormatV3000StringPropertyBlock("FIELDNAME", sgroup);
+  os << FormatV3000StringPropertyBlock("FIELDINFO", sgroup);
+  os << FormatV3000StringPropertyBlock("FIELDDISP", sgroup);
+  os << FormatV3000StringPropertyBlock("ESTATE", sgroup);
+  os << FormatV3000StringPropertyBlock("QUERYTYPE", sgroup);
+  os << FormatV3000StringPropertyBlock("QUERYOP", sgroup);
+  os << FormatV3000StringPropertyBlock("CLASS", sgroup);
+  os << FormatV3000AttachPointBlock(sgroup->getAttachPoints());
+  os << FormatV3000StringPropertyBlock("BRKTYP", sgroup);
+  os << FormatV3000StringPropertyBlock("SEQID", sgroup);
+
+  std::string sGroupBlock = os.str();
+  unsigned int length = sGroupBlock.size();
+  os.str("");
+
+  unsigned int start = 0;
+  while (length - start > 73) {
+    os << "M  V30 " << sGroupBlock.substr(start, start + 72) << '-'
+       << std::endl;
+    start += 72;
+  }
+  os << "M  V30 " << sGroupBlock.substr(start, start + 73) << std::endl;
+
+  return os.str();
+}
+
 //------------------------------------------------
 //
 //  gets a mol block as a string
@@ -1019,11 +1683,13 @@ std::string outputMolToMolBlock(const RWMol &tmol, int confId,
   std::string res;
 
   bool isV3000;
-  unsigned int nAtoms, nBonds, nLists, chiralFlag, nsText, nRxnComponents;
+  unsigned int nAtoms, nBonds, nLists, nSGroups, chiralFlag, nsText,
+      nRxnComponents;
   unsigned int nReactants, nProducts, nIntermediates;
   nAtoms = tmol.getNumAtoms();
   nBonds = tmol.getNumBonds();
   nLists = 0;
+  nSGroups = tmol.getNumSGroups();
 
   chiralFlag = 0;
   nsText = 0;
@@ -1094,7 +1760,7 @@ std::string outputMolToMolBlock(const RWMol &tmol, int confId,
     ss << std::setw(3) << nAtoms;
     ss << std::setw(3) << nBonds;
     ss << std::setw(3) << nLists;
-    ss << std::setw(3) << 0;
+    ss << std::setw(3) << nSGroups;
     ss << std::setw(3) << chiralFlag;
     ss << std::setw(3) << nsText;
     ss << std::setw(3) << nRxnComponents;
@@ -1109,14 +1775,14 @@ std::string outputMolToMolBlock(const RWMol &tmol, int confId,
     // V2000 output.
     for (ROMol::ConstAtomIterator atomIt = tmol.beginAtoms();
          atomIt != tmol.endAtoms(); ++atomIt) {
-      res += GetMolFileAtomLine(*atomIt, conf);
+      res += GetMolFileAtomLines(*atomIt, conf);
       res += "\n";
     }
 
     INT_MAP_INT wedgeBonds = pickBondsToWedge(tmol);
     for (ROMol::ConstBondIterator bondIt = tmol.beginBonds();
          bondIt != tmol.endBonds(); ++bondIt) {
-      res += GetMolFileBondLine(*bondIt, wedgeBonds, conf);
+      res += GetMolFileBondLines(*bondIt, wedgeBonds, conf);
       res += "\n";
     }
 
@@ -1126,23 +1792,24 @@ std::string outputMolToMolBlock(const RWMol &tmol, int confId,
     res += GetMolFileAliasInfo(tmol);
     res += GetMolFileZBOInfo(tmol);
 
+    res += GetMolFileSGroupInfo(tmol);
+
     // FIX: R-group logic, SGroups and 3D features etc.
   } else {
     // V3000 output.
     res += "M  V30 BEGIN CTAB\n";
     std::stringstream ss;
-    //                                           numSgroups (not implemented)
-    //                                           | num3DConstraints (not
-    //                                           +---------+ |   implemented)
-    //                                                     | |
-    ss << "M  V30 COUNTS " << nAtoms << " " << nBonds << " 0 0 " << chiralFlag
-       << "\n";
+    ss << "M  V30 COUNTS " << nAtoms << " " << nBonds << " " << nSGroups
+       << " 0 " << chiralFlag << "\n";
+    //      |
+    //      num3DConstraints (not implemented)
+
     res += ss.str();
 
     res += "M  V30 BEGIN ATOM\n";
     for (ROMol::ConstAtomIterator atomIt = tmol.beginAtoms();
          atomIt != tmol.endAtoms(); ++atomIt) {
-      res += GetV3000MolFileAtomLine(*atomIt, conf);
+      res += GetV3000MolFileAtomLines(*atomIt, conf);
       res += "\n";
     }
     res += "M  V30 END ATOM\n";
@@ -1152,11 +1819,22 @@ std::string outputMolToMolBlock(const RWMol &tmol, int confId,
       INT_MAP_INT wedgeBonds = pickBondsToWedge(tmol);
       for (ROMol::ConstBondIterator bondIt = tmol.beginBonds();
            bondIt != tmol.endBonds(); ++bondIt) {
-        res += GetV3000MolFileBondLine(*bondIt, wedgeBonds, conf);
+        res += GetV3000MolFileBondLines(*bondIt, wedgeBonds, conf);
         res += "\n";
       }
       res += "M  V30 END BOND\n";
     }
+
+    if (tmol.getNumSGroups()) {
+      res += "M  V30 BEGIN SGROUP\n";
+      for (ROMol::ConstSGroupIterator sGroupIt = tmol.beginSGroups();
+           sGroupIt != tmol.endSGroups(); ++sGroupIt) {
+        unsigned int idx = 1 + (sGroupIt - tmol.beginSGroups());
+        res += GetV3000MolFileSGroupLines(idx, *sGroupIt);
+      }
+      res += "M  V30 END SGROUP\n";
+    }
+
     res += "M  V30 END CTAB\n";
   }
   res += "M  END\n";
@@ -1219,4 +1897,4 @@ void MolToMolFile(const ROMol &mol, const std::string &fName,
   *outStream << outString;
   delete outStream;
 }
-}
+}  // namespace RDKit

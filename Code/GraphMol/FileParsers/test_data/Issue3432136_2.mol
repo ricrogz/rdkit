@@ -25,9 +25,15 @@
   3 10  1  0  0  0  0
   7 11  1  0  0  0  0
  11 12  1  0  0  0  0
-M  STY  1   1 SUP
-M  SAL   1  6   6   7   8   9  11  12
-M  SBL   1  1   5
-M  SMT   1 abbrev
+M  STY  8   1 SUP   2 MON   3 SUP   4 SUP   5 SUP   6 SUP   7 SUP   8 SUP
+M  STY  2   9 SUP  10 SUP
 M  SDS EXP  1   1
+M  SAL   1  6   6   7   8   9  11  12
+M  SBL   1  2   5  11
+M  SAL   2  2   1   2
+M  SBL   2  1   1
+M  SMT   1 abbrev
+M  SPL  1   1   2
+M  SBV   1   5   -3.9679   -0.1670
+M  SBV   2   1
 M  END

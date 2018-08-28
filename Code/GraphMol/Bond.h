@@ -25,6 +25,7 @@
 namespace RDKit {
 class ROMol;
 class RWMol;
+class SGroup;
 class Atom;
 
 //! class for representing a bond
@@ -47,6 +48,7 @@ class Atom;
 class RDKIT_GRAPHMOL_EXPORT Bond : public RDProps {
   friend class RWMol;
   friend class ROMol;
+  friend class SGroup;
 
  public:
   // FIX: grn...
@@ -103,6 +105,11 @@ class RDKIT_GRAPHMOL_EXPORT Bond : public RDProps {
     STEREOTRANS  // trans double bond
   } BondStereo;
 
+  enum class SGroupBondType {
+    XBOND,  // External
+    CBOND,  // Internal
+  };
+
   Bond();
   //! construct with a particular BondType
   explicit Bond(BondType bT);
@@ -151,6 +158,14 @@ class RDKIT_GRAPHMOL_EXPORT Bond : public RDProps {
   void setOwningMol(ROMol *other);
   //! sets our owning molecule
   void setOwningMol(ROMol &other) { setOwningMol(&other); };
+
+  //! sets our owning molecule
+  void addSGroup(SGroup *other);
+  //! sets our owning molecule
+  void addSGroup(SGroup &other) { addSGroup(&other); };
+
+  //! check if the bond is SGroup XBOND or CBOND
+  SGroupBondType getSGroupBondType() const;
 
   //! returns our index within the ROMol
   /*!
@@ -315,6 +330,12 @@ class RDKIT_GRAPHMOL_EXPORT Bond : public RDProps {
     return *dp_stereoAtoms;
   };
 
+  //! returns the vector of SGroups this bond belongs to
+  const std::vector<SGroup *> &getSGroups() const { return dp_sgroups; }
+
+  //! \overload
+  std::vector<SGroup *> &getSGroups() { return dp_sgroups; }
+
   //! calculates any of our lazy \c properties
   /*!
     <b>Notes:</b>
@@ -334,14 +355,16 @@ class RDKIT_GRAPHMOL_EXPORT Bond : public RDProps {
   boost::uint8_t d_stereo;
   atomindex_t d_index;
   atomindex_t d_beginAtomIdx, d_endAtomIdx;
+  std::vector<SGroup *> dp_sgroups;  // an XBOND may belong to up to 2 sgroups
   ROMol *dp_mol;
   INT_VECT *dp_stereoAtoms;
 
   void initBond();
 };
-};
+};  // namespace RDKit
 
 //! allows Bond objects to be dumped to streams
-RDKIT_GRAPHMOL_EXPORT extern std::ostream &operator<<(std::ostream &target, const RDKit::Bond &b);
+RDKIT_GRAPHMOL_EXPORT extern std::ostream &operator<<(std::ostream &target,
+                                                      const RDKit::Bond &b);
 
 #endif

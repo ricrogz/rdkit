@@ -34,7 +34,7 @@ void ROMol::destroy() {
   d_atomBookmarks.clear();
   d_bondBookmarks.clear();
 
-  ATOM_ITER_PAIR atItP = boost::vertices(d_graph);  
+  ATOM_ITER_PAIR atItP = boost::vertices(d_graph);
   while (atItP.first != atItP.second) {
     delete (d_graph)[*(atItP.first++)];
   }
@@ -43,7 +43,7 @@ void ROMol::destroy() {
   while (bondItP.first != bondItP.second) {
     delete (d_graph)[*(bondItP.first++)];
   }
-  
+
   d_graph.clear();
 
   if (dp_ringInfo) {
@@ -92,6 +92,16 @@ void ROMol::initFromOther(const ROMol &other, bool quickCopy, int confId) {
         auto *conf = new Conformer(*(*ci));
         this->addConformer(conf);
       }
+    }
+
+    // copy sgroups
+    for (auto sgi = other.beginSGroups(); sgi != other.endSGroups(); ++sgi) {
+      auto sgroup = new SGroup(*(*sgi));
+      this->addSGroup(sgroup);
+    }
+    /* Once all sgroups have been copied, update internal links. We do this
+     * after copy because a SGroup's parent may be at higher index than child */
+    for (auto sgi = other.beginSGroups(); sgi != other.endSGroups(); ++sgi) {
     }
 
     dp_props = other.dp_props;
@@ -479,10 +489,10 @@ void ROMol::clearComputedProps(bool includeRings) const {
 
   RDProps::clearComputedProps();
 
-  for (auto atom: atoms()) {
+  for (auto atom : atoms()) {
     atom->clearComputedProps();
   }
-  
+
   for (ConstBondIterator bondIt = this->beginBonds();
        bondIt != this->endBonds(); bondIt++) {
     (*bondIt)->clearComputedProps();
@@ -526,7 +536,7 @@ const Conformer &ROMol::getConformer(int id) const {
       return *(*ci);
     }
   }
-  // we did not find a coformation with the specified ID
+  // we did not find a conformation with the specified ID
   std::string mesg = "Can't find conformation with ID: ";
   mesg += id;
   throw ConformerException(mesg);
@@ -547,7 +557,7 @@ Conformer &ROMol::getConformer(int id) {
       return *(*ci);
     }
   }
-  // we did not find a coformation with the specified ID
+  // we did not find a conformation with the specified ID
   std::string mesg = "Can't find conformation with ID: ";
   mesg += id;
   throw ConformerException(mesg);
@@ -579,4 +589,58 @@ unsigned int ROMol::addConformer(Conformer *conf, bool assignId) {
   return conf->getId();
 }
 
-}  // end o' namespace
+const SGROUP_SPTR *ROMol::getSGroup(unsigned int idx) const {
+  // make sure we have more than one sgroup
+  if (d_sgroups.empty()) {
+    throw SGroupException("No SGroups available on the molecule");
+  }
+
+  return &(d_sgroups.at(idx));
+}
+
+SGROUP_SPTR *ROMol::getSGroup(unsigned int idx) {
+  // make sure we have more than one sgroup
+  if (d_sgroups.empty()) {
+    throw SGroupException("No SGroups available on the molecule");
+  }
+
+  return &(d_sgroups.at(idx));
+}
+
+void ROMol::removeSGroup(unsigned int idx) {
+  d_sgroups.erase(d_sgroups.begin() + idx);
+}
+
+unsigned int ROMol::addSGroup(SGroup *sgroup) {
+  sgroup->setOwningMol(this);
+  SGROUP_SPTR nSGroup(sgroup);
+  unsigned int id = d_sgroups.size();
+  d_sgroups.push_back(nSGroup);
+  return id;
+}
+
+bool ROMol::isIdFree(unsigned int id) const {
+  for (const auto &sgroup : d_sgroups) {
+    if (id == sgroup->getId()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+unsigned int ROMol::getNextFreeId() const {
+  std::set<unsigned int> ids;
+  for (const auto &sgroup : d_sgroups) {
+    ids.insert(sgroup->getId());
+  }
+  unsigned int nexId = 1;  // smallest possible ID
+  for (const auto &id : ids) {
+    if (id > nexId) {
+      break;
+    }
+    ++nexId;
+  }
+  return nexId;
+}
+
+}  // namespace RDKit
