@@ -28,7 +28,7 @@ namespace {
 bool isEarlyAtom(int atomicNum) {
   return (4 - PeriodicTable::getTable()->getNouterElecs(atomicNum)) > 0;
 }
-}  // namespace
+}
 Atom::Atom() : RDProps() {
   d_atomicNum = 0;
   initAtom();
@@ -99,11 +99,6 @@ void Atom::setOwningMol(ROMol *other) {
   // molecule (i.e. this atom is not added to the graph).  Only
   // molecules can add atoms to themselves.
   dp_mol = other;
-}
-
-void Atom::setSGroup(SGroup *other) {
-  // NOTE: this operation does not update the sgroup.
-  dp_sgroup = other;
 }
 
 std::string Atom::getSymbol() const {
@@ -588,7 +583,7 @@ std::string getSupplementalSmilesLabel(const Atom *atom) {
   return label;
 }
 
-}  // namespace RDKit
+}  // end o' namespace RDKit
 
 std::ostream &operator<<(std::ostream &target, const RDKit::Atom &at) {
   target << at.getIdx() << " " << at.getAtomicNum() << " " << at.getSymbol();

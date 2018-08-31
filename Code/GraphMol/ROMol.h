@@ -444,23 +444,19 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
   //! \name SGroups
   //@{
 
-  //! return the sgroup with a specified ID
-  const SGROUP_SPTR *getSGroup(unsigned int idx) const;
-  SGROUP_SPTR *getSGroup(unsigned int idx);
+  //! return the sgroup at specified index
+  SGROUP_SPTR &getSGroup(unsigned int idx);
 
-  //! Delete the sgroup with the specified ID
+  //! Delete the sgroup at specified index
   void removeSGroup(unsigned int idx);
 
   //! Clear all the SGroups on the molecule
   void clearSGroups() { d_sgroups.clear(); }
 
-  //! Add a new SGroup with the specified ID
+  //! Add a new SGroup
   /*!
     \param sgroup - SGroup to be added to the molecule; this molecule takes
     ownership of the sgroup
-    \param id - a unique ID that will be assigned to the sgroup.
-    If the ID is already used by an SGroup, an exception is
-    raised. If 0, an ID will be automatically assigned.
   */
   unsigned int addSGroup(SGroup *sgroup);
 
@@ -472,13 +468,13 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
   /*!
     \return if the ID is free
   */
-  bool isIdFree(unsigned int id) const;
+  bool isSGroupIdFree(unsigned int id) const;
 
   //! Get the smallest yet unassigned ID.
   /*!
     \return the smallest available ID.
   */
-  unsigned int getNextFreeId() const;
+  unsigned int getNextFreeSGroupId() const;
 
   //@}
 

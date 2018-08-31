@@ -10,7 +10,6 @@
 #include <RDGeneral/BoostStartInclude.h>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/algorithm/string/regex.hpp>
 #include <boost/tokenizer.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <RDGeneral/BoostEndInclude.h>
@@ -33,6 +32,7 @@
 #include <sstream>
 #include <locale>
 #include <stdlib.h>
+#include <regex>
 
 namespace RDKit {
 class MolFileUnhandledFeatureException : public std::exception {
@@ -670,7 +670,7 @@ void ParseSGroupV2000SPLLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     unsigned int parentIdx = ParseSGroupIntField(text, line, pos) - 1;
 
     SGroup *sgroup = sGroupMap.at(sgIdx);
-    SGROUP_SPTR *sgParent = mol->getSGroup(parentIdx);
+    SGROUP_SPTR sgParent = mol->getSGroup(parentIdx);
 
     sgroup->setParent(sgParent);
   }
@@ -2707,11 +2707,11 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
     tempStr = getV3000Line(inStream, line);
 
     // Split only on whitespace outside parentheses
-    boost::regex expr(R"((\S+\(.*?\))|(\S+\".+?\")|\S+)");
-    boost::regex_token_iterator<std::string::iterator> it(tempStr.begin(),
-                                                          tempStr.end(), expr);
-    boost::regex_token_iterator<std::string::iterator> end;
-    std::vector<std::string> localSplitLine(it, end);
+    std::regex label_splitter(R"((\S+\(.*?\))|(\S+\".+?\")|\S+)");
+    std::regex_token_iterator<std::string::iterator> label_itr(
+        tempStr.begin(), tempStr.end(), label_splitter);
+    std::regex_token_iterator<std::string::iterator> token_itr_end;
+    std::vector<std::string> localSplitLine(label_itr, token_itr_end);
 
     /* TO DO: handle 'DEFAULT' */
 
@@ -2725,30 +2725,31 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
         sgroup->setId(id);
       }
 
+      // Skip index, type, extindex
       for (auto token = localSplitLine.begin() + 3;
            token != localSplitLine.end(); ++token) {
-        std::vector<std::string> splitToken;
-
         // Split on spaces inside parentheses, etc, but not inside double quotes
-        boost::split_regex(splitToken, *token,
-                           boost::regex(R"((\s(?!.*")|['"=()])+)"));
+        std::regex item_splitter(R"((\s(?!.*")|['"=()])+)");
 
-        // Get rid of empty final groups
-        auto end = splitToken.end();
-        if ((end - 1)->empty()) {
-          --end;
+        std::regex_token_iterator<std::string::iterator> item_itr(
+            token->begin(), token->end(), item_splitter, -1);
+
+        std::vector<std::string> splitToken(item_itr, token_itr_end);
+
+        if (splitToken.empty()) {
+          continue;
         }
 
         if (splitToken[0] == std::string("ATOMS")) {
-          for (auto atomStr = splitToken.begin() + 2; atomStr != end;
-               ++atomStr) {
+          for (auto atomStr = splitToken.begin() + 2;
+               atomStr != splitToken.end(); ++atomStr) {
             int atomId = FileParserUtils::toInt(*atomStr);
             sgroup->addAtomWithIdx(atomId - 1);
           }
         } else if (splitToken[0] == std::string("CBONDS") ||
                    splitToken[0] == std::string("XBONDS")) {
-          for (auto bondStr = splitToken.begin() + 2; bondStr != end;
-               ++bondStr) {
+          for (auto bondStr = splitToken.begin() + 2;
+               bondStr != splitToken.end(); ++bondStr) {
             int bondId = FileParserUtils::toInt(*bondStr);
             sgroup->addBondWithIdx(bondId - 1);
           }
@@ -2763,7 +2764,8 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
 
           int i = 0;
           SGroup::Bracket bracket;
-          for (auto coord = splitToken.begin() + 2; coord != end && nCoords > 0;
+          for (auto coord = splitToken.begin() + 2;
+               coord != splitToken.end() && nCoords > 0;
                coord += 3, ++i, nCoords -= 3) {
             double x = FileParserUtils::toDouble(*coord);
             double y = FileParserUtils::toDouble(*(coord + 1));
@@ -2772,9 +2774,8 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
           }
           sgroup->addBracket(bracket);
         } else if (splitToken[0] == std::string("CSTATE")) {
-          int nTokens = end - splitToken.begin();
-          if ((typ != "SUP" && nTokens != 1) ||
-              (typ == "SUP" && nTokens != 4)) {
+          if ((typ != "SUP" && splitToken.size() != 1) ||
+              (typ == "SUP" && splitToken.size() != 4)) {
             std::ostringstream errout;
             errout << "Unexpected number of fields for CSTATE field on line "
                    << line;
@@ -2792,21 +2793,18 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
           }
           sgroup->addCState(xbond, vector);
         } else if (splitToken[0] == std::string("PATOMS")) {
-          for (auto atomStr = splitToken.begin() + 2; atomStr != end;
-               ++atomStr) {
+          for (auto atomStr = splitToken.begin() + 2;
+               atomStr != splitToken.end(); ++atomStr) {
             int atomId = FileParserUtils::toInt(*atomStr);
             sgroup->addPAtomWithIdx(atomId - 1);
           }
-        } else if (splitToken[0] == std::string("FIELDDATA")) {
-          boost::trim_right(splitToken[1]);
-          sgroup->addDataField(splitToken[1].substr(0, 200));
         } else if (splitToken[0] == std::string("PARENT")) {
           unsigned int parentIdx = FileParserUtils::toInt(splitToken[1]) - 1;
-          SGROUP_SPTR *sgParent = mol->getSGroup(parentIdx);
+          SGROUP_SPTR sgParent = mol->getSGroup(parentIdx);
           sgroup->setParent(sgParent);
         } else if (splitToken[0] == std::string("SAP")) {
-          for (auto beginSap = splitToken.begin() + 2; beginSap != end;
-               beginSap += 3) {
+          for (auto beginSap = splitToken.begin() + 2;
+               beginSap != splitToken.end(); beginSap += 3) {
             unsigned int aidx = FileParserUtils::toInt(*beginSap);
             Atom *aAtom = mol->getAtomWithIdx(aidx - 1);
 
@@ -2827,15 +2825,20 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
             sgroup->addAttachPoint(sap);
           }
         } else {
-          int nTokens = end - splitToken.begin();
-          if (nTokens > 2) {
+          // Data fields or string properties require exactly two strings
+          if (splitToken.size() > 2) {
             std::ostringstream errout;
             errout << "Unexpected number of fields for String Data field "
                    << splitToken[0] << " on line " << line;
             throw FileParseException(errout.str());
-          } else if (nTokens == 1) {
+          } else if (splitToken.size() == 1) {
             splitToken.push_back("");
-            ++end;
+          }
+
+          if (splitToken[0] == std::string("FIELDDATA")) {
+            boost::trim_right(splitToken[1]);
+            sgroup->addDataField(splitToken[1].substr(0, 200));
+            continue;
           }
 
           if (splitToken[0] == "SUBTYPE" && !SGroupSubTypeOK(splitToken[1])) {

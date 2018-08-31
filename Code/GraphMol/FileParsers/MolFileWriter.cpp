@@ -1157,14 +1157,13 @@ std::string BuildV2000SDSLines(const ROMol &mol) {
 std::string BuildV2000SPLLines(const ROMol &mol) {
   std::ostringstream ret;
   std::ostringstream temp;
-
   unsigned int count = 0;
   for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
        ++sGroupItr) {
     unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
-    SGROUP_SPTR *parent = (*sGroupItr)->getParent();
+    SGROUP_SPTR parent = (*sGroupItr)->getParent();
     if (parent) {  // Write field only if a parent is defined
-      unsigned int parentIdx = 1 + (*parent)->getIndexInMol();
+      unsigned int parentIdx = 1 + parent->getIndexInMol();
       temp << FormatV2000IntField(idx) << FormatV2000IntField(parentIdx);
       if (++count == 8) {
         ret << "M  SPL" << FormatV2000NumEntriesField(8) << temp.str()
@@ -1505,13 +1504,14 @@ std::string BuildV3000IdxVectorDataBlock(const std::string &key,
 
 /* Classify bonds between XBONDS and CBOfindP work on a copy of
  * bonds vector to prevent reordering of original vector */
-std::string BuildV3000BondsBlock(std::vector<Bond *> bonds) {
+std::string BuildV3000BondsBlock(const SGROUP_SPTR &sgroup) {
   std::ostringstream ret;
 
-  auto isXBond = [](Bond *bond) {
-    return Bond::SGroupBondType::XBOND == bond->getSGroupBondType();
+  auto isXBond = [&sgroup](Bond *bond) {
+    return SGroup::BondType::XBOND == sgroup->getBondType(bond);
   };
 
+  auto bonds = sgroup->getBonds();
   auto first_cbond = std::partition(bonds.begin(), bonds.end(), isXBond);
 
   ret << BuildV3000IdxVectorDataBlock("XBONDS", bonds.begin(), first_cbond);
@@ -1546,11 +1546,10 @@ std::string FormatV3000StringPropertyBlock(const std::string &prop,
 std::string FormatV3000ParentBlock(const SGROUP_SPTR &sgroup) {
   std::ostringstream ret;
 
-  SGROUP_SPTR *parent = sgroup->getParent();
+  SGROUP_SPTR parent = sgroup->getParent();
 
   if (parent) {
-    auto mol = sgroup->getOwningMol();
-    unsigned int parentIdx = 1 + (*parent)->getIndexInMol();
+    unsigned int parentIdx = 1 + parent->getIndexInMol();
     ret << " PARENT=" << parentIdx;
   }
 
@@ -1634,7 +1633,7 @@ const std::string GetV3000MolFileSGroupLines(const unsigned int idx,
   os << ' ' << sgroup->getId();
 
   os << BuildV3000IdxVectorDataBlock("ATOMS", sgroup->getAtoms());
-  os << BuildV3000BondsBlock(sgroup->getBonds());
+  os << BuildV3000BondsBlock(sgroup);
   os << BuildV3000IdxVectorDataBlock("PATOMS", sgroup->getPAtoms());
   os << FormatV3000StringPropertyBlock("SUBTYPE", sgroup);
   os << FormatV3000StringPropertyBlock("MULT", sgroup);
@@ -1681,7 +1680,6 @@ const std::string GetV3000MolFileSGroupLines(const unsigned int idx,
 std::string outputMolToMolBlock(const RWMol &tmol, int confId,
                                 bool forceV3000) {
   std::string res;
-
   bool isV3000;
   unsigned int nAtoms, nBonds, nLists, nSGroups, chiralFlag, nsText,
       nRxnComponents;

@@ -19,26 +19,6 @@
 #include <memory>
 #include <cstdlib>
 
-/*
-#include <GraphMol/Canon.h>
-#include <GraphMol/MonomerInfo.h>
-#include "SequenceParsers.h"
-#include "SequenceWriters.h"
-#include "MolFileStereochem.h"
-#include <GraphMol/SmilesParse/SmilesParse.h>
-#include <GraphMol/SmilesParse/SmilesWrite.h>
-#include <GraphMol/SmilesParse/SmartsWrite.h>
-#include <GraphMol/Substruct/SubstructMatch.h>
-#include <GraphMol/FileParsers/ProximityBonds.h>
-#include <RDGeneral/LocaleSwitcher.h>
-#include <clocale>
-#include <cstdlib>
-
-#include <string>
-#include <fstream>
-#include <boost/lexical_cast.hpp>
-*/
-
 using namespace RDKit;
 
 template <class T>
@@ -92,7 +72,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     TEST_ASSERT(m);
     TEST_ASSERT(m->getNumSGroups() == 10);
 
-    SGROUP_SPTR sgroup = *(m->getSGroup(0));
+    SGROUP_SPTR sgroup = m->getSGroup(0);
 
     TEST_ASSERT(sgroup->getType() == "MON");
 
@@ -111,7 +91,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     testBrackets(sgroup->getBrackets(), brackets_reference);
 
     std::string ofile =
-        outputFileNameBuilder(rdbase, "Issue3432136_1.sdf", true);
+        outputFileNameBuilder(rdbase, "Issue3432136_1.mol", true);
     auto writer = SDWriter(ofile);
     writer.setForceV3000(forceV3000);
 
@@ -127,7 +107,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     TEST_ASSERT(m);
     TEST_ASSERT(m->getNumSGroups() == 1);
 
-    SGROUP_SPTR sgroup = *(m->getSGroup(0));
+    SGROUP_SPTR sgroup = m->getSGroup(0);
 
     TEST_ASSERT(sgroup->getType() == "MON");
 
@@ -155,7 +135,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     TEST_ASSERT(m);
     TEST_ASSERT(m->getNumSGroups() == 2);
 
-    SGROUP_SPTR sgroup = *(m->getSGroup(0));
+    SGROUP_SPTR sgroup = m->getSGroup(0);
 
     TEST_ASSERT(sgroup->getType() == "SUP");
 
@@ -166,7 +146,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     testSet(sgroup->getBonds(), bonds_reference);
 
     auto *bond = sgroup->getBonds()[0];
-    TEST_ASSERT(bond->getSGroupBondType() == Bond::SGroupBondType::XBOND);
+    TEST_ASSERT(sgroup->getBondType(bond) == SGroup::BondType::XBOND);
 
     std::string ofile =
         outputFileNameBuilder(rdbase, "Issue3432136_2.v3k.mol", true);
@@ -185,7 +165,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     TEST_ASSERT(m);
     TEST_ASSERT(m->getNumSGroups() == 10);
 
-    SGROUP_SPTR sgroup = *(m->getSGroup(0));
+    SGROUP_SPTR sgroup = m->getSGroup(0);
 
     TEST_ASSERT(sgroup->getType() == "SUP");
 
@@ -196,7 +176,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     testSet(sgroup->getBonds(), bonds_reference);
 
     auto *bond = sgroup->getBonds()[0];
-    TEST_ASSERT(bond->getSGroupBondType() == Bond::SGroupBondType::XBOND);
+    TEST_ASSERT(sgroup->getBondType(bond) == SGroup::BondType::XBOND);
 
     std::string ofile =
         outputFileNameBuilder(rdbase, "Issue3432136_2.mol", true);
@@ -225,7 +205,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     TEST_ASSERT(m);
     TEST_ASSERT(m->getNumSGroups() == 1);
 
-    SGROUP_SPTR sgroup = *(m->getSGroup(0));
+    SGROUP_SPTR sgroup = m->getSGroup(0);
 
     TEST_ASSERT(sgroup->getType() == "DAT");
 
@@ -242,7 +222,7 @@ void testSGroup(const std::string &rdbase, bool forceV3000) {
     TEST_ASSERT(m);
     TEST_ASSERT(m->getNumSGroups() == 1);
 
-    sgroup = *(m->getSGroup(0));
+    sgroup = m->getSGroup(0);
 
     TEST_ASSERT(sgroup->getType() == "DAT");
 

@@ -47,6 +47,11 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
  public:
   friend class ROMol;
 
+  enum class BondType {
+    XBOND,  // External
+    CBOND,  // Internal
+  };
+
   typedef std::array<RDGeom::Point3D, 3> Bracket;
 
   struct AttachPoint {
@@ -102,7 +107,7 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   const std::string &getStrProp(const std::string &prop) const;
 
   //! get parent SGroup
-  inline boost::shared_ptr<SGroup> *getParent() const { return d_parent; }
+  inline boost::shared_ptr<SGroup> getParent() const { return d_parent; }
 
   //! set the ID of this sgroup
   void setId(unsigned int id);
@@ -116,7 +121,7 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   };
 
   //! set the parent SGroup
-  inline void setParent(boost::shared_ptr<SGroup> *parent) {
+  inline void setParent(boost::shared_ptr<SGroup> &parent) {
     d_parent = parent;
   }
 
@@ -128,6 +133,8 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   void addCState(unsigned int bondIdx, RDGeom::Point3D *vector);
   void addDataField(const std::string &data);
   void addAttachPoint(const AttachPoint &sap);
+
+  BondType getBondType(Bond *bond) const;
 
   inline const ATOM_PTR_VECT &getAtoms() const { return d_atoms; };
   inline const ATOM_PTR_VECT &getPAtoms() const { return d_patoms; };
@@ -143,14 +150,16 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
 
  protected:
   //! Set owning moelcule
+  //! This only updates atoms and bonds; parent sgroup has to be updated
+  //! independently, since parent might not exist at the time this is called.
   void setOwningMol(ROMol *mol);
 
-  //! Set owning moelcule
-  void setOwningMol(ROMol &mol);
-
  private:
-  //! Update atoms, patoms and bonds with the matching ids of a new molecule
-  void remap_to_new_mol(ROMol *other_mol);
+  //! Update atoms, patoms, bonds with the ones at matching indexes in other_mol
+  void remap_atoms_bonds_to_new_mol(ROMol *other_mol);
+
+  //! Update parent sgroup with the one at the same index in other_mol
+  void remap_parent_sgroup_to_new_mol(ROMol *other_mol);
 
   /* ID of the group. If not 0, must be unique */
   unsigned int d_id = 0;
@@ -168,7 +177,7 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
       d_strProp;  // Storage for string properties
   std::vector<std::string> d_dataFields;
   std::vector<AttachPoint> d_saps;
-  boost::shared_ptr<SGroup> *d_parent = nullptr;
+  boost::shared_ptr<SGroup> d_parent;
 };
 
 typedef boost::shared_ptr<SGroup> SGROUP_SPTR;

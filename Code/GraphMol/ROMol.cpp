@@ -101,7 +101,8 @@ void ROMol::initFromOther(const ROMol &other, bool quickCopy, int confId) {
     }
     /* Once all sgroups have been copied, update internal links. We do this
      * after copy because a SGroup's parent may be at higher index than child */
-    for (auto sgi = other.beginSGroups(); sgi != other.endSGroups(); ++sgi) {
+    for (auto sgi = beginSGroups(); sgi != endSGroups(); ++sgi) {
+      (*sgi)->remap_parent_sgroup_to_new_mol(this);
     }
 
     dp_props = other.dp_props;
@@ -589,22 +590,13 @@ unsigned int ROMol::addConformer(Conformer *conf, bool assignId) {
   return conf->getId();
 }
 
-const SGROUP_SPTR *ROMol::getSGroup(unsigned int idx) const {
+SGROUP_SPTR &ROMol::getSGroup(unsigned int idx) {
   // make sure we have more than one sgroup
   if (d_sgroups.empty()) {
     throw SGroupException("No SGroups available on the molecule");
   }
 
-  return &(d_sgroups.at(idx));
-}
-
-SGROUP_SPTR *ROMol::getSGroup(unsigned int idx) {
-  // make sure we have more than one sgroup
-  if (d_sgroups.empty()) {
-    throw SGroupException("No SGroups available on the molecule");
-  }
-
-  return &(d_sgroups.at(idx));
+  return d_sgroups.at(idx);
 }
 
 void ROMol::removeSGroup(unsigned int idx) {
@@ -619,7 +611,7 @@ unsigned int ROMol::addSGroup(SGroup *sgroup) {
   return id;
 }
 
-bool ROMol::isIdFree(unsigned int id) const {
+bool ROMol::isSGroupIdFree(unsigned int id) const {
   for (const auto &sgroup : d_sgroups) {
     if (id == sgroup->getId()) {
       return false;
@@ -628,7 +620,7 @@ bool ROMol::isIdFree(unsigned int id) const {
   return true;
 }
 
-unsigned int ROMol::getNextFreeId() const {
+unsigned int ROMol::getNextFreeSGroupId() const {
   std::set<unsigned int> ids;
   for (const auto &sgroup : d_sgroups) {
     ids.insert(sgroup->getId());

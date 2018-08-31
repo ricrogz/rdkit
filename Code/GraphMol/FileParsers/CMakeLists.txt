@@ -10,9 +10,6 @@ else()
     set (maeparser_var "")
 endif()
 
-find_package(Boost 1.56.0 COMPONENTS regex REQUIRED)
-set (link_regex ${Boost_LIBRARIES})
-
 rdkit_library(FileParsers
               Mol2FileParser.cpp
               MolFileParser.cpp MolFileStereochem.cpp MolFileWriter.cpp
@@ -24,7 +21,7 @@ rdkit_library(FileParsers
               ${maesupplier}
               ProximityBonds.cpp
               SequenceParsers.cpp SequenceWriters.cpp
-              LINK_LIBRARIES Depictor SmilesParse GraphMol ${maeparser_var} ${link_regex})
+              LINK_LIBRARIES Depictor SmilesParse GraphMol ${maeparser_var})
 
 rdkit_headers(FileParsers.h
               FileParserUtils.h
@@ -50,7 +47,6 @@ if(RDK_BUILD_TEST_GZIP)
 else()
     set (link_iostreams "")
 endif()
-
 
 rdkit_test(testMolSupplier testMolSupplier.cpp
            LINK_LIBRARIES  FileParsers SmilesParse SubstructMatch
