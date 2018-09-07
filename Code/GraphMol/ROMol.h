@@ -445,7 +445,7 @@ class RDKIT_GRAPHMOL_EXPORT ROMol : public RDProps {
   //@{
 
   //! return the sgroup at specified index
-  SGROUP_SPTR &getSGroup(unsigned int idx);
+  SGroup *getSGroup(unsigned int idx);
 
   //! Delete the sgroup at specified index
   void removeSGroup(unsigned int idx);

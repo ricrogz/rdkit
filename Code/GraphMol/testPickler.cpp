@@ -1301,6 +1301,23 @@ void testGithub1999() {
   BOOST_LOG(rdErrorLog) << "\tdone" << std::endl;
 }
 
+void testSGroupPickle() {
+  BOOST_LOG(rdInfoLog) << "-----------------------\n";
+  BOOST_LOG(rdInfoLog) << "Testing SGroup pickling and unpickling" << std::endl;
+
+  auto rdbase = std::string(getenv("RDBASE"));
+
+  std::string fName =
+      rdbase + "/Code/GraphMol/FileParsers/test_data/Issue3432136_1.mol";
+
+  auto original_mol = std::shared_ptr<RWMol>(MolFileToMol(fName));
+
+  std::string pkl;
+  MolPickler::pickleMol(*original_mol, pkl);
+
+  std::unique_ptr<RWMol> unpickled_mol(new RWMol(pkl));
+}
+
 int main(int argc, char *argv[]) {
   RDLog::InitLogs();
   bool doLong = false;

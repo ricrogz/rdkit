@@ -136,4 +136,7 @@ rdkit_test(resMolSupplierTest resMolSupplierTest.cpp
 rdkit_test(molBundleTest testMolBundle.cpp
           LINK_LIBRARIES SmilesParse GraphMol RDGeometryLib RDGeneral SubstructMatch FileParsers)
 
+rdkit_test(sGroupTests testSGroup.cpp LINK_LIBRARIES FileParsers GraphMol)
+
 rdkit_test(test-valgrind test-valgrind.cpp LINK_LIBRARIES SmilesParse GraphMol RDGeneral)
+

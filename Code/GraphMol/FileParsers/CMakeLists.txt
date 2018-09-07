@@ -35,8 +35,6 @@ rdkit_test(fileParsersTest1 test1.cpp
            LINK_LIBRARIES FileParsers SmilesParse
 	   SubstructMatch GraphMol RDGeneral RDGeometryLib ${maeparser_var})
 
-rdkit_test(sGroupTests testSGroup.cpp LINK_LIBRARIES FileParsers GraphMol)
-
 if(RDK_BUILD_TEST_GZIP)
     find_package(Boost 1.56.0 COMPONENTS system iostreams REQUIRED)
     set (link_iostreams ${Boost_LIBRARIES})

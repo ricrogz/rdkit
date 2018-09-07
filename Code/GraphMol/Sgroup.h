@@ -60,13 +60,9 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
     std::string id;
   };
 
-  class CState {
-   public:
+  struct CState {
     Bond *bond;
     boost::shared_ptr<RDGeom::Point3D> vector;
-
-    CState(Bond *bondPtr, RDGeom::Point3D *vectorPtr)
-        : bond(bondPtr), vector(vectorPtr) {}
   };
 
   typedef std::vector<Atom *> ATOM_PTR_VECT;
@@ -75,7 +71,6 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   typedef std::vector<Bond *> BOND_PTR_VECT;
   typedef BOND_PTR_VECT::iterator BOND_PTR_VECT_I;
   typedef BOND_PTR_VECT::const_iterator BOND_PTR_VECT_CI;
-  typedef boost::shared_ptr<CState> CSTATE_SPTR;
 
   //! Constructor
   SGroup() = delete;
@@ -93,6 +88,9 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   //! get the ID of this sgroup
   inline unsigned int getId() const { return d_id; }
 
+  //! get the COMPNO of this sgroup
+  inline unsigned int getCompNo() const { return d_compno; }
+
   //! get the index of this sgroup in dp_mol's sgroups vector
   //! (do not mistake this by the ID!)
   unsigned int getIndexInMol() const;
@@ -107,10 +105,13 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   const std::string &getStrProp(const std::string &prop) const;
 
   //! get parent SGroup
-  inline boost::shared_ptr<SGroup> getParent() const { return d_parent; }
+  inline SGroup *getParent() const { return d_parent; }
 
   //! set the ID of this sgroup
   void setId(unsigned int id);
+
+  //! set the COMPNO of this sgroup
+  void setCompNo(unsigned int compno) { d_compno = compno; }
 
   //! set the type of the SGroup
   inline void setType(const std::string &type) { d_type = type; }
@@ -121,18 +122,16 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   };
 
   //! set the parent SGroup
-  inline void setParent(boost::shared_ptr<SGroup> &parent) {
-    d_parent = parent;
-  }
+  inline void setParent(SGroup *parent) { d_parent = parent; }
 
   /* Atom and Bond methods */
   void addAtomWithIdx(unsigned int idx);
   void addPAtomWithIdx(unsigned int idx);
   void addBondWithIdx(unsigned int idx);
-  void addBracket(SGroup::Bracket &b);
+  void addBracket(const Bracket &bracket);
   void addCState(unsigned int bondIdx, RDGeom::Point3D *vector);
+  void addAttachPoint(Atom *aAtomPtr, Atom *lvAtomPtr, std::string idStr);
   void addDataField(const std::string &data);
-  void addAttachPoint(const AttachPoint &sap);
 
   BondType getBondType(Bond *bond) const;
 
@@ -146,6 +145,10 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
   }
   inline const std::vector<AttachPoint> &getAttachPoints() const {
     return d_saps;
+  }
+  inline const std::unordered_map<std::string, std::string> &getStrProps()
+      const {
+    return d_strProp;
   }
 
  protected:
@@ -163,21 +166,22 @@ class RDKIT_GRAPHMOL_EXPORT SGroup {
 
   /* ID of the group. If not 0, must be unique */
   unsigned int d_id = 0;
+  unsigned int d_compno = 0;
 
   std::string d_type;       // type of the sgroup
   ROMol *dp_mol = nullptr;  // owning molecule
+  SGroup *d_parent = nullptr;
 
   ATOM_PTR_VECT d_atoms;
   ATOM_PTR_VECT d_patoms;
   BOND_PTR_VECT d_bonds;
   std::vector<Bracket> d_brackets;
   std::vector<CState> d_cstates;
+  std::vector<std::string> d_dataFields;
+  std::vector<AttachPoint> d_saps;
 
   std::unordered_map<std::string, std::string>
       d_strProp;  // Storage for string properties
-  std::vector<std::string> d_dataFields;
-  std::vector<AttachPoint> d_saps;
-  boost::shared_ptr<SGroup> d_parent;
 };
 
 typedef boost::shared_ptr<SGroup> SGROUP_SPTR;

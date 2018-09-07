@@ -32,7 +32,6 @@
 #include <sstream>
 #include <locale>
 #include <stdlib.h>
-#include <regex>
 
 namespace RDKit {
 class MolFileUnhandledFeatureException : public std::exception {
@@ -325,7 +324,6 @@ void ParseSGroupV2000STYLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
       SGroup *sgroup = new SGroup(typ);
       mol->addSGroup(sgroup);
       sGroupMap[nbr] = sgroup;
-      sgroup = nullptr;
     } else {
       std::ostringstream errout;
       errout << "S group " << typ << " on line " << line;
@@ -344,7 +342,7 @@ void ParseSGroupV2000VectorDataLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
   unsigned int pos = 6;
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   unsigned int nent = ParseSGroupIntField(text, line, pos, true);
 
@@ -380,7 +378,7 @@ void ParseSGroupV2000SDILine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
   unsigned int pos = 6;
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   unsigned int nCoords = ParseSGroupIntField(text, line, pos, true);
   if (nCoords != 4) {
@@ -417,7 +415,7 @@ void ParseSGroupV2000SSTLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
 
-    SGroup *sgroup = sGroupMap.at(sgIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
     std::string subType = text.substr(++pos, 3);
 
     if (!SGroupSubTypeOK(subType)) {
@@ -439,7 +437,7 @@ void ParseSGroupV2000SMTLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
   unsigned int pos = 6;
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
   ++pos;
 
   std::string label = text.substr(pos, text.length() - pos);
@@ -471,7 +469,7 @@ void ParseSGroupV2000SLBLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
     unsigned int id = ParseSGroupIntField(text, line, pos);
 
-    SGroup *sgroup = sGroupMap.at(sgIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
     sgroup->setId(id);
   }
 }
@@ -493,7 +491,7 @@ void ParseSGroupV2000SCNLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
 
-    SGroup *sgroup = sGroupMap.at(sgIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
     std::string connect = text.substr(++pos, 2);
 
     if (!SGroupConnectTypeOK(connect)) {
@@ -524,7 +522,7 @@ void ParseSGroupV2000SDSLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     }
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
 
-    SGroup *sgroup = sGroupMap.at(sgIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
     sgroup->setStrProp("ESTATE", "E");
   }
 }
@@ -537,7 +535,7 @@ void ParseSGroupV2000SBVLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
   unsigned int pos = 6;
 
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   unsigned int xbond = ParseSGroupIntField(text, line, pos) - 1;
   RDGeom::Point3D *vector = nullptr;
@@ -548,6 +546,7 @@ void ParseSGroupV2000SBVLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     double z = 0.;
     vector = new RDGeom::Point3D(x, y, z);
   }
+
   sgroup->addCState(xbond, vector);
 }
 
@@ -558,17 +557,22 @@ void ParseSGroupV2000SDTLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
   unsigned int pos = 6;
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   std::string fieldName = text.substr(++pos, 30);
+  boost::trim_right(fieldName);
   pos += 30;
-  std::string fieldType = text.substr(++pos, 2);
+  std::string fieldType = text.substr(pos, 2);
+  boost::trim_right(fieldType);
   pos += 2;
   std::string fieldInfo = text.substr(pos, 20);
+  boost::trim_right(fieldInfo);
   pos += 20;
   std::string queryType = text.substr(pos, 2);
+  boost::trim_right(queryType);
   pos += 2;
   std::string queryOp = text.substr(pos, text.length() - pos);
+  boost::trim_right(queryOp);
 
   sgroup->setStrProp("FIELDNAME", fieldName);
   sgroup->setStrProp("FIELDTYPE", fieldType);
@@ -584,7 +588,7 @@ void ParseSGroupV2000SDDLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
 
   unsigned int pos = 6;
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   // Store the rest of the line as is.
   ++pos;
@@ -598,9 +602,10 @@ void ParseSGroupV2000SCDSEDLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
                                 std::ostringstream &currentDataField) {
   PRECONDITION(mol, "bad mol");
 
-  std::string type = text.substr(0, 6);
+  unsigned int pos = 3;
+  std::string type = text.substr(pos, 3);
+  pos += 3;
 
-  unsigned int pos = 6;
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
 
   if (lastDataSGroup != 0 && lastDataSGroup != sgIdx) {
@@ -615,7 +620,7 @@ void ParseSGroupV2000SCDSEDLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     lastDataSGroup = 0;
   }
 
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   // this group must already have seen an SDT line
   if (!sgroup->hasStrProp("FIELDNAME")) {
@@ -628,13 +633,8 @@ void ParseSGroupV2000SCDSEDLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
   if (strictParsing) {
     if (type == "SCD" && counter > 2) {
       std::ostringstream errout;
-      errout << "Found too many SCD lines (" << (counter + 1) << "th at line "
-             << line << ") for SGroup " << sgIdx;
-      throw FileParseException(errout.str());
-    } else if (type == "SED") {
-      std::ostringstream errout;
-      errout << "Found more than one SED line for SGroup " << sgIdx
-             << " at line " << line;
+      errout << "Found too many consecutive SCD lines, (#" << (counter + 1)
+             << " at line " << line << ") for SGroup " << sgIdx;
       throw FileParseException(errout.str());
     }
   }
@@ -644,7 +644,7 @@ void ParseSGroupV2000SCDSEDLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
   if (type == "SED") {
     std::string trimmedData = boost::trim_right_copy(currentDataField.str());
     sgroup->addDataField(trimmedData.substr(0, 200));
-    currentDataField.clear();
+    currentDataField.str("");
     counter = 0;
   } else {
     ++counter;
@@ -669,8 +669,8 @@ void ParseSGroupV2000SPLLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
     unsigned int parentIdx = ParseSGroupIntField(text, line, pos) - 1;
 
-    SGroup *sgroup = sGroupMap.at(sgIdx);
-    SGROUP_SPTR sgParent = mol->getSGroup(parentIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
+    auto sgParent = mol->getSGroup(parentIdx);
 
     sgroup->setParent(sgParent);
   }
@@ -692,9 +692,16 @@ void ParseSGroupV2000SNCLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     }
 
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-    SGroup *sgroup = sGroupMap.at(sgIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
 
-    sgroup->setStrProp("COMPNO", text.substr(++pos, 3));
+    unsigned int compno = ParseSGroupIntField(text, line, pos);
+    if (compno > 256) {
+      std::ostringstream errout;
+      errout << "SGroup SNC value over 256: '" << compno << "' on line "
+             << line;
+      throw FileParseException(errout.str());
+    }
+    sgroup->setCompNo(compno);
   }
 }
 
@@ -707,7 +714,7 @@ void ParseSGroupV2000PXALine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
   unsigned int pos = 6;
 
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   ++pos;
   sgroup->setStrProp("PXA", text.substr(pos, text.length() - pos));
@@ -721,7 +728,7 @@ void ParseSGroupV2000SAPLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
   unsigned int pos = 6;
 
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   unsigned int nent = ParseSGroupIntField(text, line, pos, true);
 
@@ -742,9 +749,7 @@ void ParseSGroupV2000SAPLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
       lvAtom = mol->getAtomWithIdx(lvidx - 1);
     }
 
-    SGroup::AttachPoint sap = {aAtom, lvAtom, text.substr(++pos, 2)};
-
-    sgroup->addAttachPoint(sap);
+    sgroup->addAttachPoint(aAtom, lvAtom, text.substr(++pos, 2));
   }
 }
 
@@ -756,7 +761,7 @@ void ParseSGroupV2000SCLLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
   unsigned int pos = 6;
 
   unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
-  SGroup *sgroup = sGroupMap.at(sgIdx);
+  auto sgroup = sGroupMap.at(sgIdx);
 
   ++pos;
   sgroup->setStrProp("CLASS", text.substr(pos, text.length() - pos));
@@ -780,7 +785,7 @@ void ParseSGroupV2000SBTLine(INT_SGROUP_MAP &sGroupMap, RWMol *mol,
     unsigned int sgIdx = ParseSGroupIntField(text, line, pos);
     unsigned int bracketType = ParseSGroupIntField(text, line, pos);
 
-    SGroup *sgroup = sGroupMap.at(sgIdx);
+    auto sgroup = sGroupMap.at(sgIdx);
 
     if (bracketType == 0) {
       sgroup->setStrProp("BRKTYP", "BRACKET");
@@ -2692,6 +2697,95 @@ void ParseV3000BondBlock(std::istream *inStream, unsigned int &line,
   }
 }
 
+template <class T>
+std::vector<T> ParseV3000Array(std::stringstream &stream) {
+  stream.get();  // discard parentheses
+
+  unsigned int count;
+  stream >> count;
+  std::vector<T> values;
+  values.reserve(count);
+  T value;
+  for (unsigned i = 0; i < count; ++i) {
+    stream >> value;
+    values.push_back(value);
+  }
+  stream.get();  // discard parentheses
+  return values;
+}
+
+void ParseV3000CStateLabel(unsigned int line, const std::string &type,
+                           SGroup *sgroup, std::stringstream &stream) {
+  stream.get();  // discard parentheses
+
+  unsigned int count;
+  unsigned int xBondId;
+  stream >> count >> xBondId;
+
+  if ((type != "SUP" && count != 1) || (type == "SUP" && count != 4)) {
+    std::ostringstream errout;
+    errout << "Unexpected number of fields for CSTATE field on line " << line;
+    throw FileParseException(errout.str());
+  }
+
+  RDGeom::Point3D *vector = nullptr;
+  if (type == "SUP") {
+    double x, y, z;
+    stream >> x >> y >> z;
+    vector = new RDGeom::Point3D(x, y, z);
+  }
+  sgroup->addCState(xBondId - 1, vector);
+
+  stream.get();  // discard parentheses
+}
+
+void ParseV3000SAPLabel(RWMol *mol, SGroup *sgroup, std::stringstream &stream) {
+  stream.get();  // discard parentheses
+
+  unsigned int count;
+  unsigned int aIdx;
+  std::string lvIdxStr;  // In V3000 this may be a string
+  std::string sapIdStr;
+  stream >> count >> aIdx >> lvIdxStr >> sapIdStr;
+
+  // remove final parentheses that gets parsed into sapIdStr
+  sapIdStr.pop_back();
+
+  Atom *aAtom = mol->getAtomWithIdx(aIdx - 1);
+  Atom *lvAtom = nullptr;
+
+  boost::to_upper(lvIdxStr);
+  if (lvIdxStr == "AIDX") {
+    lvAtom = aAtom;
+  } else {
+    unsigned int lvIdx = FileParserUtils::toInt(lvIdxStr);
+    if (lvIdx > 0) {
+      lvAtom = mol->getAtomWithIdx(lvIdx - 1);
+    }
+  }
+
+  sgroup->addAttachPoint(aAtom, lvAtom, sapIdStr);
+}
+
+std::string ParseV3000StringPropLabel(std::stringstream &stream) {
+  std::string strValue;
+
+  // TODO: this should be improved to be able to handle escaped quotes
+
+  auto nextChar = stream.peek();
+  if (nextChar == '"') {
+    stream.get();
+    std::getline(stream, strValue, '"');
+  } else if (nextChar == '\'') {
+    std::getline(stream, strValue, '\'');
+  } else {
+    stream >> strValue;
+  }
+
+  boost::trim_right(strValue);
+  return strValue;
+}
+
 void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
                             unsigned int nSgroups, RWMol *mol,
                             bool &strictParsing) {
@@ -2703,169 +2797,148 @@ void ParseV3000SGroupsBlock(std::istream *inStream, unsigned int &line,
     throw FileParseException(errout.str());
   }
 
-  for (unsigned int si = 0; si < nSgroups; ++si) {
+  std::string defaultString;
+  INT_SGROUP_MAP sGroupMap;
+  std::unordered_map<SGroup *, int> sGroupParentIdxMap;
+
+  tempStr = getV3000Line(inStream, line);
+
+  // Handle DEFAULT by appending string to all SGroup lines
+  if (tempStr.substr(0, 15) == "M  V30 DEFAULT ") {
+    defaultString = tempStr.substr(15);
+    boost::trim(defaultString);
     tempStr = getV3000Line(inStream, line);
+    boost::trim_right(tempStr);
+    tempStr += defaultString;
+  }
 
-    // Split only on whitespace outside parentheses
-    std::regex label_splitter(R"((\S+\(.*?\))|(\S+\".+?\")|\S+)");
-    std::regex_token_iterator<std::string::iterator> label_itr(
-        tempStr.begin(), tempStr.end(), label_splitter);
-    std::regex_token_iterator<std::string::iterator> token_itr_end;
-    std::vector<std::string> localSplitLine(label_itr, token_itr_end);
+  for (unsigned int si = 0; si < nSgroups; ++si) {
+    unsigned int sequenceId;
+    unsigned int externalId;
+    std::string type;
 
-    /* TO DO: handle 'DEFAULT' */
+    std::stringstream lineStream(tempStr);
+    lineStream >> sequenceId;
+    lineStream >> type;
+    lineStream >> externalId;
 
-    std::string typ = localSplitLine[1];
-    if (SGroupTypeOK(typ)) {
-      unsigned int id = FileParserUtils::toInt(localSplitLine[2]);
-
-      SGroup *sgroup = new SGroup(typ);
-      mol->addSGroup(sgroup);
-      if (id > 0) {
-        sgroup->setId(id);
-      }
-
-      // Skip index, type, extindex
-      for (auto token = localSplitLine.begin() + 3;
-           token != localSplitLine.end(); ++token) {
-        // Split on spaces inside parentheses, etc, but not inside double quotes
-        std::regex item_splitter(R"((\s(?!.*")|['"=()])+)");
-
-        std::regex_token_iterator<std::string::iterator> item_itr(
-            token->begin(), token->end(), item_splitter, -1);
-
-        std::vector<std::string> splitToken(item_itr, token_itr_end);
-
-        if (splitToken.empty()) {
-          continue;
-        }
-
-        if (splitToken[0] == std::string("ATOMS")) {
-          for (auto atomStr = splitToken.begin() + 2;
-               atomStr != splitToken.end(); ++atomStr) {
-            int atomId = FileParserUtils::toInt(*atomStr);
-            sgroup->addAtomWithIdx(atomId - 1);
-          }
-        } else if (splitToken[0] == std::string("CBONDS") ||
-                   splitToken[0] == std::string("XBONDS")) {
-          for (auto bondStr = splitToken.begin() + 2;
-               bondStr != splitToken.end(); ++bondStr) {
-            int bondId = FileParserUtils::toInt(*bondStr);
-            sgroup->addBondWithIdx(bondId - 1);
-          }
-        } else if (splitToken[0] == std::string("BRKXYZ")) {
-          int nCoords = FileParserUtils::toInt(splitToken[1]);
-          if (nCoords != 9) {
-            std::ostringstream errout;
-            errout << "Unexpected number of coordinates for BRKXYZ on line "
-                   << line;
-            throw FileParseException(errout.str());
-          }
-
-          int i = 0;
-          SGroup::Bracket bracket;
-          for (auto coord = splitToken.begin() + 2;
-               coord != splitToken.end() && nCoords > 0;
-               coord += 3, ++i, nCoords -= 3) {
-            double x = FileParserUtils::toDouble(*coord);
-            double y = FileParserUtils::toDouble(*(coord + 1));
-            double z = FileParserUtils::toDouble(*(coord + 2));
-            bracket[i] = RDGeom::Point3D(x, y, z);
-          }
-          sgroup->addBracket(bracket);
-        } else if (splitToken[0] == std::string("CSTATE")) {
-          if ((typ != "SUP" && splitToken.size() != 1) ||
-              (typ == "SUP" && splitToken.size() != 4)) {
-            std::ostringstream errout;
-            errout << "Unexpected number of fields for CSTATE field on line "
-                   << line;
-            throw FileParseException(errout.str());
-          }
-
-          unsigned int xbond = FileParserUtils::toInt(splitToken[1]) - 1;
-          RDGeom::Point3D *vector = nullptr;
-
-          if (typ == "SUP") {
-            double x = FileParserUtils::toInt(*(splitToken.begin() + 2));
-            double y = FileParserUtils::toInt(*(splitToken.begin() + 3));
-            double z = FileParserUtils::toInt(*(splitToken.begin() + 4));
-            vector = new RDGeom::Point3D(x, y, z);
-          }
-          sgroup->addCState(xbond, vector);
-        } else if (splitToken[0] == std::string("PATOMS")) {
-          for (auto atomStr = splitToken.begin() + 2;
-               atomStr != splitToken.end(); ++atomStr) {
-            int atomId = FileParserUtils::toInt(*atomStr);
-            sgroup->addPAtomWithIdx(atomId - 1);
-          }
-        } else if (splitToken[0] == std::string("PARENT")) {
-          unsigned int parentIdx = FileParserUtils::toInt(splitToken[1]) - 1;
-          SGROUP_SPTR sgParent = mol->getSGroup(parentIdx);
-          sgroup->setParent(sgParent);
-        } else if (splitToken[0] == std::string("SAP")) {
-          for (auto beginSap = splitToken.begin() + 2;
-               beginSap != splitToken.end(); beginSap += 3) {
-            unsigned int aidx = FileParserUtils::toInt(*beginSap);
-            Atom *aAtom = mol->getAtomWithIdx(aidx - 1);
-
-            unsigned int lvidx = 0;
-            std::string lvidxString = boost::to_upper_copy(*(beginSap + 1));
-            if (lvidxString == "AIDX") {
-              lvidx = aidx;
-            } else {
-              lvidx = FileParserUtils::toInt(*(beginSap + 1));
-            }
-
-            Atom *lvAtom = nullptr;
-            if (lvidx != 0) {
-              lvAtom = mol->getAtomWithIdx(lvidx - 1);
-            }
-
-            SGroup::AttachPoint sap = {aAtom, lvAtom, *(beginSap + 2)};
-            sgroup->addAttachPoint(sap);
-          }
-        } else {
-          // Data fields or string properties require exactly two strings
-          if (splitToken.size() > 2) {
-            std::ostringstream errout;
-            errout << "Unexpected number of fields for String Data field "
-                   << splitToken[0] << " on line " << line;
-            throw FileParseException(errout.str());
-          } else if (splitToken.size() == 1) {
-            splitToken.push_back("");
-          }
-
-          if (splitToken[0] == std::string("FIELDDATA")) {
-            boost::trim_right(splitToken[1]);
-            sgroup->addDataField(splitToken[1].substr(0, 200));
-            continue;
-          }
-
-          if (splitToken[0] == "SUBTYPE" && !SGroupSubTypeOK(splitToken[1])) {
-            std::ostringstream errout;
-            errout << "Unsupported SGroup subtype '" << splitToken[1]
-                   << "' on line " << line;
-            throw FileParseException(errout.str());
-          } else if (splitToken[0] == "CONNECT" &&
-                     !SGroupConnectTypeOK(splitToken[1])) {
-            std::ostringstream errout;
-            errout << "Unsupported SGroup connection type '" << splitToken[1]
-                   << "' on line " << line;
-            throw FileParseException(errout.str());
-          }
-
-          sgroup->setStrProp(splitToken[0], splitToken[1]);
-        }
-      }
-
-    } else if (strictParsing) {
+    if (strictParsing && !SGroupTypeOK(type)) {
       std::ostringstream errout;
-      errout << "S group " << typ << " on line " << line;
+      errout << "Unsupported SGroup type '" << type << "' on line " << line;
       throw MolFileUnhandledFeatureException(errout.str());
+    }
+
+    SGroup *sgroup = new SGroup(type);
+    mol->addSGroup(sgroup);
+    sGroupMap[sequenceId] = sgroup;
+
+    if (externalId > 0) {
+      sgroup->setId(externalId);
+    }
+
+    while (!lineStream.eof()) {
+      char spacer;
+      std::string label;
+
+      lineStream.get(spacer);
+      if (lineStream.gcount() == 0) {
+        continue;
+      } else if (spacer != ' ') {
+        std::ostringstream errout;
+        errout << "Found character '" << spacer
+               << "' when expecting a separator (space) on line " << line;
+        throw FileParseException(errout.str());
+      }
+
+      std::getline(lineStream, label, '=');
+
+      if (label == "ATOMS") {
+        for (auto atomIdx : ParseV3000Array<unsigned int>(lineStream)) {
+          sgroup->addAtomWithIdx(atomIdx - 1);
+        }
+      } else if (label == "PATOMS") {
+        for (auto patomIdx : ParseV3000Array<unsigned int>(lineStream)) {
+          sgroup->addPAtomWithIdx(patomIdx - 1);
+        }
+      } else if (label == "CBONDS" || label == "XBONDS") {
+        for (auto bondIdx : ParseV3000Array<unsigned int>(lineStream)) {
+          sgroup->addBondWithIdx(bondIdx - 1);
+        }
+      } else if (label == "BRKXYZ") {
+        auto coords = ParseV3000Array<double>(lineStream);
+        if (coords.size() != 9) {
+          std::ostringstream errout;
+          errout << "Unexpected number of coordinates for BRKXYZ on line "
+                 << line;
+          throw FileParseException(errout.str());
+        }
+
+        SGroup::Bracket bracket;
+        for (unsigned int i = 0; i < 3; ++i) {
+          bracket[i] = RDGeom::Point3D(*(coords.begin() + (3 * i)),
+                                       *(coords.begin() + (3 * i) + 1),
+                                       *(coords.begin() + (3 * i) + 2));
+        }
+        sgroup->addBracket(bracket);
+      } else if (label == "CSTATE") {
+        ParseV3000CStateLabel(line, type, sgroup, lineStream);
+      } else if (label == "SAP") {
+        ParseV3000SAPLabel(mol, sgroup, lineStream);
+      } else if (label == std::string("PARENT")) {
+        // Store relationship until all SGroups have been read
+        unsigned int parentIdx;
+        lineStream >> parentIdx;
+        sGroupParentIdxMap[sgroup] = parentIdx;
+      } else if (label == std::string("COMPNO")) {
+        unsigned int compno;
+        lineStream >> compno;
+        if (compno > 256) {
+          std::ostringstream errout;
+          errout << "SGroup SNC value over 256: '" << compno << "' on line "
+                 << line;
+          throw FileParseException(errout.str());
+        }
+        sgroup->setCompNo(compno);
+      } else if (label == "FIELDDATA") {
+        auto strValue = ParseV3000StringPropLabel(lineStream);
+        if (strictParsing) {
+          strValue = strValue.substr(0, 200);
+        }
+        sgroup->addDataField(strValue);
+
+      } else {
+        // Parse string props
+        auto strValue = ParseV3000StringPropLabel(lineStream);
+
+        if (label == "SUBTYPE" && !SGroupSubTypeOK(strValue)) {
+          std::ostringstream errout;
+          errout << "Unsupported SGroup subtype '" << strValue << "' on line "
+                 << line;
+          throw FileParseException(errout.str());
+        } else if (label == "CONNECT" && !SGroupConnectTypeOK(strValue)) {
+          std::ostringstream errout;
+          errout << "Unsupported SGroup connection type '" << strValue
+                 << "' on line " << line;
+          throw FileParseException(errout.str());
+        }
+        sgroup->setStrProp(label, strValue);
+      }
+    }
+
+    tempStr = getV3000Line(inStream, line);
+    boost::trim_right(tempStr);
+
+    if (!defaultString.empty()) {
+      tempStr += defaultString;
     }
   }
 
-  tempStr = getV3000Line(inStream, line);
+  // Once we have read in all SGroups, restore parentship relations
+  for (auto &link : sGroupParentIdxMap) {
+    auto parent = sGroupMap[link.second];
+    link.first->setParent(parent);
+  }
+
   boost::to_upper(tempStr);
   if (tempStr.length() < 10 || tempStr.substr(0, 10) != "END SGROUP") {
     std::ostringstream errout;

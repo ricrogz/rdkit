@@ -590,13 +590,13 @@ unsigned int ROMol::addConformer(Conformer *conf, bool assignId) {
   return conf->getId();
 }
 
-SGROUP_SPTR &ROMol::getSGroup(unsigned int idx) {
+SGroup *ROMol::getSGroup(unsigned int idx) {
   // make sure we have more than one sgroup
   if (d_sgroups.empty()) {
     throw SGroupException("No SGroups available on the molecule");
   }
 
-  return d_sgroups.at(idx);
+  return d_sgroups.at(idx).get();
 }
 
 void ROMol::removeSGroup(unsigned int idx) {

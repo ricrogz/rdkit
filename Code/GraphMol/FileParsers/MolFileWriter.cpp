@@ -1161,7 +1161,7 @@ std::string BuildV2000SPLLines(const ROMol &mol) {
   for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
        ++sGroupItr) {
     unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
-    SGROUP_SPTR parent = (*sGroupItr)->getParent();
+    auto parent = (*sGroupItr)->getParent();
     if (parent) {  // Write field only if a parent is defined
       unsigned int parentIdx = 1 + parent->getIndexInMol();
       temp << FormatV2000IntField(idx) << FormatV2000IntField(parentIdx);
@@ -1175,6 +1175,31 @@ std::string BuildV2000SPLLines(const ROMol &mol) {
   }
   if (count) {
     ret << "M  SPL" << FormatV2000NumEntriesField(count) << temp.str()
+        << std::endl;
+  }
+  return ret.str();
+}
+
+std::string BuildV2000SNCLines(const ROMol &mol) {
+  std::ostringstream ret;
+  std::ostringstream temp;
+  unsigned int count = 0;
+  for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
+       ++sGroupItr) {
+    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    unsigned int compno = (*sGroupItr)->getCompNo();
+    if (compno > 0) {  // Write field only if compno is set
+      temp << FormatV2000IntField(idx) << FormatV2000IntField(compno);
+      if (++count == 8) {
+        ret << "M  SNC" << FormatV2000NumEntriesField(8) << temp.str()
+            << std::endl;
+        temp.str("");
+        count = 0;
+      }
+    }
+  }
+  if (count) {
+    ret << "M  SNC" << FormatV2000NumEntriesField(count) << temp.str()
         << std::endl;
   }
   return ret.str();
@@ -1287,13 +1312,11 @@ std::string BuildV2000SBVLine(const int idx, const SGroup *sgroup) {
   std::ostringstream ret;
 
   for (const auto &cstate : sgroup->getCStates()) {
-    ret << "M  SBV" << FormatV2000IntField(idx) << cstate.bond->getIdx();
+    ret << "M  SBV" << FormatV2000IntField(idx)
+        << FormatV2000IntField(cstate.bond->getIdx() + 1);
     if (cstate.vector) {
       ret << FormatV2000DoubleField(cstate.vector->x);
       ret << FormatV2000DoubleField(cstate.vector->y);
-    } else {
-      ret << FormatV2000DoubleField(0);
-      ret << FormatV2000DoubleField(0);
     }
     ret << std::endl;
   }
@@ -1356,7 +1379,7 @@ std::string BuildV2000SCDSEDLines(const int idx, const SGroup *sgroup) {
     if (length > 200) {
       std::ostringstream errout;
       errout << "Data field '" << data << "' in SGroup " << sgroup->getId()
-             << " is longed than limit of 200 characters.";
+             << " is longer than limit of 200 characters.";
       throw SGroupException(errout.str());
     }
     unsigned int start = 0;
@@ -1395,9 +1418,9 @@ std::string BuildV2000SAPLines(const int idx, const SGroup *sgroup) {
   unsigned int count = 0;
   unsigned int entriesPerLine = 6;
   for (const auto &sap : saps) {
-    temp << FormatV2000IntField(sap.aAtom->getIdx());
+    temp << FormatV2000IntField(1 + sap.aAtom->getIdx());
     if (sap.lvAtom != nullptr) {
-      temp << FormatV2000IntField(sap.lvAtom->getIdx());
+      temp << FormatV2000IntField(1 + sap.lvAtom->getIdx());
     } else {
       temp << FormatV2000IntField(0);
     }
@@ -1410,8 +1433,8 @@ std::string BuildV2000SAPLines(const int idx, const SGroup *sgroup) {
     }
   }
   if (count) {
-    ret << "M  SAP" << FormatV2000IntField(idx) << FormatV2000IntField(count)
-        << temp.str() << std::endl;
+    ret << "M  SAP" << FormatV2000IntField(idx)
+        << FormatV2000NumEntriesField(count) << temp.str() << std::endl;
   }
   return ret.str();
 }
@@ -1438,13 +1461,13 @@ const std::string GetMolFileSGroupInfo(const RWMol &mol) {
   ret << BuildV2000StringPropLines(8, mol, "CONNECT", "SCN", 3);
   ret << BuildV2000SDSLines(mol);
   ret << BuildV2000SPLLines(mol);
-  ret << BuildV2000StringPropLines(8, mol, "COMPNO", "SNC", 3);
+  ret << BuildV2000SNCLines(mol);
   ret << BuildV2000SBTLines(mol);
 
   // single group per line properties
   for (auto sGroupItr = mol.beginSGroups(); sGroupItr != mol.endSGroups();
        ++sGroupItr) {
-    unsigned int idx = (sGroupItr - mol.beginSGroups()) + 1;
+    unsigned int idx = 1 + (sGroupItr - mol.beginSGroups());
     ret << BuildV2000IdxVectorDataLines(15, idx, "SAL",
                                         (*sGroupItr)->getAtoms());
     ret << BuildV2000IdxVectorDataLines(15, idx, "SPA",
@@ -1487,14 +1510,15 @@ std::string BuildV3000IdxVectorDataBlock(const std::string &key,
   unsigned int size = dataVectorEnd - dataVectorBegin;
 
   if (size) {
-    auto getIdx = [](T element) -> std::string {
+    auto getOutputIdx = [](T element) -> std::string {
       return std::to_string(1 + element->getIdx());
     };
 
     std::vector<std::string> tempStr(1 + size);
     tempStr[0] = std::to_string(size);
 
-    std::transform(dataVectorBegin, dataVectorEnd, tempStr.begin() + 1, getIdx);
+    std::transform(dataVectorBegin, dataVectorEnd, tempStr.begin() + 1,
+                   getOutputIdx);
 
     ret << ' ' << key << "=(" << boost::algorithm::join(tempStr, " ") << ')';
   }
@@ -1512,7 +1536,7 @@ std::string BuildV3000BondsBlock(const SGROUP_SPTR &sgroup) {
   };
 
   auto bonds = sgroup->getBonds();
-  auto first_cbond = std::partition(bonds.begin(), bonds.end(), isXBond);
+  auto first_cbond = std::stable_partition(bonds.begin(), bonds.end(), isXBond);
 
   ret << BuildV3000IdxVectorDataBlock("XBONDS", bonds.begin(), first_cbond);
   ret << BuildV3000IdxVectorDataBlock("CBONDS", first_cbond, bonds.end());
@@ -1546,11 +1570,23 @@ std::string FormatV3000StringPropertyBlock(const std::string &prop,
 std::string FormatV3000ParentBlock(const SGROUP_SPTR &sgroup) {
   std::ostringstream ret;
 
-  SGROUP_SPTR parent = sgroup->getParent();
+  auto parent = sgroup->getParent();
 
   if (parent) {
     unsigned int parentIdx = 1 + parent->getIndexInMol();
     ret << " PARENT=" << parentIdx;
+  }
+
+  return ret.str();
+}
+
+std::string FormatV3000CompNoBlock(const SGROUP_SPTR &sgroup) {
+  std::ostringstream ret;
+
+  unsigned int compno = sgroup->getCompNo();
+
+  if (compno > 0) {
+    ret << " COMPNO=" << compno;
   }
 
   return ret.str();
@@ -1585,6 +1621,16 @@ std::string FormatV3000BracketBlock(
   return ret.str();
 }
 
+std::string FormatV3000FieldDataBlock(const SGROUP_SPTR &sgroup) {
+  std::ostringstream ret;
+
+  for (const auto &data : sgroup->getDataFields()) {
+    ret << " FIELDDATA=\"" << data << "\"";
+  }
+
+  return ret.str();
+}
+
 std::string FormatV3000CStateBlock(const std::vector<SGroup::CState> &cstates) {
   std::ostringstream ret;
 
@@ -1614,8 +1660,10 @@ std::string FormatV3000AttachPointBlock(
 
     if (sap.aAtom == sap.lvAtom) {
       ret << " aidx";
-    } else {
+    } else if (sap.lvAtom) {
       ret << ' ' << (1 + sap.lvAtom->getIdx());
+    } else {
+      ret << " 0";
     }
 
     ret << ' ' << sap.id << ")";
@@ -1639,7 +1687,7 @@ const std::string GetV3000MolFileSGroupLines(const unsigned int idx,
   os << FormatV3000StringPropertyBlock("MULT", sgroup);
   os << FormatV3000StringPropertyBlock("CONNECT", sgroup);
   os << FormatV3000ParentBlock(sgroup);
-  os << FormatV3000StringPropertyBlock("COMPNO", sgroup);
+  os << FormatV3000CompNoBlock(sgroup);
   // XBHEAD -> part of V2000 CRS, not supported yet
   // XBCORR -> part of V2000 CRS, not supported yet
   os << FormatV3000StringPropertyBlock("LABEL", sgroup);
@@ -1649,9 +1697,9 @@ const std::string GetV3000MolFileSGroupLines(const unsigned int idx,
   os << FormatV3000StringPropertyBlock("FIELDNAME", sgroup);
   os << FormatV3000StringPropertyBlock("FIELDINFO", sgroup);
   os << FormatV3000StringPropertyBlock("FIELDDISP", sgroup);
-  os << FormatV3000StringPropertyBlock("ESTATE", sgroup);
   os << FormatV3000StringPropertyBlock("QUERYTYPE", sgroup);
   os << FormatV3000StringPropertyBlock("QUERYOP", sgroup);
+  os << FormatV3000FieldDataBlock(sgroup);
   os << FormatV3000StringPropertyBlock("CLASS", sgroup);
   os << FormatV3000AttachPointBlock(sgroup->getAttachPoints());
   os << FormatV3000StringPropertyBlock("BRKTYP", sgroup);
@@ -1663,11 +1711,10 @@ const std::string GetV3000MolFileSGroupLines(const unsigned int idx,
 
   unsigned int start = 0;
   while (length - start > 73) {
-    os << "M  V30 " << sGroupBlock.substr(start, start + 72) << '-'
-       << std::endl;
+    os << "M  V30 " << sGroupBlock.substr(start, 72) << '-' << std::endl;
     start += 72;
   }
-  os << "M  V30 " << sGroupBlock.substr(start, start + 73) << std::endl;
+  os << "M  V30 " << sGroupBlock.substr(start, 73) << std::endl;
 
   return os.str();
 }

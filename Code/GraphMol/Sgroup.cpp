@@ -121,9 +121,9 @@ void SGroup::addBondWithIdx(unsigned int idx) {
   d_bonds.push_back(bond);
 }
 
-void SGroup::addBracket(Bracket &b) {
+void SGroup::addBracket(const SGroup::Bracket &bracket) {
   PRECONDITION(d_brackets.size() < 2, "Too many brackets");
-  d_brackets.push_back(b);
+  d_brackets.push_back(bracket);
 }
 
 void SGroup::addCState(unsigned int xbond, RDGeom::Point3D *vectorPtr) {
@@ -136,9 +136,13 @@ void SGroup::addCState(unsigned int xbond, RDGeom::Point3D *vectorPtr) {
     errout << "Cannot find Bond " << xbond << " in same molecule as SGroup "
            << getId();
     throw SGroupException(errout.str());
+  } else if (getBondType(bond) != SGroup::BondType::XBOND) {
+    std::ostringstream errout;
+    errout << "Bond " << xbond << " is not an XBOND for SGroup " << getId();
+    throw SGroupException(errout.str());
   }
-
-  d_cstates.emplace_back(bond, vectorPtr);
+  auto vectorSPtr = boost::shared_ptr<RDGeom::Point3D>(vectorPtr);
+  d_cstates.push_back({bond, vectorSPtr});
 }
 
 void SGroup::addDataField(const std::string &data) {
@@ -160,6 +164,21 @@ void SGroup::remap_atoms_bonds_to_new_mol(ROMol *other_mol) {
     unsigned int idx = bond->getIdx();
     bond = other_mol->getBondWithIdx(idx);
   }
+
+  for (auto &&cstate : d_cstates) {
+    unsigned int idx = cstate.bond->getIdx();
+    cstate.bond = other_mol->getBondWithIdx(idx);
+  }
+
+  for (auto &&sap : d_saps) {
+    unsigned int aIdx = sap.aAtom->getIdx();
+    sap.aAtom = other_mol->getAtomWithIdx(aIdx);
+
+    if (sap.lvAtom) {
+      unsigned int lvIdx = sap.lvAtom->getIdx();
+      sap.lvAtom = other_mol->getAtomWithIdx(lvIdx);
+    }
+  }
 }
 
 void SGroup::remap_parent_sgroup_to_new_mol(ROMol *other_mol) {
@@ -169,10 +188,15 @@ void SGroup::remap_parent_sgroup_to_new_mol(ROMol *other_mol) {
   }
 }
 
-void SGroup::addAttachPoint(const AttachPoint &sap) { d_saps.push_back(sap); }
+void SGroup::addAttachPoint(Atom *aAtomPtr, Atom *lvAtomPtr,
+                            std::string idStr) {
+  d_saps.push_back({aAtomPtr, lvAtomPtr, idStr});
+}
 
 //! check if the bond is SGroup XBOND or CBOND
 SGroup::BondType SGroup::getBondType(Bond *bond) const {
+  PRECONDITION(std::find(d_bonds.begin(), d_bonds.end(), bond) != d_bonds.end(),
+               "bond is not part of the SGroup")
   Atom *atom1 = bond->getBeginAtom();
   Atom *atom2 = bond->getEndAtom();
 
