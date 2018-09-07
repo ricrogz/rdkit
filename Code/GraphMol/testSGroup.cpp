@@ -29,8 +29,9 @@ void testIdxVector(const std::vector<T> &groupVector,
   size_t vecSize = reference.size();
   TEST_ASSERT(groupVector.size() == vecSize);
 
-  for (auto sgItr = groupVector.begin(), refItr = reference.begin();
-       refItr != reference.end(); ++sgItr, ++refItr) {
+  auto sgItr = groupVector.begin();
+  for (auto refItr = reference.begin(); refItr != reference.end();
+       ++sgItr, ++refItr) {
     TEST_ASSERT(1 + (*sgItr)->getIdx() == *refItr);
   }
 }
@@ -42,7 +43,7 @@ void testBrackets(
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 3; ++j) {
       for (int k = 0; k < 3; ++k) {
-        TEST_ASSERT(abs(brackets[i][j][k] - reference[i][j][k]) < 1.e-6);
+        TEST_ASSERT(std::abs(brackets[i][j][k] - reference[i][j][k]) < 1.e-6);
       }
     }
   }
@@ -87,14 +88,14 @@ std::shared_ptr<RWMol> buildSampleMolecule() {
     sg->setCompNo(7);
     sg->setStrProp("ESTATE", "E");
 
-    SGroup::Bracket bracket1 = {RDGeom::Point3D(1., 3., 0.),
-                                RDGeom::Point3D(5., 7., 0.),
-                                RDGeom::Point3D(0., 0., 0.)};
+    SGroup::Bracket bracket1 = {{RDGeom::Point3D(1., 3., 0.),
+                                 RDGeom::Point3D(5., 7., 0.),
+                                 RDGeom::Point3D(0., 0., 0.)}};
     sg->addBracket(bracket1);
 
-    SGroup::Bracket bracket2 = {RDGeom::Point3D(2., 4., 0.),
-                                RDGeom::Point3D(6., 8., 0.),
-                                RDGeom::Point3D(0., 0., 0.)};
+    SGroup::Bracket bracket2 = {{RDGeom::Point3D(2., 4., 0.),
+                                 RDGeom::Point3D(6., 8., 0.),
+                                 RDGeom::Point3D(0., 0., 0.)}};
     sg->addBracket(bracket2);
     sg->addCState(2, nullptr);  // Vector should not be parsed (not a SUP group)
 
