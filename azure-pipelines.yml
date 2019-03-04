@@ -1,0 +1,28 @@
+trigger:
+- master
+
+jobs:
+- job: linux
+  pool:
+    vmImage: ubuntu-16.04
+  variables:
+    compiler: gxx_linux-64=7.2.0
+    boost_version: 1.65.1
+  steps:
+  - template: .azure-pipelines/nix_build.yml
+- job: macOS
+  pool:
+    vmImage: macos-10.13
+  variables:
+    compiler: clangxx=4.0.1
+    boost_version: 1.65.1
+  steps:
+  - template: .azure-pipelines/nix_build.yml
+- job: Windows_VS2017_x64
+  pool:
+    vmImage: vs2017-win2016
+  variables:
+    compiler: vs2017_win-64
+    boost_version: 1.65.1
+  steps:
+  - template: .azure-pipelines/vs_build.yml

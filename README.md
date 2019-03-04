@@ -1,5 +1,6 @@
 # RDKit
 [![Build status](https://travis-ci.com/rdkit/rdkit.svg)](https://travis-ci.com/rdkit/rdkit)
+[![Build Status](https://dev.azure.com/ricrogz/myrdkit/_apis/build/status/ricrogz.rdkit?branchName=master)](https://dev.azure.com/ricrogz/myrdkit/_build/latest?definitionId=1&branchName=master)
 [![Documentation Status](https://readthedocs.org/projects/rdkit/badge/?version=latest)](http://rdkit.readthedocs.org/en/latest/)
 [![DOI](https://zenodo.org/badge/10009991.svg)](https://zenodo.org/badge/latestdoi/10009991)
 
