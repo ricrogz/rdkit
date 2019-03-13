@@ -56,6 +56,6 @@ steps:
     export LD_LIBRARY_PATH=$RDBASE/lib:$RDBASE/rdkit:$LD_LIBRARY_PATH
     export DYLD_LIBRARY_PATH=$RDBASE/lib:$RDBASE/rdkit:$DYLD_LIBRARY_PATH
     cd build
-    ctest --output-on-failure
+    ctest -j $( $(number of cores) ) --output-on-failure
   displayName: Run tests
 
