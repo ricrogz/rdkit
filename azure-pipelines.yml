@@ -3,6 +3,7 @@ trigger:
 
 jobs:
 - job: linux
+  timeoutInMinutes: 90
   pool:
     vmImage: ubuntu-16.04
   variables:
@@ -12,20 +13,22 @@ jobs:
   steps:
   - template: .azure-pipelines/nix_build.yml
 - job: macOS
+  timeoutInMinutes: 90
   pool:
     vmImage: macos-10.13
   variables:
     compiler: clangxx=4.0.1
-    boost_version: 1.65.1
+    boost_version: 1.67.0
     number_of_cores: sysctl -n hw.ncpu
   steps:
   - template: .azure-pipelines/nix_build.yml
 - job: Windows_VS2017_x64
+  timeoutInMinutes: 90
   pool:
     vmImage: vs2017-win2016
   variables:
     compiler: vs2017_win-64
-    boost_version: 1.65.1
+    boost_version: 1.67.0
     number_of_cores: '%NUMBER_OF_PROCESSORS%'
   steps:
   - template: .azure-pipelines/vs_build.yml
