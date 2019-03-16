@@ -8,7 +8,7 @@ jobs:
     vmImage: ubuntu-16.04
   variables:
     compiler: gxx_linux-64=7.2.0
-    boost_version: 1.65.1
+    boost_version: 1.67.0
     number_of_cores: nproc
   steps:
   - template: .azure-pipelines/nix_build.yml

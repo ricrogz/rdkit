@@ -5,9 +5,6 @@ add_definitions(-DRDKIT_FILEPARSERS_BUILD)
 if(RDK_BUILD_COORDGEN_SUPPORT)
     include_directories(${maeparser_INCLUDE_DIRS})
     set (maesupplier MaeMolSupplier.cpp)
-    find_package(Boost 1.56.0 COMPONENTS system iostreams REQUIRED)
-    set (link_iostreams Boost::iostreams)
-    set(regex_lib Boost::regex)
 endif()
 
 if(RDK_USE_BOOST_REGEX)
@@ -29,8 +26,7 @@ rdkit_library(FileParsers
               ProximityBonds.cpp
               SequenceParsers.cpp SequenceWriters.cpp
               SVGParser.cpp
-              LINK_LIBRARIES Depictor SmilesParse GraphMol ${RDK_COORDGEN_LIBS}
-              ${regex_lib} ${link_iostreams})
+              LINK_LIBRARIES Depictor SmilesParse GraphMol ${RDK_COORDGEN_LIBS} ${regex_lib})
 
 rdkit_headers(FileParsers.h
               FileParserUtils.h

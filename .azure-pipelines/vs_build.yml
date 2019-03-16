@@ -11,7 +11,7 @@ steps:
         numpy matplotlib cairo pillow eigen pandas
   displayName: Install dependencies
 - script: |
-    rd /s /q build
+    set Boost_ROOT=
     mkdir build && cd build
     call activate rdkit_build
     cmake .. ^
@@ -36,13 +36,13 @@ steps:
 - script: |
     call activate rdkit_build
     cd build
-    cmake --build . --config Release
+    cmake --build . --config Release --target install
   displayName: Build
 - script: |
     call activate rdkit_build
     set RDBASE=%cd%
-    set PYTHONPATH=%RDBASE%;$PYTHONPATH
-    set PATH=%PATH%;%RDBASE%\lib
+    set PYTHONPATH=%RDBASE%;%PYTHONPATH%
+    set PATH=%RDBASE%\lib;%PATH%
     cd build
     ctest -j $(number_of_cores) --output-on-failure
   displayName: Run tests

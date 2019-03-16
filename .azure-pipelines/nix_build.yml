@@ -1,7 +1,7 @@
 steps:
 - bash: |
-    source $CONDA/etc/profile.d/conda.sh
-    sudo chown -R $USER $CONDA
+    source ${CONDA}/etc/profile.d/conda.sh
+    sudo chown -R ${USER} ${CONDA}
     conda config --set always_yes yes --set changeps1 no
     conda update -q conda
     conda info -a
@@ -11,7 +11,7 @@ steps:
         numpy matplotlib cairo pillow eigen pandas
   displayName: Setup build environment
 - bash: |
-    source $CONDA/etc/profile.d/conda.sh
+    source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
     mkdir build && cd build && \
     cmake .. \
@@ -32,30 +32,24 @@ steps:
     -DRDK_BUILD_THREADSAFE_SSS=ON \
     -DRDK_TEST_MULTITHREADED=ON \
     -DBoost_NO_SYSTEM_PATHS=ON \
-    -DPYTHON_EXECUTABLE=$CONDA_PREFIX/bin/python3 \
-    -DCMAKE_INCLUDE_PATH="$CONDA_PREFIX/include"
+    -DPYTHON_EXECUTABLE=${CONDA_PREFIX}/bin/python3 \
+    -DCMAKE_INCLUDE_PATH="${CONDA_PREFIX}/include"
   displayName: Configure build (Run CMake)
 - bash: |
-    source $CONDA/etc/profile.d/conda.sh
-    conda activate rdkit_build
-    cd build
-    conda info --envs
-    cat CMakeCache.txt
-  displayName: Show build config
-- bash: |
-    source $CONDA/etc/profile.d/conda.sh
+    source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
     cd build
     make install
   displayName: Build
 - bash: |
-    source $CONDA/etc/profile.d/conda.sh
+    source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
-    export RDBASE=$(pwd)
-    export PYTHONPATH=$RDBASE:$PYTHONPATH
-    export LD_LIBRARY_PATH=$RDBASE/lib:$RDBASE/rdkit:$LD_LIBRARY_PATH
-    export DYLD_LIBRARY_PATH=$RDBASE/lib:$RDBASE/rdkit:$DYLD_LIBRARY_PATH
+    export RDBASE=`pwd`
+    export PYTHONPATH=${RDBASE}:${PYTHONPATH}
+    export LD_LIBRARY_PATH=${RDBASE}/lib:${LD_LIBRARY_PATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export QT_QPA_PLATFORM='offscreen'
     cd build
-    ctest -j $( $(number of cores) ) --output-on-failure
+    ctest -j $( $(number_of_cores) ) --output-on-failure
   displayName: Run tests
 

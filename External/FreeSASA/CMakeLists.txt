@@ -93,16 +93,9 @@ include_directories("${FREESASA_SRC_DIR}/src")
 rdkit_library(FreeSASALib RDFreeSASA.cpp SHARED LINK_LIBRARIES freesasa_clib GraphMol DataStructs RDGeometryLib RDGeneral )
 rdkit_headers(RDFreeSASA.h DEST GraphMol)
 
-
-if(RDK_USE_BOOST_REGEX)
-  add_definitions(-DRDKIT_USE_BOOST_REGEX)
-  find_package(Boost 1.58.0 COMPONENTS regex REQUIRED)
-  set(regex_lib Boost::regex)
-endif()
-
 rdkit_test(testFreeSASALib testFreeSASA.cpp
            LINK_LIBRARIES FreeSASALib freesasa_clib FileParsers SmilesParse
-                          GraphMol DataStructs RDGeometryLib RDGeneral ${regex_lib})
+                          GraphMol DataStructs RDGeometryLib RDGeneral)
 
 add_subdirectory(Wrap)
 
