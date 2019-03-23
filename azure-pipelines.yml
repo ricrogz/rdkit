@@ -17,7 +17,7 @@ jobs:
   pool:
     vmImage: macos-10.13
   variables:
-    compiler: clangxx=4.0.1
+    compiler: " "
     boost_version: 1.67.0
     number_of_cores: sysctl -n hw.ncpu
   steps:

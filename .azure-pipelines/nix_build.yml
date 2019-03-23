@@ -33,8 +33,14 @@ steps:
     -DRDK_TEST_MULTITHREADED=ON \
     -DBoost_NO_SYSTEM_PATHS=ON \
     -DPYTHON_EXECUTABLE=${CONDA_PREFIX}/bin/python3 \
-    -DCMAKE_INCLUDE_PATH="${CONDA_PREFIX}/include"
+    -DCMAKE_INCLUDE_PATH="${CONDA_PREFIX}/include" \
+    -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib"
   displayName: Configure build (Run CMake)
+- script: |
+    call activate rdkit_build
+    cd build
+    cat CMakeCache.txt
+  displayName: Print out CMakeCache
 - bash: |
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build

@@ -31,8 +31,15 @@ steps:
     -DRDK_BUILD_THREADSAFE_SSS=ON ^
     -DRDK_BUILD_SWIG_WRAPPERS=OFF ^
     -DRDK_SWIG_STATIC=OFF ^
-    -DRDK_TEST_MULTITHREADED=ON
+    -DRDK_TEST_MULTITHREADED=ON ^
+    -DCMAKE_INCLUDE_PATH=%CONDA_PREFIX%/Library/include ^
+    -DCMAKE_LIBRARY_PATH="%CONDA_PREFIX%/Library/lib
   displayName: Configure build (Run CMake)
+- script: |
+    call activate rdkit_build
+    cd build
+    type CMakeCache.txt
+  displayName: Print out CMakeCache
 - script: |
     call activate rdkit_build
     cd build

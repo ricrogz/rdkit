@@ -74,7 +74,7 @@ if(RDK_BUILD_COORDGEN_SUPPORT)
     file(GLOB CGSOURCES "${COORDGEN_DIR}/*.cpp")
     # when we're doing static linkage of boost, at least on windows, we need
     # to also link against zlib (due to iostreams)
-    find_package(ZLIB)
+    find_package(ZLIB REQUIRED)
     rdkit_library(coordgen ${CGSOURCES} SHARED LINK_LIBRARIES maeparser ${ZLIB_LIBRARIES})
     install(TARGETS coordgen DESTINATION ${RDKit_LibDir})
     set(coordgen_LIBRARIES coordgen )
