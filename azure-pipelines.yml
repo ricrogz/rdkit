@@ -11,17 +11,17 @@ jobs:
     boost_version: 1.67.0
     number_of_cores: nproc
   steps:
-  - template: .azure-pipelines/nix_build.yml
+  - template: .azure-pipelines/linux_build.yml
 - job: macOS
   timeoutInMinutes: 90
   pool:
     vmImage: macos-10.13
   variables:
-    compiler: " "
+    compiler: clangxx_osx-64=4.0.1
     boost_version: 1.67.0
     number_of_cores: sysctl -n hw.ncpu
   steps:
-  - template: .azure-pipelines/nix_build.yml
+  - template: .azure-pipelines/mac_build.yml
 - job: Windows_VS2017_x64
   timeoutInMinutes: 90
   pool:
