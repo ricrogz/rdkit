@@ -17,9 +17,10 @@ jobs:
   pool:
     vmImage: macos-10.13
   variables:
-    compiler: clangxx_osx-64=4.0.1
+    compiler: clangxx
     boost_version: 1.67.0
     number_of_cores: sysctl -n hw.ncpu
+    macosx_deployment_target: 10.9
   steps:
   - template: .azure-pipelines/mac_build.yml
 - job: Windows_VS2017_x64
