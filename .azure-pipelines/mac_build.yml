@@ -21,6 +21,11 @@ steps:
     export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
+    export RDBASE=`pwd`
+    export PYTHONPATH=${RDBASE}:${PYTHONPATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export QT_QPA_PLATFORM='offscreen'
+    hash -r
     mkdir build && cd build && \
     cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
@@ -30,7 +35,7 @@ steps:
     -DRDK_BUILD_PYTHON_WRAPPERS=ON \
     -DRDK_USE_BOOST_REGEX=ON \
     -DRDK_BUILD_COORDGEN_SUPPORT=ON \
-    -DRDK_OPTIMIZE_NATIVE=ON \
+    -DRDK_OPTIMIZE_NATIVE=OFF \
     -DRDK_BUILD_TEST_GZIP=ON \
     -DRDK_BUILD_FREESASA_SUPPORT=ON \
     -DRDK_BUILD_AVALON_SUPPORT=ON \
@@ -46,7 +51,11 @@ steps:
   displayName: Configure build (Run CMake)
 - script: |
     export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
-    call activate rdkit_build
+    conda activate rdkit_build
+    export RDBASE=`pwd`
+    export PYTHONPATH=${RDBASE}:${PYTHONPATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export QT_QPA_PLATFORM='offscreen'
     cd build
     export
     cat CMakeCache.txt
@@ -55,10 +64,16 @@ steps:
     export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
+    export RDBASE=`pwd`
+    export PYTHONPATH=${RDBASE}:${PYTHONPATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export QT_QPA_PLATFORM='offscreen'
     cd build
-    make install
+    hash -r
+    make -j $( $(number_of_cores) ) install
   displayName: Build
 - bash: |
+    export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
     export RDBASE=`pwd`
@@ -66,6 +81,7 @@ steps:
     export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
     export QT_QPA_PLATFORM='offscreen'
     cd build
+    hash -r
     ctest -j $( $(number_of_cores) ) --output-on-failure
   displayName: Run tests
 
