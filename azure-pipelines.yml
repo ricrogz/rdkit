@@ -2,7 +2,7 @@ trigger:
 - master
 
 jobs:
-- job: linux
+- job: Ubuntu_16_04_x64
   timeoutInMinutes: 90
   pool:
     vmImage: ubuntu-16.04
@@ -10,17 +10,67 @@ jobs:
     compiler: gxx_linux-64=7.2.0
     boost_version: 1.67.0
     number_of_cores: nproc
+    python_name: python37
   steps:
   - template: .azure-pipelines/linux_build.yml
-- job: macOS
+- job: macOS_10_13__10_9
   timeoutInMinutes: 90
   pool:
     vmImage: macos-10.13
   variables:
-    compiler: clangxx
+    compiler: clangxx_osx-64
     boost_version: 1.67.0
     number_of_cores: sysctl -n hw.ncpu
-    macosx_deployment_target: 10.13
+    python_name: python36
+    target_platform: 10.9
+  steps:
+  - template: .azure-pipelines/mac_build.yml
+- job: macOS_10_13__10_10
+  timeoutInMinutes: 90
+  pool:
+    vmImage: macos-10.13
+  variables:
+    compiler: clangxx_osx-64
+    boost_version: 1.67.0
+    number_of_cores: sysctl -n hw.ncpu
+    python_name: python36
+    target_platform: 10.10
+  steps:
+  - template: .azure-pipelines/mac_build.yml
+- job: macOS_10_13__10_11
+  timeoutInMinutes: 90
+  pool:
+    vmImage: macos-10.13
+  variables:
+    compiler: clangxx_osx-64
+    boost_version: 1.67.0
+    number_of_cores: sysctl -n hw.ncpu
+    python_name: python36
+    target_platform: 10.11
+  steps:
+  - template: .azure-pipelines/mac_build.yml
+- job: macOS_10_13__10_12
+  timeoutInMinutes: 90
+  pool:
+    vmImage: macos-10.13
+  variables:
+    compiler: clangxx_osx-64 clang_osx-64
+    boost_version: 1.67.0
+    number_of_cores: sysctl -n hw.ncpu
+    python_name: python36
+    target_platform: 10.12
+  steps:
+  - template: .azure-pipelines/mac_build.yml
+- job: macOS_10_13__10_13
+  timeoutInMinutes: 90
+  pool:
+    vmImage: macos-10.13
+  variables:
+    compiler: clangxx_osx-64
+    boost_version: 1.67.0
+    number_of_cores: sysctl -n hw.ncpu
+    python_name: python36
+    target_platform: 10.13
   steps:
   - template: .azure-pipelines/mac_build.yml
 - job: Windows_VS2017_x64
@@ -31,5 +81,6 @@ jobs:
     compiler: vs2017_win-64
     boost_version: 1.67.0
     number_of_cores: '%NUMBER_OF_PROCESSORS%'
+    python_name: python37
   steps:
   - template: .azure-pipelines/vs_build.yml

@@ -1,4 +1,11 @@
 steps:
+- bash: |
+    wget https://github.com/phracker/MacOSX-SDKs/releases/download/10.13/MacOSX$(target_platform).sdk.tar.xz
+    tar Jxvf MacOSX$(target_platform).sdk.tar.xz
+    echo -e "CONDA_BUILD_SYSROOT:\n  - $(pwd)/MacOSX$(target_platform).sdk        # [osx]\n" > $HOME/conda_build_config.yaml
+    cat $HOME/conda_build_config.yaml
+    ls $(pwd)/MacOSX$(target_platform).sdk
+  displayName: Install MacOSX $(target_platform) SDK
 - script: |
     echo "Removing homebrew from Azure to avoid conflicts."
     curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/uninstall > ~/uninstall_homebrew
@@ -9,23 +16,27 @@ steps:
 - bash: |
     source ${CONDA}/etc/profile.d/conda.sh
     sudo chown -R ${USER} ${CONDA}
+    export SDKROOT="$(pwd)/MacOSX$(target_platform).sdk/"
+    export CONDA_BUILD_SYSROOT=${SDKROOT}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${RDBASE}/rdkit:${SDKROOT}:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    mkdir -p $HOME/.matplotlib
+    echo -e "backend: TkAgg\n" > $HOME/.matplotlib/matplotlibrc
     conda config --set always_yes yes --set changeps1 no
     conda update -q conda
-    conda info -a
-    conda create --name rdkit_build -c conda-forge $(compiler) cmake \
+    conda create --name rdkit_build $(compiler) cmake \
         boost-cpp=$(boost_version) boost=$(boost_version) \
         py-boost=$(boost_version) libboost=$(boost_version) \
         numpy matplotlib cairo pillow eigen pandas
   displayName: Setup build environment
 - bash: |
-    export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
+    export SDKROOT="$(pwd)/MacOSX$(target_platform).sdk/"
+    export CONDA_BUILD_SYSROOT=${SDKROOT}
     export RDBASE=`pwd`
     export PYTHONPATH=${RDBASE}:${PYTHONPATH}
-    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${RDBASE}/rdkit:${SDKROOT}:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
     export QT_QPA_PLATFORM='offscreen'
-    hash -r
     mkdir build && cd build && \
     cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
@@ -45,43 +56,42 @@ steps:
     -DRDK_BUILD_THREADSAFE_SSS=OFF \
     -DRDK_TEST_MULTITHREADED=OFF \
     -DBoost_NO_SYSTEM_PATHS=ON \
+    -DCMAKE_OSX_SYSROOT=${SDKROOT} \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=$(target_platform) \
+    -DRDK_BOOST_PYTHON3_NAME=$(python_name) \
     -DPYTHON_EXECUTABLE=${CONDA_PREFIX}/bin/python3 \
     -DCMAKE_INCLUDE_PATH="${CONDA_PREFIX}/include" \
     -DCMAKE_LIBRARY_PATH="${CONDA_PREFIX}/lib"
   displayName: Configure build (Run CMake)
 - script: |
-    export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
-    conda activate rdkit_build
-    export RDBASE=`pwd`
-    export PYTHONPATH=${RDBASE}:${PYTHONPATH}
-    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
-    export QT_QPA_PLATFORM='offscreen'
-    cd build
-    export
-    cat CMakeCache.txt
-  displayName: Print out CMakeCache
-- bash: |
-    export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
+    export
+    cat build/CMakeCache.txt
+  displayName: Print out CMakeCache
+- bash: |
+    source ${CONDA}/etc/profile.d/conda.sh
+    conda activate rdkit_build
+    export SDKROOT="$(pwd)/MacOSX$(target_platform).sdk/"
+    export CONDA_BUILD_SYSROOT=${SDKROOT}
     export RDBASE=`pwd`
     export PYTHONPATH=${RDBASE}:${PYTHONPATH}
-    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${RDBASE}/rdkit:${SDKROOT}:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
     export QT_QPA_PLATFORM='offscreen'
     cd build
-    hash -r
     make -j $( $(number_of_cores) ) install
   displayName: Build
 - bash: |
-    export MACOSX_DEPLOYMENT_TARGET=$(macosx_deployment_target)
     source ${CONDA}/etc/profile.d/conda.sh
     conda activate rdkit_build
+    export DYLD_PRINT_LIBRARIES="1"
+    export SDKROOT="$(pwd)/MacOSX$(target_platform).sdk/"
+    export CONDA_BUILD_SYSROOT=${SDKROOT}
     export RDBASE=`pwd`
     export PYTHONPATH=${RDBASE}:${PYTHONPATH}
-    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
+    export DYLD_FALLBACK_LIBRARY_PATH=${RDBASE}/lib:${RDBASE}/rdkit:${SDKROOT}:${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH}
     export QT_QPA_PLATFORM='offscreen'
     cd build
-    hash -r
     ctest -j $( $(number_of_cores) ) --output-on-failure
   displayName: Run tests
 
