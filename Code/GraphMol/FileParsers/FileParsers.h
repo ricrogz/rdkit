@@ -33,7 +33,8 @@ class MolFileUnhandledFeatureException : public std::exception {
   explicit MolFileUnhandledFeatureException(const std::string msg)
       : _msg(msg){};
   //! get the error message
-  const char *message() const { return _msg.c_str(); };
+  const char *what() const noexcept override { return _msg.c_str(); };
+  const char *message() const noexcept { return what(); };
   ~MolFileUnhandledFeatureException() noexcept override{};
 
  private:
@@ -130,10 +131,12 @@ RDKIT_FILEPARSERS_EXPORT void MolToMolFile(
     const ROMol &mol, const std::string &fName, bool includeStereo = true,
     int confId = -1, bool kekulize = true, bool forceV3000 = false);
 
-RDKIT_FILEPARSERS_EXPORT std::string MolToXYZBlock(const ROMol &mol, int confId = -1);
+RDKIT_FILEPARSERS_EXPORT std::string MolToXYZBlock(const ROMol &mol,
+                                                   int confId = -1);
 
-RDKIT_FILEPARSERS_EXPORT void MolToXYZFile(
-    const ROMol &mol, const std::string &fName, int confId = -1);
+RDKIT_FILEPARSERS_EXPORT void MolToXYZFile(const ROMol &mol,
+                                           const std::string &fName,
+                                           int confId = -1);
 
 //-----
 //  TPL handling:
