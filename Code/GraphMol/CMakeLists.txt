@@ -1,5 +1,6 @@
 
 add_definitions(-DRDKIT_GRAPHMOL_BUILD)
+
 rdkit_library(GraphMol
               Atom.cpp QueryAtom.cpp QueryBond.cpp Bond.cpp
               MolOps.cpp FindRings.cpp ROMol.cpp RWMol.cpp PeriodicTable.cpp
@@ -9,8 +10,13 @@ rdkit_library(GraphMol
               Matrices.cpp Chirality.cpp RingInfo.cpp Conformer.cpp
               Renumber.cpp AdjustQuery.cpp Resonance.cpp StereoGroup.cpp
               new_canon.cpp SubstanceGroup.cpp
+
+              NewCIPLabelling/RDKitCipMol.cpp
+              NewCIPLabelling/RDKitCipLabeller.cpp
+
+
               SHARED
-              LINK_LIBRARIES RDGeometryLib RDGeneral  
+              LINK_LIBRARIES RDGeometryLib RDGeneral
                  ${RDKit_THREAD_LIBS} )
 
 target_link_libraries(GraphMol PUBLIC ${RDKit_THREAD_LIBS})
@@ -154,3 +160,7 @@ rdkit_catch_test(graphmolTestsCatch catch_graphmol.cpp catch_main.cpp
 
 rdkit_catch_test(graphmolSGroupCatch catch_sgroups.cpp  catch_main.cpp
            LINK_LIBRARIES SmilesParse GraphMol RDGeometryLib RDGeneral)
+
+rdkit_catch_test(accurateCipTestCatch NewCIPLabelling/catch_tests.cpp NewCIPLabelling/RDKitCipMol.cpp
+        NewCIPLabelling/RDKitCipLabeller.cpp LINK_LIBRARIES SmilesParse GraphMol RDGeneral)
+
