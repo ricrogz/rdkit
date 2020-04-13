@@ -271,7 +271,8 @@ if(RDK_BUILD_PYTHON_WRAPPERS)
     set(Boost_Python_Lib "python")
   endif()
 
-  message("  Using boost python as   : Boost::${Boost_Python_Lib}")
+  message("  Using boost python as : Boost::${Boost_Python_Lib}")
+  message("  Libs                  : ${Boost_LIBRARIES}")
   target_link_libraries(rdkit_py_base INTERFACE Boost::${Boost_Python_Lib})
 
   if(RDK_INSTALL_INTREE)
