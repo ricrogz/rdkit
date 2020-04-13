@@ -273,7 +273,7 @@ if(RDK_BUILD_PYTHON_WRAPPERS)
 
   message("  Using boost python as : Boost::${Boost_Python_Lib}")
   message("  Libs                  : ${Boost_LIBRARIES}")
-  target_link_libraries(rdkit_py_base INTERFACE Boost::${Boost_Python_Lib})
+  target_link_libraries(rdkit_py_base INTERFACE ${Boost_LIBRARIES})
 
   if(RDK_INSTALL_INTREE)
     set(RDKit_PythonDir "${CMAKE_SOURCE_DIR}/rdkit")
