@@ -238,6 +238,14 @@ if(RDK_BUILD_PYTHON_WRAPPERS)
   endif()
 
   find_package(PythonLibs)
+
+  message("Found Python:")
+  message("  Version   : ${Python_ADDITIONAL_VERSIONS}")
+  message("  Executable: ${PYTHON_EXECUTABLE}")
+  message("  Libraries : ${PYTHON_LIBRARIES}")
+  message("  Includes  : ${PYTHON_INCLUDE_DIR}")
+
+
   target_include_directories(rdkit_base INTERFACE ${PYTHON_INCLUDE_DIR})
   target_link_libraries(rdkit_py_base INTERFACE ${PYTHON_LIBRARIES} )
   find_package(NumPy REQUIRED)
@@ -266,6 +274,7 @@ if(RDK_BUILD_PYTHON_WRAPPERS)
     set(Boost_Python_Lib "python")
   endif()
 
+  message("  Using boost python as   : Boost::${Boost_Python_Lib}")
   target_link_libraries(rdkit_py_base INTERFACE Boost::${Boost_Python_Lib})
 
   if(RDK_INSTALL_INTREE)
