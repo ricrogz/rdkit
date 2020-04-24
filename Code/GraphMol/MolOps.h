@@ -1007,6 +1007,8 @@ RDKIT_GRAPHMOL_EXPORT void assignChiralTypesFromMolParity(
 RDKIT_GRAPHMOL_EXPORT unsigned getNumAtomsWithDistinctProperty(
     const ROMol &mol, std::string prop);
 
+RDKIT_GRAPHMOL_EXPORT INT_VECT findStereoAtoms(const Bond *bond);
+
 };  // end of namespace MolOps
 };  // end of namespace RDKit
 
