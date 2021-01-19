@@ -159,13 +159,18 @@ rdkit_catch_test(graphmolSGroupCatch catch_sgroups.cpp  catch_main.cpp
 
 rdkit_catch_test(graphmolAdjustQueryCatch catch_adjustquery.cpp catch_main.cpp
            LINK_LIBRARIES SubstructMatch FileParsers SmilesParse GraphMol )
-           
+
 rdkit_catch_test(chiralityTestsCatch catch_chirality.cpp catch_main.cpp
            LINK_LIBRARIES FileParsers SmilesParse GraphMol )
 
-rdkit_test(issue_2753_poc issue_2753_poc.cpp
+# We build two identical executables, but one will be built with 'hidden'
+# visibility, and the other one with default:
+rdkit_test(issue_2753_poc_hidden issue_2753_poc.cpp
+           LINK_LIBRARIES SmilesParse GraphMol )
+rdkit_test(issue_2753_poc_default issue_2753_poc.cpp
            LINK_LIBRARIES SmilesParse GraphMol )
 
-# To trigger the problem, the proof of concept needs to be compiled with
-# hidden visibility
-set_target_properties(issue_2753_poc PROPERTIES CXX_VISIBILITY_PRESET hidden)
+if(RDK_BUILD_CPP_TESTS)
+  set_target_properties(issue_2753_poc_hidden PROPERTIES CXX_VISIBILITY_PRESET hidden)
+  set_target_properties(issue_2753_poc_default PROPERTIES CXX_VISIBILITY_PRESET default)
+endif()
