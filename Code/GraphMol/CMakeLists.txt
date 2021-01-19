@@ -163,3 +163,9 @@ rdkit_catch_test(graphmolAdjustQueryCatch catch_adjustquery.cpp catch_main.cpp
 rdkit_catch_test(chiralityTestsCatch catch_chirality.cpp catch_main.cpp
            LINK_LIBRARIES FileParsers SmilesParse GraphMol )
 
+rdkit_test(issue_2753_poc issue_2753_poc.cpp
+           LINK_LIBRARIES SmilesParse GraphMol )
+
+# To trigger the problem, the proof of concept needs to be compiled with
+# hidden visibility
+set_target_properties(issue_2753_poc PROPERTIES CXX_VISIBILITY_PRESET hidden)
