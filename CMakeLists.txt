@@ -64,6 +64,7 @@ option(RDK_BUILD_FUZZ_TARGETS "build the fuzz targets" OFF)
 set(RDK_BOOST_VERSION "1.58.0")
 
 if(NOT MSVC)
+  set(CMAKE_CXX_VISIBILITY_PRESET hidden)
   if(RDK_OPTIMIZE_POPCNT)
     if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "aarch64")
       message("RDK_OPTIMIZE_POPCNT is not available on aarch64")
