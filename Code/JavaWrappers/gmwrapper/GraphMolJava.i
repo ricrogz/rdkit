@@ -270,7 +270,6 @@ typedef unsigned long long int	uintmax_t;
 %template(Double_Pair) std::pair<double,double>;
 %template(UInt_Pair) std::pair<boost::uint32_t, int >;
 %template(Long_Pair) std::pair<boost::int64_t,int>;
-%template(UInt_Pair) std::pair<boost::uint32_t,boost::uint32_t>;
 
 /* map */
 %template(String_String_Map) std::map<std::string,std::string>;
@@ -283,7 +282,6 @@ typedef unsigned long long int	uintmax_t;
 %template(UInt_Pair_Vect) std::vector<std::pair<boost::uint32_t,int> >;
 %template(Match_Vect) std::vector<std::pair<boost::int32_t,int> >;
 %template(Long_Pair_Vect) std::vector<std::pair<boost::int64_t,int> >;
-%template(UInt_Pair_Vect) std::vector<std::pair<boost::uint32_t,boost::uint32_t> >;
 
 /* vector vector */
 %template(Int_Vect_Vect) std::vector<std::vector<int> >;

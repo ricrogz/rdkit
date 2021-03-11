@@ -42,7 +42,7 @@
 %include "extend_std_map.i"
 %include "extend_std_vector.i"
 
-%template(BitInfo_Map) std::map<std::uint32_t, std::vector<std::vector<int>>>;
+%template(BitInfo_Map) std::map<unsigned int, std::vector<std::vector<int>>>;
 
 %newobject RDKit::RDKFingerprintMol;
 %newobject RDKit::LayeredFingerprintMol;
