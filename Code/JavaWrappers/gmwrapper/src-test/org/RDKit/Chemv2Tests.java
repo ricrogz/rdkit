@@ -123,7 +123,7 @@ public class Chemv2Tests extends GraphMolTest {
 		ROMol m = RWMol.MolFromSmiles("C[C@H]1CO1");
 		Atom a0 = m.getAtomWithIdx(0);
 		Int_Point2D_Map coords = new Int_Point2D_Map();
-		coords.set((int) a0.getIdx(), new Point2D(1.0, 1.5));
+		coords.put((int) a0.getIdx(), new Point2D(1.0, 1.5));
 		RDKFuncs.setPreferCoordGen(false);
 		long confIdx = m.compute2DCoords(coords);
 		Conformer c = m.getConformer((int) confIdx);
@@ -138,7 +138,7 @@ public class Chemv2Tests extends GraphMolTest {
 		template.compute2DCoords();
 		ROMol m = RWMol.MolFromSmiles("c1cccc2ncn3cccc3c21");
 		ROMol patt = RWMol.MolFromSmarts("*1****2*1***2");
-		m.generateDepictionMatching2DStructure(template,-1,patt);		
+		m.generateDepictionMatching2DStructure(template,-1,patt);
 
 		// System.out.print(template.MolToMolBlock());
 		// System.out.print(m.MolToMolBlock());
@@ -218,9 +218,9 @@ public class Chemv2Tests extends GraphMolTest {
           hbs.add(2);
 
           ColourPalette atCs = new ColourPalette();
-          atCs.set(0, new DrawColour(1, 1, 0));
-          atCs.set(1, new DrawColour(1, 0, 1));
-          atCs.set(2, new DrawColour(0, 1, 1));
+          atCs.put(0, new DrawColour(1, 1, 0));
+          atCs.put(1, new DrawColour(1, 0, 1));
+          atCs.put(2, new DrawColour(0, 1, 1));
           ColourPalette bCs = new ColourPalette();
 
           MolDraw2DSVG drawer = new MolDraw2DSVG(300, 300);
@@ -252,7 +252,7 @@ public class Chemv2Tests extends GraphMolTest {
 		  MolDraw2DSVG drawer = new MolDraw2DSVG(300, 300);
 		  drawer.clearDrawing();
 		  RDKFuncs.ContourAndDrawGaussians(drawer,cents,weights,widths,10);
-		  drawer.drawOptions().setClearBackground(false); 
+		  drawer.drawOptions().setClearBackground(false);
 		  drawer.drawMolecule(m);
 		  drawer.finishDrawing();
 		  String svg = drawer.getDrawingText();

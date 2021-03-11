@@ -275,11 +275,11 @@ public class DistanceGeometryTests extends GraphMolTest {
 		ROMol ref=sdsup.next();
 		ROMol test = new ROMol(ref);
 		Int_Point3D_Map coords = new Int_Point3D_Map();
-		coords.set(0, ref.getConformer().getAtomPos(0));
-		coords.set(1, ref.getConformer().getAtomPos(1));
-		coords.set(2, ref.getConformer().getAtomPos(2));
-		coords.set(3, ref.getConformer().getAtomPos(3));
-		coords.set(4, ref.getConformer().getAtomPos(4));
+		coords.put(0, ref.getConformer().getAtomPos(0));
+		coords.put(1, ref.getConformer().getAtomPos(1));
+		coords.put(2, ref.getConformer().getAtomPos(2));
+		coords.put(3, ref.getConformer().getAtomPos(3));
+		coords.put(4, ref.getConformer().getAtomPos(4));
 
 		int cid = DistanceGeom.EmbedMolecule(test, 30,23,true,false,2.,true,1, coords);
 		assertTrue(cid>-1);
@@ -296,11 +296,11 @@ public class DistanceGeometryTests extends GraphMolTest {
 
 		test = sdsup.next();
 		coords.clear();
-		coords.set(4, ref.getConformer().getAtomPos(0));
-		coords.set(5, ref.getConformer().getAtomPos(1));
-		coords.set(6, ref.getConformer().getAtomPos(2));
-		coords.set(7, ref.getConformer().getAtomPos(3));
-		coords.set(8, ref.getConformer().getAtomPos(4));
+		coords.put(4, ref.getConformer().getAtomPos(0));
+		coords.put(5, ref.getConformer().getAtomPos(1));
+		coords.put(6, ref.getConformer().getAtomPos(2));
+		coords.put(7, ref.getConformer().getAtomPos(3));
+		coords.put(8, ref.getConformer().getAtomPos(4));
 		cid = DistanceGeom.EmbedMolecule(test, 30,23,true,false,2.,true,1,coords);
 		assertTrue(cid>-1);
 
@@ -339,7 +339,7 @@ public class DistanceGeometryTests extends GraphMolTest {
 
         Int_Point3D_Map cmap = new Int_Point3D_Map();
         for (int i = 0; i < 5; i++)
-        	cmap.set(i, ref.getConformer().getAtomPos(i));
+        	cmap.put(i, ref.getConformer().getAtomPos(i));
         int ci = DistanceGeom.EmbedMolecule(probe,
         		0, 23, true, false, 2.0, false, 1, cmap);
         assertTrue(ci>-1);

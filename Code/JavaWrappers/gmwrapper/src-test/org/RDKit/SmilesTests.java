@@ -1,20 +1,20 @@
-/* 
+/*
  *
  *  Copyright (c) 2010, Novartis Institutes for BioMedical Research Inc.
  *  All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
- * met: 
+ * met:
  *
- *     * Redistributions of source code must retain the above copyright 
+ *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
  *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following 
- *       disclaimer in the documentation and/or other materials provided 
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
- *     * Neither the name of Novartis Institutes for BioMedical Research Inc. 
- *       nor the names of its contributors may be used to endorse or promote 
+ *     * Neither the name of Novartis Institutes for BioMedical Research Inc.
+ *       nor the names of its contributors may be used to endorse or promote
  *       products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -89,7 +89,7 @@ public class SmilesTests extends GraphMolTest {
 	public void testProblems() {
 		testSpellings("[Al+3]CCC",
 				new String[] { "CCC[Al+3]", "C(C)(C[Al+3])"});
-		testSpellings("C(=O)(Cl)CC(=O)Cl", 
+		testSpellings("C(=O)(Cl)CC(=O)Cl",
 				new String[] { "ClC(CC(Cl)=O)=O", "C(Cl)(=O)CC(=O)Cl","C(Cl)(=O)CC(Cl)=O"});
 		testSpellings("C(=O)(Cl)c1ccc(C(=O)Cl)cc1",
 				new String[] { "O=C(Cl)c1ccc(cc1)C(Cl)=O","C(Cl)(=O)C1=CC=C(C=C1)C(Cl)=O", "ClC(=O)c1ccc(cc1)C(=O)Cl"});
@@ -121,15 +121,15 @@ public class SmilesTests extends GraphMolTest {
 	// EXPECT FAILURES -> testing molecules which are known to fail
 	@Test
 	public void testFailures() {
-		testSpellings("C13C6C1C2C4C2C3C5C4C56", 
+		testSpellings("C13C6C1C2C4C2C3C5C4C56",
 				new String[] { "C45C1C6C3C6C5C4C2C3C12","C45C2C6C3C6C5C4C1C3C12"});
 	}
 
 	@Test
 	public void testReplacements() {
             String_String_Map repls=new String_String_Map();
-            repls.set("{X}","OC1CC1");
-            RWMol nmol = RWMol.MolFromSmiles("c1ccccc1{X}",0,true,repls); 
+            repls.put("{X}","OC1CC1");
+            RWMol nmol = RWMol.MolFromSmiles("c1ccccc1{X}",0,true,repls);
             String nsmi = RDKFuncs.MolToSmiles(nmol, true);
             String expected="c1ccc(OC2CC2)cc1";
             assertEquals("bad smiles: "+nsmi+"!="+expected,nsmi,expected);
@@ -142,17 +142,17 @@ public class SmilesTests extends GraphMolTest {
 	    ROMol m1 = RWMol.MolFromSmiles("C(CO)(C=C)CCC(CC)C#N");
 
 	    // same molecule, different atom ordering:
-	    // expected ordering here: [11, 5, 0, 8, 3, 9, 7, 10, 4, 2, 6, 1] 
+	    // expected ordering here: [11, 5, 0, 8, 3, 9, 7, 10, 4, 2, 6, 1]
 	    ROMol m2 = RWMol.MolFromSmiles("C(C=C)(CO)CCC(C#N)CC");
 
 	    UInt_Vect ranks1 = new UInt_Vect();
 	    m1.rankMolAtoms(ranks1);
-	    assertEquals("Wrong size ranks - " + ranks1.size() + " != " + 
+	    assertEquals("Wrong size ranks - " + ranks1.size() + " != " +
 	  		m1.getNumAtoms(), ranks1.size(), m1.getNumAtoms());
 
 	    UInt_Vect ranks2 = new UInt_Vect();
 	    m2.rankMolAtoms(ranks2);
-	    assertEquals("Wrong size ranks - " + ranks2.size() + " != " + 
+	    assertEquals("Wrong size ranks - " + ranks2.size() + " != " +
 	  		m2.getNumAtoms(), ranks2.size(), m2.getNumAtoms());
 
 	    Match_Vect_Vect matches = m1.getSubstructMatches(m2);
@@ -164,7 +164,7 @@ public class SmilesTests extends GraphMolTest {
 			ranks1.get(match.get(i).getSecond()),
 			ranks2.get(match.get(i).getFirst()));
 	    }
-	    
+
 	    m1.delete();
 	    m2.delete();
 	    ranks1.delete();
