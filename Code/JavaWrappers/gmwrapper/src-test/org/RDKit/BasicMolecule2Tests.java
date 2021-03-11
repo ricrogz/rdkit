@@ -188,9 +188,9 @@ public class BasicMolecule2Tests extends GraphMolTest {
 		ke = KekulizeException.dynamic_cast(res.get(1));
 		assertNotNull(ke);
 		assertEquals(ke.getAtomIndices().size(),3);
-		assertEquals(ke.getAtomIndices().get(0),(Integer) 3);
-		assertEquals(ke.getAtomIndices().get(1),(Integer) 4);
-		assertEquals(ke.getAtomIndices().get(2),(Integer) 5);
+		assertEquals((long) ke.getAtomIndices().get(0),3);
+		assertEquals((long) ke.getAtomIndices().get(1),4);
+		assertEquals((long) ke.getAtomIndices().get(2),5);
 
 		AtomValenceException ave = AtomValenceException.dynamic_cast(res.get(0));
 		assertNotNull(ave);
