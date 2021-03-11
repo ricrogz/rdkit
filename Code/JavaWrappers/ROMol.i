@@ -30,9 +30,11 @@
 * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
+%include "extend_std_map.i"
+%include "extend_std_vector.i"
 %include "std_pair.i"
 %include "std_string.i"
-%include "std_vector.i"
+
 %{
 #include <RDGeneral/types.h>
 #include <GraphMol/ROMol.h>
@@ -69,6 +71,13 @@
 %template(ROMol_Vect_Vect) std::vector< std::vector< boost::shared_ptr<RDKit::ROMol> > >;
 %template(Atom_Vect) std::vector<RDKit::Atom*>;
 %template(StereoGroup_Vect) std::vector<RDKit::StereoGroup>;
+
+%template(String_Mol_Map) std::map<std::string, boost::shared_ptr<RDKit::ROMol>>;
+%template(UInt_Mol_Map) std::map<unsigned int,boost::shared_ptr<RDKit::ROMol> >;
+%template(String_ROMol_Vect_Map) std::map<std::string,std::vector<boost::shared_ptr<RDKit::ROMol>>>;
+
+%template(String_Mol_Map_Vect) std::vector<std::map<std::string, boost::shared_ptr<RDKit::ROMol>>>;
+
 
 // These prevent duplicate definitions in Java code
 %ignore RDKit::ROMol::hasProp(std::string const) const ;

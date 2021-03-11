@@ -40,12 +40,10 @@
 %}
 
 %include "extend_std_map.i"
-%include "std_pair.i"
-%include "std_vector.i"
+%include "extend_std_vector.i"
 
-%template() std::pair<boost::uint32_t,boost::uint32_t>;
-%template() std::vector<std::pair<boost::uint32_t,boost::uint32_t> >;
-%template() std::map<boost::uint32_t,std::vector<std::pair<boost::uint32_t,boost::uint32_t> > >;
+%template(BitInfo_Map) std::map<std::uint32_t, std::vector<std::vector<int>>>;
+
 %newobject RDKit::RDKFingerprintMol;
 %newobject RDKit::LayeredFingerprintMol;
 %newobject RDKit::PatternFingerprintMol;

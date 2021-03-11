@@ -1,21 +1,21 @@
-/* 
+/*
 * $Id$
 *
 *  Copyright (c) 2011, Novartis Institutes for BioMedical Research Inc.
 *  All rights reserved.
-* 
+*
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are
-* met: 
+* met:
 *
-*     * Redistributions of source code must retain the above copyright 
+*     * Redistributions of source code must retain the above copyright
 *       notice, this list of conditions and the following disclaimer.
 *     * Redistributions in binary form must reproduce the above
-*       copyright notice, this list of conditions and the following 
-*       disclaimer in the documentation and/or other materials provided 
+*       copyright notice, this list of conditions and the following
+*       disclaimer in the documentation and/or other materials provided
 *       with the distribution.
-*     * Neither the name of Novartis Institutes for BioMedical Research Inc. 
-*       nor the names of its contributors may be used to endorse or promote 
+*     * Neither the name of Novartis Institutes for BioMedical Research Inc.
+*       nor the names of its contributors may be used to endorse or promote
 *       products derived from this software without specific prior written permission.
 *
 * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -41,7 +41,7 @@ typedef RDKit::MatchVectType MatchVectType;
 // Partial binding to one overload of RDKit::fragmentOnBonds
 RDKit::ROMol *fragmentMolOnBonds(
     const RDKit::ROMol &mol, const std::vector<int> &bondIndices,
-    bool addDummies = true, 
+    bool addDummies = true,
     const std::vector<std::pair<unsigned int, unsigned int>> *dummyLabels = nullptr,
     std::vector<int> *nCutsPerAtom = nullptr) {
         // The c# wrapper is unable to wrap vector<unsigned int> so pass in vector<int> and convert
@@ -69,13 +69,11 @@ RDKit::ROMol * new_molzip(
 }
 
 %}
-%include "extend_std_map.i"
 
 %newobject deleteSubstructs;
 %newobject replaceSidechains;
 %newobject replaceCores;
 %newobject MurckoDecompose;
-%template() std::map<std::string,boost::shared_ptr<RDKit::ROMol> >;
 %include <GraphMol/Bond.h>
 %include <GraphMol/ChemTransforms/ChemTransforms.h>
 
@@ -88,7 +86,7 @@ RDKit::ROMol * new_molzip(
 
 RDKit::ROMol *fragmentMolOnBonds(
     const RDKit::ROMol &mol, const std::vector<int> &bondIndices,
-    bool addDummies = true, 
+    bool addDummies = true,
     const std::vector<std::pair<unsigned int, unsigned int>> *dummyLabels = nullptr,
     std::vector<int> *nCutsPerAtom = nullptr);
 
@@ -100,7 +98,7 @@ RDKit::ROMol * new_molzip(
 			  const RDKit::ROMol &a,
 			  const RDKit::MolzipParams &params=RDKit::MolzipParams());
 
-          
+
 %ignore fragmentOnSomeBonds;
 %ignore constructFragmenterAtomTypes;
 %ignore constructBRICSAtomTypes;
@@ -108,5 +106,4 @@ RDKit::ROMol * new_molzip(
 %ignore constructBRICSBondTypes;
 
 %newobject fragmentOnBRICSBonds;
-%template(UIntMolMap) std::map<unsigned int,boost::shared_ptr<RDKit::ROMol> >;
 %include <GraphMol/ChemTransforms/MolFragmenter.h>

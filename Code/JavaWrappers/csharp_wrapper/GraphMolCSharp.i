@@ -1,4 +1,3 @@
-
 /*
 *
 *  Copyright (c) 2010, Novartis Institutes for BioMedical Research Inc.
@@ -78,12 +77,12 @@
 #else
 %include "../stdint.i"
 #endif
-%include "std_string.i"
-%include "std_list.i"
-%include "extend_std_vector.i"
-%include "extend_extend_std_map.i"
-%include "std_pair.i"
 %include "carrays.i"
+%include "extend_std_map.i"
+%include "extend_std_vector.i"
+%include "std_list.i"
+%include "std_pair.i"
+%include "std_string.i"
 
 
 // an extremely unsatisfying way of handling exceptions, but it's better than
@@ -260,7 +259,6 @@ typedef unsigned long long int	uintmax_t;
 %include "../Abbreviations.i"
 %include "../Streams.i"
 
-
 // Create a class to throw various sorts of errors for testing.  Required for unit tests in ErrorHandlingTests.java
 #ifdef INCLUDE_ERROR_GENERATOR
 %include "../ErrorGenerator.i"
@@ -289,6 +287,7 @@ typedef unsigned long long int	uintmax_t;
 %template(Double_Pair) std::pair<double,double>;
 %template(UInt_Pair) std::pair<boost::uint32_t, int >;
 %template(Long_Pair) std::pair<boost::int64_t,int>;
+%template(UInt_Pair) std::pair<boost::uint32_t,boost::uint32_t>;
 
 /* map */
 %template(String_String_Map) std::map<std::string,std::string>;
@@ -301,6 +300,7 @@ typedef unsigned long long int	uintmax_t;
 %template(UInt_Pair_Vect) std::vector<std::pair<boost::uint32_t,int> >;
 %template(Match_Vect) std::vector<std::pair<boost::int32_t,int> >;
 %template(Long_Pair_Vect) std::vector<std::pair<boost::int64_t,int> >;
+%template(UInt_Pair_Vect) std::vector<std::pair<boost::uint32_t,boost::uint32_t> >;
 
 /* vector vector */
 %template(Int_Vect_Vect) std::vector<std::vector<int> >;

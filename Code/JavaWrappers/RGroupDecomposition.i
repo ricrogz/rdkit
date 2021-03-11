@@ -13,17 +13,8 @@
 #include <GraphMol/RGroupDecomposition/RGroupDecomp.h>
 typedef std::vector<std::string> STR_VECT;
 %}
-%include "extend_std_map.i"
-%include "std_vector.i"
 
 %template(SparseIntVect64) RDKit::SparseIntVect<boost::int64_t>;
-
-
-%template(StringMolMap) std::map<std::string, boost::shared_ptr<RDKit::ROMol>>;
-%template(ROMol_Vect) std::vector<boost::shared_ptr<RDKit::ROMol>>;
-%template(StringMolMap_Vect) std::vector<std::map<std::string, boost::shared_ptr<RDKit::ROMol>>>;
-%template(StringROMol_VectMap) std::map<std::string,std::vector<boost::shared_ptr<RDKit::ROMol>>>;
-
 
 %extend std::map<std::string, boost::shared_ptr<RDKit::ROMol>> {
   std::vector<std::string> keys() {
