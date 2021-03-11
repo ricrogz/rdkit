@@ -69,12 +69,13 @@ RDKit::ROMol * new_molzip(
 }
 
 %}
+%include "std_map.i"
 
 %newobject deleteSubstructs;
 %newobject replaceSidechains;
 %newobject replaceCores;
 %newobject MurckoDecompose;
-%template(StringMolMap) std::map<std::string,boost::shared_ptr<RDKit::ROMol> >;
+%template() std::map<std::string,boost::shared_ptr<RDKit::ROMol> >;
 %include <GraphMol/Bond.h>
 %include <GraphMol/ChemTransforms/ChemTransforms.h>
 
