@@ -13,7 +13,7 @@
 #include <GraphMol/RGroupDecomposition/RGroupDecomp.h>
 typedef std::vector<std::string> STR_VECT;
 %}
-%include "std_map.i"
+%include "extend_std_map.i"
 %include "std_vector.i"
 
 %template(SparseIntVect64) RDKit::SparseIntVect<boost::int64_t>;

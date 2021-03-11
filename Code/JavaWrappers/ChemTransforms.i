@@ -69,7 +69,7 @@ RDKit::ROMol * new_molzip(
 }
 
 %}
-%include "std_map.i"
+%include "extend_std_map.i"
 
 %newobject deleteSubstructs;
 %newobject replaceSidechains;

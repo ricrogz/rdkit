@@ -39,7 +39,7 @@
 #include <GraphMol/Fingerprints/MACCS.h>
 %}
 
-%include "std_map.i"
+%include "extend_std_map.i"
 %include "std_pair.i"
 %include "std_vector.i"
 
