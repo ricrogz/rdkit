@@ -50,7 +50,7 @@ public class SubstanceGroupTests extends GraphMolTest {
         assertEquals(0, supGroup.getStringVectProp("DATAFIELDS").size());
         assertEquals(1, supGroup.getAtoms().size());
         assertEquals(0, supGroup.getBonds().size());
-        assertEquals(1, supGroup.getAtoms().get(0));
+        assertEquals((Integer)1, supGroup.getAtoms().get(0));
     }
 
     @Test
@@ -66,11 +66,11 @@ public class SubstanceGroupTests extends GraphMolTest {
         assertTrue(substanceGroup.hasProp("index"));
         assertEquals(2, substanceGroup.getUIntProp("index") );
         assertEquals(2, substanceGroup.getAtoms().size());
-        assertEquals(3, substanceGroup.getAtoms().get(0));
-        assertEquals(2, substanceGroup.getAtoms().get(1));
-        assertEquals(2, substanceGroup.getBonds().size());;
-        assertEquals(1, substanceGroup.getBonds().get(0));
-        assertEquals(3, substanceGroup.getBonds().get(1));
+        assertEquals((Integer)3, substanceGroup.getAtoms().get(0));
+        assertEquals((Integer)2, substanceGroup.getAtoms().get(1));
+        assertEquals(2, substanceGroup.getBonds().size());
+        assertEquals((Integer)1, substanceGroup.getBonds().get(0));
+        assertEquals((Integer)3, substanceGroup.getBonds().get(1));
         assertTrue(substanceGroup.hasProp("PARENT"));
         assertEquals(10, substanceGroup.getUIntProp("PARENT"));
 
@@ -78,14 +78,14 @@ public class SubstanceGroupTests extends GraphMolTest {
         assertTrue(substanceGroup.hasProp("index"));
         assertEquals(10, substanceGroup.getUIntProp("index") );
         assertEquals(5, substanceGroup.getAtoms().size());
-        assertEquals(3, substanceGroup.getAtoms().get(0));
-        assertEquals(2, substanceGroup.getAtoms().get(1));
-        assertEquals(4, substanceGroup.getAtoms().get(2));
-        assertEquals(5, substanceGroup.getAtoms().get(3));
-        assertEquals(7, substanceGroup.getAtoms().get(4));
-        assertEquals(2, substanceGroup.getBonds().size());;
-        assertEquals(1, substanceGroup.getBonds().get(0));
-        assertEquals(5, substanceGroup.getBonds().get(1));
+        assertEquals((Integer)3, substanceGroup.getAtoms().get(0));
+        assertEquals((Integer)2, substanceGroup.getAtoms().get(1));
+        assertEquals((Integer)4, substanceGroup.getAtoms().get(2));
+        assertEquals((Integer)5, substanceGroup.getAtoms().get(3));
+        assertEquals((Integer)7, substanceGroup.getAtoms().get(4));
+        assertEquals(2, substanceGroup.getBonds().size());
+        assertEquals((Integer)1, substanceGroup.getBonds().get(0));
+        assertEquals((Integer) 5, substanceGroup.getBonds().get(1));
         assertFalse(substanceGroup.hasProp("PARENT"));
 
     }

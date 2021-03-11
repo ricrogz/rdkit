@@ -1,21 +1,21 @@
-/* 
+/*
  * $Id: ChemReactionTests.java 131 2011-01-20 22:01:29Z ebakke $
  *
  *  Copyright (c) 2010, Novartis Institutes for BioMedical Research Inc.
  *  All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
- * met: 
+ * met:
  *
- *     * Redistributions of source code must retain the above copyright 
+ *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
  *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following 
- *       disclaimer in the documentation and/or other materials provided 
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
- *     * Neither the name of Novartis Institutes for BioMedical Research Inc. 
- *       nor the names of its contributors may be used to endorse or promote 
+ *     * Neither the name of Novartis Institutes for BioMedical Research Inc.
+ *       nor the names of its contributors may be used to endorse or promote
  *       products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -42,10 +42,10 @@ import org.junit.*;
 public class ChemReactionTests extends GraphMolTest {
 	private ArrayList<String> tmpFiles = new ArrayList<String>();
 	private File baseTestPath;
-	@Before 
+	@Before
 	public void setUp() {
 		File base = getRdBase();
-		baseTestPath = new File(base, "Code" + File.separator + "GraphMol" + File.separator + 
+		baseTestPath = new File(base, "Code" + File.separator + "GraphMol" + File.separator +
 				"ChemReactions" + File.separator + "testData");
 	}
 
@@ -93,7 +93,7 @@ public class ChemReactionTests extends GraphMolTest {
 
 	@Test
 	public void test2DaylightParser() {
-		ChemicalReaction rxn = 
+		ChemicalReaction rxn =
 			ChemicalReaction.ReactionFromSmarts("[C:1](=[O:2])O.[N:3]>>[C:1](=[O:2])[N:3]");
 		assertNotNull(rxn );;
 		assertEquals( 2,rxn.getNumReactantTemplates() );
@@ -102,7 +102,7 @@ public class ChemReactionTests extends GraphMolTest {
 
 		ROMol_Vect reacts = new ROMol_Vect();
 		for (String react : new String[] {"C(=O)O","N"})
-			reacts.add(RWMol.MolFromSmiles(react));		
+			reacts.add(RWMol.MolFromSmiles(react));
 		// Do not need the initReactantMatchers call here
 		ROMol_Vect_Vect prods = rxn.runReactants(reacts);;
 		assertEquals( 1,prods.size() );
@@ -111,7 +111,7 @@ public class ChemReactionTests extends GraphMolTest {
 
 		reacts.clear();
 		for (String react : new String[] {"CC(=O)OC","CN"})
-			reacts.add(RWMol.MolFromSmiles(react));		
+			reacts.add(RWMol.MolFromSmiles(react));
 		// Do not need the initReactantMatchers call here
 		prods = rxn.runReactants(reacts);;
 		assertEquals( 1,prods.size() );
@@ -130,7 +130,7 @@ public class ChemReactionTests extends GraphMolTest {
 
 		ROMol_Vect reacts = new ROMol_Vect();
 		for (String react : new String[] {"C(=O)O","N"})
-			reacts.add(RWMol.MolFromSmiles(react));		
+			reacts.add(RWMol.MolFromSmiles(react));
 		// Do not need the initReactantMatchers call here
 		ROMol_Vect_Vect prods = rxn.runReactants(reacts);;
 		assertEquals( 1,prods.size() );
@@ -153,7 +153,7 @@ public class ChemReactionTests extends GraphMolTest {
 
 		reacts.clear();
 		for (String react : new String[] {"C(=O)O","N"})
-			reacts.add(RWMol.MolFromSmiles(react));		
+			reacts.add(RWMol.MolFromSmiles(react));
 		// Do not need the initReactantMatchers call here
 		prods = rxn.runReactants(reacts);;
 		assertEquals( 1,prods.size() );
@@ -175,118 +175,118 @@ public class ChemReactionTests extends GraphMolTest {
 	}
 	@Test (expected=ChemicalReactionParserException.class)
 	public void test4ErrorHandling_4() {
-		String rxnBlock = 
-			"$RXN" + "\n" +  
-			"" + "\n" +  
-			"      ISIS     082120061354" + "\n" +  
-			"" + "\n" +  
-			"  3  1" + "\n" +  
-			"$MOL" + "\n" +  
-			"" + "\n" +  
-			"  -ISIS-  08210613542D" + "\n" +  
-			"" + "\n" +  
-			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +  
-			"   -1.4340   -0.6042    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +  
-			"   -0.8639   -0.9333    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0" + "\n" +  
-			"   -1.4340    0.0542    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +  
-			"  1  2  1  0  0  0  0" + "\n" +  
-			"  1  3  2  0  0  0  0" + "\n" +  
-			"M  END" + "\n" +  
-			"$MOL" + "\n" +  
-			"" + "\n" +  
-			"  -ISIS-  08210613542D" + "\n" +  
-			"" + "\n" +  
-			"  1  0  0  0  0  0  0  0  0  0999 V2000" + "\n" +  
-			"    2.2125   -0.7833    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +  
-			"M  END" + "\n" +  
-			"$MOL" + "\n" +  
-			"" + "\n" +  
-			"  -ISIS-  08210613542D" + "\n" +  
-			"" + "\n" +  
-			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +  
-			"    9.5282   -0.8083    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +  
-			"    8.9579   -0.4792    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +  
-			"    8.9579    0.1792    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +  
-			"  1  2  1  0  0  0  0" + "\n" +  
-			"  2  3  2  0  0  0  0" + "\n" +  
+		String rxnBlock =
+			"$RXN" + "\n" +
+			"" + "\n" +
+			"      ISIS     082120061354" + "\n" +
+			"" + "\n" +
+			"  3  1" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"   -1.4340   -0.6042    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +
+			"   -0.8639   -0.9333    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0" + "\n" +
+			"   -1.4340    0.0542    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +
+			"  1  2  1  0  0  0  0" + "\n" +
+			"  1  3  2  0  0  0  0" + "\n" +
+			"M  END" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  1  0  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"    2.2125   -0.7833    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +
+			"M  END" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"    9.5282   -0.8083    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +
+			"    8.9579   -0.4792    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +
+			"    8.9579    0.1792    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +
+			"  1  2  1  0  0  0  0" + "\n" +
+			"  2  3  2  0  0  0  0" + "\n" +
 			"M  END";
 		ChemicalReaction.ReactionFromRxnBlock(rxnBlock);
 	}
 	@Test (expected=ChemicalReactionParserException.class)
 	public void test4ErrorHandling_5() {
-		String rxnBlock = 
-			"$RXN" + "\n" + 
-			"" + "\n" + 
-			"      ISIS     082120061354" + "\n" + 
-			"" + "\n" + 
-			"  2  1" + "\n" + 
-			"$MOL" + "\n" + 
-			"" + "\n" + 
-			"  -ISIS-  08210613542D" + "\n" + 
-			"" + "\n" + 
-			"  4  2  0  0  0  0  0  0  0  0999 V2000" + "\n" + 
-			"   -1.4340   -0.6042    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" + 
-			"   -0.8639   -0.9333    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0" + "\n" + 
-			"   -1.4340    0.0542    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" + 
-			"  1  2  1  0  0  0  0" + "\n" + 
-			"  1  3  2  0  0  0  0" + "\n" + 
-			"M  END" + "\n" + 
-			"$MOL" + "\n" + 
-			"" + "\n" + 
-			"  -ISIS-  08210613542D" + "\n" + 
-			"" + "\n" + 
-			"  1  0  0  0  0  0  0  0  0  0999 V2000" + "\n" + 
-			"    2.2125   -0.7833    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" + 
-			"M  END" + "\n" + 
-			"$MOL" + "\n" + 
-			"" + "\n" + 
-			"  -ISIS-  08210613542D" + "\n" + 
-			"" + "\n" + 
-			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" + 
-			"    9.5282   -0.8083    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" + 
-			"    8.9579   -0.4792    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" + 
-			"    8.9579    0.1792    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" + 
-			"  1  2  1  0  0  0  0" + "\n" + 
-			"  2  3  2  0  0  0  0" + "\n" + 
+		String rxnBlock =
+			"$RXN" + "\n" +
+			"" + "\n" +
+			"      ISIS     082120061354" + "\n" +
+			"" + "\n" +
+			"  2  1" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  4  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"   -1.4340   -0.6042    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +
+			"   -0.8639   -0.9333    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0" + "\n" +
+			"   -1.4340    0.0542    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +
+			"  1  2  1  0  0  0  0" + "\n" +
+			"  1  3  2  0  0  0  0" + "\n" +
+			"M  END" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  1  0  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"    2.2125   -0.7833    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +
+			"M  END" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"    9.5282   -0.8083    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +
+			"    8.9579   -0.4792    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +
+			"    8.9579    0.1792    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +
+			"  1  2  1  0  0  0  0" + "\n" +
+			"  2  3  2  0  0  0  0" + "\n" +
 			"M  END" + "\n" ;
 		ChemicalReaction.ReactionFromRxnBlock(rxnBlock);
 	}
 	@Test (expected=ChemicalReactionParserException.class)
 	public void test4ErrorHandling_6() {
-		String rxnBlock = 	
-			"$RXN" + "\n" + 
-			"" + "\n" + 
-			"      ISIS     082120061354" + "\n" + 
-			"" + "\n" + 
-			"  2  1" + "\n" + 
-			"$MOL" + "\n" + 
-			"" + "\n" + 
-			"  -ISIS-  08210613542D" + "\n" + 
-			"" + "\n" + 
-			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" + 
-			"   -1.4340   -0.6042    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" + 
-			"   -0.8639   -0.9333    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0" + "\n" + 
-			"   -1.4340    0.0542    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" + 
-			"  1  2  1  0  0  0  0" + "\n" + 
-			"  1  3  2  0  0  0  0" + "\n" + 
-			"M  END" + "\n" + 
-			"$MOL" + "\n" + 
-			"" + "\n" + 
-			"  -ISIS-  08210613542D" + "\n" + 
-			"" + "\n" + 
-			"  1  0  0  0  0  0  0  0  0  0999 V2000" + "\n" + 
-			"    2.2125   -0.7833    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" + 
-			"M  END" + "\n" + 
-			"$MOL" + "\n" + 
-			"" + "\n" + 
-			"  -ISIS-  08210613542D" + "\n" + 
-			"" + "\n" + 
-			"  3  1  0  0  0  0  0  0  0  0999 V2000" + "\n" + 
-			"    9.5282   -0.8083    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" + 
-			"    8.9579   -0.4792    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" + 
-			"    8.9579    0.1792    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" + 
-			"  1  2  1  0  0  0  0" + "\n" + 
-			"  2  3  2  0  0  0  0" + "\n" + 
+		String rxnBlock =
+			"$RXN" + "\n" +
+			"" + "\n" +
+			"      ISIS     082120061354" + "\n" +
+			"" + "\n" +
+			"  2  1" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  3  2  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"   -1.4340   -0.6042    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +
+			"   -0.8639   -0.9333    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0" + "\n" +
+			"   -1.4340    0.0542    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +
+			"  1  2  1  0  0  0  0" + "\n" +
+			"  1  3  2  0  0  0  0" + "\n" +
+			"M  END" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  1  0  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"    2.2125   -0.7833    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +
+			"M  END" + "\n" +
+			"$MOL" + "\n" +
+			"" + "\n" +
+			"  -ISIS-  08210613542D" + "\n" +
+			"" + "\n" +
+			"  3  1  0  0  0  0  0  0  0  0999 V2000" + "\n" +
+			"    9.5282   -0.8083    0.0000 N   0  0  0  0  0  0  0  0  0  3  0  0" + "\n" +
+			"    8.9579   -0.4792    0.0000 C   0  0  0  0  0  0  0  0  0  2  0  0" + "\n" +
+			"    8.9579    0.1792    0.0000 O   0  0  0  0  0  0  0  0  0  1  0  0" + "\n" +
+			"  1  2  1  0  0  0  0" + "\n" +
+			"  2  3  2  0  0  0  0" + "\n" +
 			"M  END" + "\n";
 		ChemicalReaction.ReactionFromRxnBlock(rxnBlock);
 	}
@@ -350,7 +350,7 @@ public class ChemReactionTests extends GraphMolTest {
 	@Test
 	public void test9AromaticityTransfer () {
 		ROMol mol = RWMol.MolFromSmiles("c1ccc(C2C3(Cc4c(cccc4)C2)CCCC3)cc1");
-		ChemicalReaction rxn = 
+		ChemicalReaction rxn =
 			ChemicalReaction.ReactionFromSmarts("[A:1]1~[*:2]~[*:3]~[*:4]~[*:5]~[A:6]-;@1>>[*:1]~[*:2]~[*:3]~[*:4]~[*:5]~[*:6]");
 		ROMol_Vect reactants = new ROMol_Vect();
 		reactants.add(mol);
@@ -367,7 +367,7 @@ public class ChemReactionTests extends GraphMolTest {
 	@Test
 	public void test10DotSeparation() {
 		ROMol mol = RWMol.MolFromSmiles("C1ON1");
-		ChemicalReaction rxn = 
+		ChemicalReaction rxn =
 			ChemicalReaction.ReactionFromSmarts("[C:1]1[O:2][N:3]1>>([C:1]1[O:2].[N:3]1)");
 		ROMol_Vect reactants = new ROMol_Vect();
 		reactants.add(mol);
@@ -383,7 +383,7 @@ public class ChemReactionTests extends GraphMolTest {
 	public void test11ImplicitProperties() {
 		ROMol mol = RWMol.MolFromSmiles("CCO");
 		ROMol mol2 = RWMol.MolFromSmiles("C[CH-]O");
-		ChemicalReaction rxn = 
+		ChemicalReaction rxn =
 			ChemicalReaction.ReactionFromSmarts("[C:1]O>>[C:1]");
 		ROMol_Vect reactants = new ROMol_Vect();
 		reactants.add(mol);
@@ -422,7 +422,7 @@ public class ChemReactionTests extends GraphMolTest {
 
     // @Test
 	public void test99MemoryLeak() {
-		ChemicalReaction rxn = 
+		ChemicalReaction rxn =
 			ChemicalReaction.ReactionFromSmarts("[C:1](=[O:2])O.[N:3]>>[C:1](=[O:2])[N:3]");
 		assertNotNull(rxn );;
 		assertEquals( 2,rxn.getNumReactantTemplates() );
@@ -431,7 +431,7 @@ public class ChemReactionTests extends GraphMolTest {
 
 		ROMol_Vect reacts = new ROMol_Vect();
 		for (String react : new String[] {"C(=O)O","N"})
-			reacts.add(RWMol.MolFromSmiles(react));		
+			reacts.add(RWMol.MolFromSmiles(react));
 		// Do not need the initReactantMatchers call here
                 for(Integer i=0;i<1000000;i++){
                     ROMol_Vect_Vect prods = rxn.runReactants(reacts);;
@@ -447,56 +447,56 @@ public class ChemReactionTests extends GraphMolTest {
 
         @Test
         public void test100RunSingleReactant() {
-          ChemicalReaction rxn = 
+          ChemicalReaction rxn =
               ChemicalReaction.ReactionFromSmarts("[N;$(N-[#6]):3]=[C;$(C=S):1].[N;$(N[#6]);!$(N=*);!$([N-]);!$(N#*);!$([ND3]);!$([ND4]);!$(N[O,N]);!$(N[C,S]=[S,O,N]):2]>>[N:3]-[C:1]-[N+0:2]");
-          
+
           ROMol reag1 = RWMol.MolFromSmiles("C=CCN=C=S");
           ROMol reag2 = RWMol.MolFromSmiles("NCc1ncc(Cl)cc1Br");
-          
+
           ROMol_Vect_Vect prods0 = rxn.runReactant(reag1, 0);
           ROMol expected_result0 = RWMol.MolFromSmiles("C=CCNC(N)=S");
           ROMol expected_sidechain0 = RWMol.MolFromSmiles("[1*:1]=S.[3*:3]CC=C");
-          
+
           assertEquals( 1, prods0.size() );
           assertEquals( 1, prods0.get(0).size() );
-          
+
           assertEquals( 1, prods0.size() );
-          assertEquals( 1, prods0.get(0).size() );    
+          assertEquals( 1, prods0.get(0).size() );
           assertEquals( expected_result0.MolToSmiles(), prods0.get(0).get(0).MolToSmiles() );
           assertEquals( expected_sidechain0.MolToSmiles(),
                         ChemicalReaction.ReduceProductToSideChains(prods0.get(0).get(0)).MolToSmiles());
-              
+
           ROMol_Vect_Vect prods1 = rxn.runReactant(reag2, 1);
           ROMol expected_result1 = RWMol.MolFromSmiles("NCNCc1ncc(Cl)cc1Br");
           ROMol expected_sidechain1 = RWMol.MolFromSmiles("[2*:2]Cc1ncc(Cl)cc1Br");
           ROMol expected_sidechain1_nodummies = RWMol.MolFromSmiles("Cc1ncc(Cl)cc1Br");
-          
+
           assertEquals( 1, prods1.size() );
           assertEquals( 1, prods1.get(0).size() );
-          
+
           assertEquals( 1, prods1.size() );
-          assertEquals( 1, prods1.get(0).size() );    
+          assertEquals( 1, prods1.get(0).size() );
           assertEquals( expected_result1.MolToSmiles(), prods1.get(0).get(0).MolToSmiles() );
           assertEquals( expected_sidechain1.MolToSmiles(),
                         ChemicalReaction.ReduceProductToSideChains(prods1.get(0).get(0)).MolToSmiles());
           assertEquals( expected_sidechain1_nodummies.MolToSmiles(),
                         ChemicalReaction.ReduceProductToSideChains(
                             prods1.get(0).get(0),false).MolToSmiles());
-          
-          
+
+
         }
-  
+
         @Test
         public void test101RunSingleReactant() {
-          ChemicalReaction rxn = 
+          ChemicalReaction rxn =
               ChemicalReaction.ReactionFromSmarts("[N;!H0;$(N-c):1]>>[N:1]-c1cncnn1");
-          
- 		  ROMol_Vect reacts = new ROMol_Vect(1);
+
+ 		  ROMol_Vect reacts = new ROMol_Vect();
 
 		  RWMol mol = RWMol.MolFromSmiles("CC(=O)/C=C(\\N)c1nonc1N");
 		  //mol.sanitizeMol();
-		  reacts.set(0,mol);
-         
+		  reacts.add(mol);
+
           ROMol_Vect_Vect prods = rxn.runReactants(reacts);;
           assertEquals( 1,prods.size() );
           assertEquals( 1,prods.get(0).size() );
@@ -508,5 +508,5 @@ public class ChemReactionTests extends GraphMolTest {
         public static void main(String args[]) {
           org.junit.runner.JUnitCore.main("org.RDKit.ChemReactionTests");
         }
-  
+
 }

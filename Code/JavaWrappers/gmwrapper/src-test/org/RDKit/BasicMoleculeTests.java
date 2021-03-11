@@ -69,9 +69,9 @@ public class BasicMoleculeTests extends GraphMolTest {
 		r2=RWMol.MolFromSmiles("ClCN");
 		assertEquals(4,r1.getNumAtoms());
 		assertEquals(3,r2.getNumAtoms());
-		ROMol_Vect rs= new ROMol_Vect(2);
-		rs.set(0,r1);
-		rs.set(1,r2);
+		ROMol_Vect rs= new ROMol_Vect();
+		rs.add(r1);
+		rs.add(r2);
 		ROMol_Vect_Vect ps;
 		ps=rxn.runReactants(rs);
 

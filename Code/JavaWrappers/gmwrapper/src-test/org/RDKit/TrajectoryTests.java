@@ -48,10 +48,10 @@ public class TrajectoryTests extends GraphMolTest {
         Trajectory traj = new Trajectory(dim, np);
         assertEquals(traj.dimension(), dim);
         assertEquals(traj.numPoints(), np);
+        Double_Vect dv = new Double_Vect();
         final int posLen = np * dim;
-        Double_Vect dv = new Double_Vect(posLen);
         for (int i = 0; i < posLen; ++i)
-            dv.set(i, (double)i);
+            dv.add((double)i);
         for (int i = 0; i < ns; ++i)
             traj.addSnapshot(new Snapshot(dv, (double)i));
         assertEquals(traj.size(), ns);
@@ -109,10 +109,10 @@ public class TrajectoryTests extends GraphMolTest {
         Trajectory traj = new Trajectory(dim, np);
         assertEquals(dim, traj.dimension());
         assertEquals(np, traj.numPoints());
+        Double_Vect dv = new Double_Vect();
         final int posLen = np * dim;
-        Double_Vect dv = new Double_Vect(posLen);
         for (int i = 0; i < posLen; ++i)
-            dv.set(i, (double)i);
+            dv.add((double)i);
         for (int i = 0; i < ns; ++i)
             traj.addSnapshot(new Snapshot(dv, (double)i));
         assertEquals(ns, traj.size());

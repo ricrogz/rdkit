@@ -1,20 +1,20 @@
-/* 
+/*
  *
  *  Copyright (c) 2015, Novartis Institutes for BioMedical Research Inc.
  *  All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
- * met: 
+ * met:
  *
- *     * Redistributions of source code must retain the above copyright 
+ *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
  *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following 
- *       disclaimer in the documentation and/or other materials provided 
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
- *     * Neither the name of Novartis Institutes for BioMedical Research Inc. 
- *       nor the names of its contributors may be used to endorse or promote 
+ *     * Neither the name of Novartis Institutes for BioMedical Research Inc.
+ *       nor the names of its contributors may be used to endorse or promote
  *       products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -33,18 +33,18 @@ package org.RDKit;
 
 import static org.junit.Assert.*;
 import org.junit.*;
-    
+
 public class FilterCatalogTests extends GraphMolTest {
 	private ROMol mol;
 
 	@Before public void setUp() {
 	}
 
-	@Test 
+	@Test
 	public void test1Basics() {
             FilterCatalog catalog = new FilterCatalog();
             assertEquals(0, catalog.getNumEntries());
-            
+
             //assertEquals(16, catalog.getNumEntries());
 
 	}
@@ -59,7 +59,7 @@ public class FilterCatalogTests extends GraphMolTest {
             mol = RWMol.MolFromSmiles("O=C(Cn1cnc2c1c(=O)n(C)c(=O)n2C)N/N=C/c1c(O)ccc2c1cccc2");
             FilterCatalogEntry entry = catalog.getFirstMatch(mol);
             Str_Vect props = entry.getPropList();
-            
+
             String ref  = entry.getProp("Reference");
             String source = entry.getProp("Scope");
             assertEquals(ref,
@@ -75,7 +75,7 @@ public class FilterCatalogTests extends GraphMolTest {
             // check the getMatches api point
             FilterCatalogEntry_Vect matches = catalog.getMatches(mol);
             assertEquals(1, matches.size());
-            
+
             for (int entryIdx = 0; entryIdx < matches.size(); ++entryIdx) {
                 entry = matches.get(entryIdx);
                 String refa  = entry.getProp("Reference");
@@ -92,7 +92,7 @@ public class FilterCatalogTests extends GraphMolTest {
                 FilterMatch_Vect fmatches = entry.getFilterMatches(mol);
                 assertEquals(1, fmatches.size());
                 Match_Vect mv = fmatches.get(0).getAtomMatches();
-                
+
                 assertEquals(0, mv.get(0).getFirst());
                 assertEquals(23, mv.get(0).getSecond());
                 assertEquals(1, mv.get(1).getFirst());
@@ -114,7 +114,7 @@ public class FilterCatalogTests extends GraphMolTest {
                 assertEquals(9, mv.get(9).getFirst());
                 assertEquals(21, mv.get(9).getSecond());
             }
-            
+
             if (catalog.canSerialize()) {
                 byte pickle[] = catalog.Serialize();
                 System.out.println(pickle);
@@ -132,7 +132,7 @@ public class FilterCatalogTests extends GraphMolTest {
             FilterCatalog catalog = new FilterCatalog(
                 FilterCatalogParams.FilterCatalogs.PAINS_A);
             assertEquals(16, catalog.getNumEntries());
-            
+
             mol = RWMol.MolFromSmiles("O=C(Cn1cnc2c1c(=O)n(C)c(=O)n2C)N/N=C/c1c(O)ccc2c1cccc2");
             FilterCatalogEntry entry = catalog.getFirstMatch(mol);
             assertEquals(entry.getDescription(),"hzone_phenol_A(479)");
@@ -144,7 +144,7 @@ public class FilterCatalogTests extends GraphMolTest {
             catalog.addEntry(entry);
             entry = catalog.getFirstMatch(mol);
             assertEquals(entry.getDescription(),"hzone_phenol_A(479)");
-            
+
         }
 
         @Test
@@ -152,8 +152,8 @@ public class FilterCatalogTests extends GraphMolTest {
 	    FilterCatalog catalog = new FilterCatalog(
                 FilterCatalogParams.FilterCatalogs.PAINS_A);
             assertEquals(16, catalog.getNumEntries());
-	    Str_Vect smiles = new Str_Vect(1);
-	    smiles.set(0, "O=C(Cn1cnc2c1c(=O)n(C)c(=O)n2C)N/N=C/c1c(O)ccc2c1cccc2");
+	    Str_Vect smiles = new Str_Vect();
+	    smiles.add("O=C(Cn1cnc2c1c(=O)n(C)c(=O)n2C)N/N=C/c1c(O)ccc2c1cccc2");
 
 	    FilterCatalogEntry_VectVect result = RDKFuncs.RunFilterCatalog(catalog, smiles);
 

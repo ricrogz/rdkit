@@ -1,20 +1,20 @@
-/* 
+/*
  *
  *  Copyright (c) 2010, Novartis Institutes for BioMedical Research Inc.
  *  All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
- * met: 
+ * met:
  *
- *     * Redistributions of source code must retain the above copyright 
+ *     * Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
  *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following 
- *       disclaimer in the documentation and/or other materials provided 
+ *       copyright notice, this list of conditions and the following
+ *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
- *     * Neither the name of Novartis Institutes for BioMedical Research Inc. 
- *       nor the names of its contributors may be used to endorse or promote 
+ *     * Neither the name of Novartis Institutes for BioMedical Research Inc.
+ *       nor the names of its contributors may be used to endorse or promote
  *       products derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -72,9 +72,9 @@ public class BasicMolecule2Tests extends GraphMolTest {
 		r2=RWMol.MolFromSmiles("ClCN");
 		assertEquals(4,r1.getNumAtoms());
 		assertEquals(3,r2.getNumAtoms());
-		ROMol_Vect rs= new ROMol_Vect(2);
-		rs.set(0,r1);
-		rs.set(1,r2);
+		ROMol_Vect rs= new ROMol_Vect();
+		rs.add(r1);
+		rs.add(r2);
 		ROMol_Vect_Vect ps;
 		ps=rxn.runReactants(rs);
 
@@ -119,7 +119,7 @@ public class BasicMolecule2Tests extends GraphMolTest {
 		assertEquals(1,mv.get(0).getSecond());
 		assertEquals(1,mv.get(1).getFirst());
 		assertEquals(0,mv.get(1).getSecond());
-	}	
+	}
 	@Test public void testSubstruct4() {
 		ROMol p;
 		Match_Vect_Vect mvv;
@@ -188,9 +188,9 @@ public class BasicMolecule2Tests extends GraphMolTest {
 		ke = KekulizeException.dynamic_cast(res.get(1));
 		assertNotNull(ke);
 		assertEquals(ke.getAtomIndices().size(),3);
-		assertEquals(ke.getAtomIndices().get(0),3);
-		assertEquals(ke.getAtomIndices().get(1),4);
-		assertEquals(ke.getAtomIndices().get(2),5);
+		assertEquals(ke.getAtomIndices().get(0),(Integer) 3);
+		assertEquals(ke.getAtomIndices().get(1),(Integer) 4);
+		assertEquals(ke.getAtomIndices().get(2),(Integer) 5);
 
 		AtomValenceException ave = AtomValenceException.dynamic_cast(res.get(0));
 		assertNotNull(ave);
