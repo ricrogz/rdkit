@@ -183,10 +183,6 @@ ADD_CUSTOM_TARGET(BuildJavaWrapperTests ALL
   DEPENDS ${CMAKE_JAVA_TEST_OUTDIR}/org/RDKit/WrapperTests.class GraphMolWrap
   COMMENT "building test classes"
 )
-ADD_CUSTOM_TARGET(RunJavaWrapperTests
-  DEPENDS BuildJavaWrapperTests
-  COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/runUnitTests.sh
-)
 
 # need to add boost libs for testing
 SET (CTEST_ENVIRONMENT
