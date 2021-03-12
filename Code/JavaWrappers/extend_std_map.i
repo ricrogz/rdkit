@@ -10,6 +10,6 @@
  */
 #if SWIG_VERSION < 0x040000
 %extend std::map {
-    %rename(put) get;
+    %rename(put) set;
 }
 #endif
