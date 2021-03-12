@@ -401,5 +401,4 @@ ADD_TEST(JavaSubstanceGroupTests
 
 
 
-INSTALL(TARGETS GraphMolWrap
-              DESTINATION ${CMAKE_CURRENT_BINARY_DIR} )
+INSTALL(TARGETS GraphMolWrap DESTINATION ${RDKit_LibDir}/gmwrapper )

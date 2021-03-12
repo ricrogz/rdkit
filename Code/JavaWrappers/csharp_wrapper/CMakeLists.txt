@@ -73,7 +73,7 @@ SWIG_LINK_LIBRARIES(RDKFuncs ${RDKit_Wrapper_Libs}
       ${RDKit_THREAD_LIBS} )
 
 INSTALL(TARGETS RDKFuncs
-        DESTINATION ${CMAKE_CURRENT_SOURCE_DIR} )
+        DESTINATION ${RDKit_LibDir}/csharp_wrapper )
 
 
 if(NOT WIN32)
