@@ -18,7 +18,7 @@
 #define _RDKIT_QUERIES_H
 
 #include <Query/QueryObjects.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/QueryBond.h>
 #include <GraphMol/QueryOps.h>
 

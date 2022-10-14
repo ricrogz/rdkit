@@ -8,7 +8,7 @@
 //  of the RDKit source tree.
 //
 #include <GraphMol/GraphMol.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/QueryBond.h>
 #include <GraphMol/MolOps.h>
 #include <GraphMol/QueryOps.h>

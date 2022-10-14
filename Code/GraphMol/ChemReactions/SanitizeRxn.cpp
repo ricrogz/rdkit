@@ -30,8 +30,9 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 #include "SanitizeRxn.h"
+#include <GraphMol/Atom.h>
+#include <GraphMol/QueryOps.h>
 #include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryAtom.h>
 
 namespace RDKit {
 namespace RxnOps {

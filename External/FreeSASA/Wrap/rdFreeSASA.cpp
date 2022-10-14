@@ -37,7 +37,7 @@
 
 #include <RDGeneral/Exceptions.h>
 #include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <RDFreeSASA.h>
 #include <RDBoost/Wrap.h>
 

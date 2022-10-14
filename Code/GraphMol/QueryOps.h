@@ -16,11 +16,12 @@
 #ifndef RD_QUERY_OPS_H
 #define RD_QUERY_OPS_H
 
-#include <GraphMol/RDKitBase.h>
-#include <Query/QueryObjects.h>
-#include <Query/Query.h>
-#include <DataStructs/BitVects.h>
 #include <DataStructs/BitOps.h>
+#include <DataStructs/BitVects.h>
+#include <GraphMol/Atom.h>
+#include <GraphMol/RDKitBase.h>
+#include <Query/Query.h>
+#include <Query/QueryObjects.h>
 
 #ifdef RDK_BUILD_THREADSAFE_SSS
 #include <mutex>

@@ -12,7 +12,7 @@
 #include "Subgraphs.h"
 #include <RDGeneral/utils.h>
 #include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/QueryBond.h>
 #include <iostream>
 #include <algorithm>

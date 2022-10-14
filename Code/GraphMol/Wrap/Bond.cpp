@@ -10,13 +10,16 @@
 
 #define NO_IMPORT_ARRAY
 #include <RDBoost/python.h>
+
 #include <string>
+
 #include "props.hpp"
 
-#include <GraphMol/RDKitBase.h>
 #include <GraphMol/QueryBond.h>
-#include <GraphMol/SmilesParse/SmilesWrite.h>
+#include <GraphMol/QueryOps.h>
+#include <GraphMol/RDKitBase.h>
 #include <GraphMol/SmilesParse/SmartsWrite.h>
+#include <GraphMol/SmilesParse/SmilesWrite.h>
 #include <RDGeneral/types.h>
 
 namespace python = boost::python;
@@ -119,7 +122,7 @@ struct bond_wrapper {
              "stereochemistry.\n")
 
         .def("GetValenceContrib",
-             (double (Bond::*)(const Atom *) const) & Bond::getValenceContrib,
+             (double(Bond::*)(const Atom *) const) & Bond::getValenceContrib,
              "Returns the contribution of the bond to the valence of an "
              "Atom.\n\n"
              "  ARGUMENTS:\n\n"
@@ -154,7 +157,7 @@ struct bond_wrapper {
              "Given one of the bond's atoms, returns the other one.\n")
 
         // FIX: query stuff
-        .def("Match", (bool (Bond::*)(const Bond *) const) & Bond::Match,
+        .def("Match", (bool(Bond::*)(const Bond *) const) & Bond::Match,
              "Returns whether or not this bond matches another Bond.\n\n"
              "  Each Bond (or query Bond) has a query function which is\n"
              "  used for this type of matching.\n\n"
@@ -172,7 +175,8 @@ struct bond_wrapper {
         .def("HasQuery", &Bond::hasQuery,
              "Returns whether or not the bond has an associated query\n\n")
 
-        .def("DescribeQuery", describeQuery,
+        .def("DescribeQuery",
+             (std::string(*)(const Bond *bond)) & describeQuery,
              "returns a text description of the query. Primarily intended for "
              "debugging purposes.\n\n")
 

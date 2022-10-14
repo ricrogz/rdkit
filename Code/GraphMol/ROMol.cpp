@@ -11,26 +11,26 @@
 #include <iostream>
 
 // our stuff
+#include "Atom.h"
+#include "Bond.h"
+#include "Conformer.h"
+#include "MolPickler.h"
+#include "QueryBond.h"
+#include "ROMol.h"
+#include "SubstanceGroup.h"
 #include <RDGeneral/Invariant.h>
 #include <RDGeneral/RDLog.h>
-#include "ROMol.h"
-#include "Atom.h"
-#include "QueryAtom.h"
-#include "Bond.h"
-#include "QueryBond.h"
-#include "MolPickler.h"
-#include "Conformer.h"
-#include "SubstanceGroup.h"
 
 #ifdef RDK_USE_BOOST_SERIALIZATION
 #include <RDGeneral/BoostStartInclude.h>
-#include <boost/archive/text_oarchive.hpp>
+
 #include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+
 #include <RDGeneral/BoostEndInclude.h>
 #endif
 
 namespace RDKit {
-class QueryAtom;
 class QueryBond;
 
 const int ci_RIGHTMOST_ATOM = -0xBADBEEF;

@@ -21,14 +21,14 @@
 /// Std stuff
 #include <cstddef>
 #include <iterator>
-#include <utility>
 #include <map>
+#include <utility>
 
 // boost stuff
 #include <RDGeneral/BoostStartInclude.h>
+#include <boost/dynamic_bitset.hpp>
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/smart_ptr.hpp>
-#include <boost/dynamic_bitset.hpp>
 
 #ifdef RDK_USE_BOOST_SERIALIZATION
 #include <boost/serialization/split_member.hpp>
@@ -36,14 +36,14 @@
 #include <RDGeneral/BoostEndInclude.h>
 
 // our stuff
-#include <RDGeneral/types.h>
-#include <RDGeneral/RDProps.h>
 #include "Atom.h"
 #include "Bond.h"
 #include "Conformer.h"
-#include "SubstanceGroup.h"
-#include "StereoGroup.h"
 #include "RingInfo.h"
+#include "StereoGroup.h"
+#include "SubstanceGroup.h"
+#include <RDGeneral/RDProps.h>
+#include <RDGeneral/types.h>
 
 namespace RDKit {
 class SubstanceGroup;
@@ -55,7 +55,6 @@ typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::undirectedS,
     MolGraph;
 class MolPickler;
 class RWMol;
-class QueryAtom;
 class QueryBond;
 class RingInfo;
 

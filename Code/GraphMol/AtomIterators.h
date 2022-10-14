@@ -24,7 +24,7 @@
 #endif
 
 namespace RDKit {
-class QueryAtom;
+class Atom;
 
 //! A general random access iterator
 template <class Atom_, class Mol_>
@@ -98,9 +98,8 @@ class RDKIT_GRAPHMOL_EXPORT HeteroatomIterator_ {
   int _pos{-1};
   Mol_ *_mol;
   // FIX: somehow changing the following to a pointer make the regression test
-  // pass
-  // QueryAtom _qA;
-  QueryAtom *_qA;
+  // pass Query Atom _qA;
+  Atom *_qA;
 
   int _findNext(int from);
   int _findPrev(int from);
@@ -145,7 +144,7 @@ class RDKIT_GRAPHMOL_EXPORT QueryAtomIterator_ {
  public:
   typedef QueryAtomIterator_<Atom_, Mol_> ThisType;
   QueryAtomIterator_() : _mol(nullptr) {}
-  QueryAtomIterator_(Mol_ *mol, QueryAtom const *what);
+  QueryAtomIterator_(Mol_ *mol, Atom const *what);
   QueryAtomIterator_(Mol_ *mol, int pos);
   ~QueryAtomIterator_();
   QueryAtomIterator_(const ThisType &other);
@@ -167,7 +166,7 @@ class RDKIT_GRAPHMOL_EXPORT QueryAtomIterator_ {
   int _end{-1};
   int _pos{-1};
   Mol_ *_mol;
-  QueryAtom *_qA{nullptr};
+  Atom *_qA{nullptr};
 
   int _findNext(int from);
   int _findPrev(int from);

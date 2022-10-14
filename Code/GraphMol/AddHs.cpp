@@ -9,7 +9,7 @@
 //
 #include "RDKitBase.h"
 #include <list>
-#include "QueryAtom.h"
+#include "Atom.h"
 #include "QueryOps.h"
 #include "MonomerInfo.h"
 #include "Chirality.h"
@@ -1235,7 +1235,8 @@ void mergeQueryHs(RWMol &mol, bool mergeUnmappedOnly, bool mergeIsotopes) {
   }
   mol.commitBatchEdit();
 };
-ROMol *mergeQueryHs(const ROMol &mol, bool mergeUnmappedOnly, bool mergeIsotopes) {
+ROMol *mergeQueryHs(const ROMol &mol, bool mergeUnmappedOnly,
+                    bool mergeIsotopes) {
   auto *res = new RWMol(mol);
   mergeQueryHs(*res, mergeUnmappedOnly, mergeIsotopes);
   return static_cast<ROMol *>(res);

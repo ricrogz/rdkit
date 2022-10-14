@@ -9,19 +9,132 @@
 //
 #include <cmath>
 
-#include "ROMol.h"
 #include "Atom.h"
-#include "PeriodicTable.h"
-#include "SanitException.h"
-#include "QueryOps.h"
 #include "MonomerInfo.h"
-
+#include "PeriodicTable.h"
+#include "QueryOps.h"
+#include "ROMol.h"
+#include "SanitException.h"
+#include <Query/NullQueryAlgebra.h>
+#include <RDGeneral/Dict.h>
 #include <RDGeneral/Invariant.h>
 #include <RDGeneral/RDLog.h>
 #include <RDGeneral/types.h>
-#include <RDGeneral/Dict.h>
 
 namespace RDKit {
+
+namespace {
+bool localMatch(ATOM_EQUALS_QUERY const *q1, ATOM_EQUALS_QUERY const *q2) {
+  if (q1->getNegation() == q2->getNegation()) {
+    return q1->getVal() == q2->getVal();
+  } else {
+    return q1->getVal() != q2->getVal();
+  }
+}
+bool queriesMatch(Atom::QUERYATOM_QUERY const *q1,
+                  Atom::QUERYATOM_QUERY const *q2) {
+  PRECONDITION(q1, "no q1");
+  PRECONDITION(q2, "no q2");
+
+  static const unsigned int nQueries = 20;
+  static std::string equalityQueries[nQueries] = {"AtomType",
+                                                  "AtomRingBondCount",
+                                                  "AtomRingSize",
+                                                  "AtomMinRingSize",
+                                                  "AtomImplicitValence",
+                                                  "AtomExplicitValence",
+                                                  "AtomTotalValence",
+                                                  "AtomAtomicNum",
+                                                  "AtomExplicitDegree",
+                                                  "AtomTotalDegree",
+                                                  "AtomHCount",
+                                                  "AtomIsAromatic",
+                                                  "AtomIsAliphatic",
+                                                  "AtomUnsaturated",
+                                                  "AtomMass",
+                                                  "AtomFormalCharge",
+                                                  "AtomNegativeFormalCharge",
+                                                  "AtomHybridization",
+                                                  "AtomInRing",
+                                                  "AtomInNRings"};
+
+  bool res = false;
+  std::string d1 = q1->getDescription();
+  std::string d2 = q2->getDescription();
+  if (d1 == "AtomNull" || d2 == "AtomNull") {
+    res = true;
+  } else if (d1 == "AtomOr") {
+    // FIX: handle negation on AtomOr and AtomAnd
+    for (auto iter1 = q1->beginChildren(); iter1 != q1->endChildren();
+         ++iter1) {
+      if (d2 == "AtomOr") {
+        for (auto iter2 = q2->beginChildren(); iter2 != q2->endChildren();
+             ++iter2) {
+          if (queriesMatch(iter1->get(), iter2->get())) {
+            res = true;
+            break;
+          }
+        }
+      } else {
+        if (queriesMatch(iter1->get(), q2)) {
+          res = true;
+        }
+      }
+      if (res) {
+        break;
+      }
+    }
+  } else if (d1 == "AtomAnd") {
+    res = true;
+    for (auto iter1 = q1->beginChildren(); iter1 != q1->endChildren();
+         ++iter1) {
+      bool matched = false;
+      if (d2 == "AtomAnd") {
+        for (auto iter2 = q2->beginChildren(); iter2 != q2->endChildren();
+             ++iter2) {
+          if (queriesMatch(iter1->get(), iter2->get())) {
+            matched = true;
+            break;
+          }
+        }
+      } else {
+        matched = queriesMatch(iter1->get(), q2);
+      }
+      if (!matched) {
+        res = false;
+        break;
+      }
+    }
+    // FIX : handle AtomXOr
+  } else if (d2 == "AtomOr") {
+    // FIX: handle negation on AtomOr and AtomAnd
+    for (auto iter2 = q2->beginChildren(); iter2 != q2->endChildren();
+         ++iter2) {
+      if (queriesMatch(q1, iter2->get())) {
+        res = true;
+        break;
+      }
+    }
+  } else if (d2 == "AtomAnd") {
+    res = true;
+    for (auto iter2 = q2->beginChildren(); iter2 != q2->endChildren();
+         ++iter2) {
+      if (!queriesMatch(q1, iter2->get())) {
+        res = false;
+        break;
+      }
+    }
+  } else if (d1 == d2) {
+    if (std::find(&equalityQueries[0], &equalityQueries[nQueries], d1) !=
+        &equalityQueries[nQueries]) {
+      res = localMatch(static_cast<ATOM_EQUALS_QUERY const *>(q1),
+                       static_cast<ATOM_EQUALS_QUERY const *>(q2));
+    }
+  } else {
+  }
+  return res;
+}
+}  // namespace
 
 bool isAromaticAtom(const Atom &atom) {
   if (atom.getIsAromatic()) {
@@ -41,125 +154,125 @@ bool isAromaticAtom(const Atom &atom) {
 // Determine whether or not an element is to the left of carbon.
 bool isEarlyAtom(int atomicNum) {
   static const bool table[119] = {
-    false, // #0 *
-    false, // #1 H
-    false,  // #2 He
-    true,  // #3 Li
-    true,  // #4 Be
-    true,  // #5 B
-    false, // #6 C
-    false, // #7 N
-    false, // #8 O
-    false, // #9 F
-    false, // #10 Ne
-    true,  // #11 Na
-    true,  // #12 Mg
-    true,  // #13 Al
-    false, // #14 Si
-    false, // #15 P
-    false, // #16 S
-    false, // #17 Cl
-    false, // #18 Ar
-    true,  // #19 K
-    true,  // #20 Ca
-    true,  // #21 Sc
-    true,  // #22 Ti
-    false, // #23 V
-    false, // #24 Cr
-    false, // #25 Mn
-    false, // #26 Fe
-    false, // #27 Co
-    false, // #28 Ni
-    false, // #29 Cu
-    true,  // #30 Zn
-    true,  // #31 Ga
-    true,  // #32 Ge  see github #2606
-    false, // #33 As
-    false, // #34 Se
-    false, // #35 Br
-    false, // #36 Kr
-    true,  // #37 Rb
-    true,  // #38 Sr
-    true,  // #39 Y
-    true,  // #40 Zr
-    true,  // #41 Nb
-    false, // #42 Mo
-    false, // #43 Tc
-    false, // #44 Ru
-    false, // #45 Rh
-    false, // #46 Pd
-    false, // #47 Ag
-    true,  // #48 Cd
-    true,  // #49 In
-    true,  // #50 Sn  see github #2606
-    true,  // #51 Sb  see github #2775
-    false, // #52 Te
-    false, // #53 I
-    false, // #54 Xe
-    true,  // #55 Cs
-    true,  // #56 Ba
-    true,  // #57 La
-    true,  // #58 Ce
-    true,  // #59 Pr
-    true,  // #60 Nd
-    true,  // #61 Pm
-    false, // #62 Sm
-    false, // #63 Eu
-    false, // #64 Gd
-    false, // #65 Tb
-    false, // #66 Dy
-    false, // #67 Ho
-    false, // #68 Er
-    false, // #69 Tm
-    false, // #70 Yb
-    false, // #71 Lu
-    true,  // #72 Hf
-    true,  // #73 Ta
-    false, // #74 W
-    false, // #75 Re
-    false, // #76 Os
-    false, // #77 Ir
-    false, // #78 Pt
-    false, // #79 Au
-    true,  // #80 Hg
-    true,  // #81 Tl
-    true,  // #82 Pb  see github #2606
-    true,  // #83 Bi  see github #2775
-    false, // #84 Po
-    false, // #85 At
-    false, // #86 Rn
-    true,  // #87 Fr
-    true,  // #88 Ra
-    true,  // #89 Ac
-    true,  // #90 Th
-    true,  // #91 Pa
-    true,  // #92 U
-    true,  // #93 Np
-    false, // #94 Pu
-    false, // #95 Am
-    false, // #96 Cm
-    false, // #97 Bk
-    false, // #98 Cf
-    false, // #99 Es
-    false, // #100 Fm
-    false, // #101 Md
-    false, // #102 No
-    false, // #103 Lr
-    true,  // #104 Rf
-    true,  // #105 Db
-    true,  // #106 Sg
-    true,  // #107 Bh
-    true,  // #108 Hs
-    true,  // #109 Mt
-    true,  // #110 Ds
-    true,  // #111 Rg
-    true,  // #112 Cn
-    true,  // #113 Nh
-    true,  // #114 Fl
-    true,  // #115 Mc
-    true,  // #116 Lv
-    true,  // #117 Ts
-    true,  // #118 Og
+      false,  // #0 *
+      false,  // #1 H
+      false,  // #2 He
+      true,   // #3 Li
+      true,   // #4 Be
+      true,   // #5 B
+      false,  // #6 C
+      false,  // #7 N
+      false,  // #8 O
+      false,  // #9 F
+      false,  // #10 Ne
+      true,   // #11 Na
+      true,   // #12 Mg
+      true,   // #13 Al
+      false,  // #14 Si
+      false,  // #15 P
+      false,  // #16 S
+      false,  // #17 Cl
+      false,  // #18 Ar
+      true,   // #19 K
+      true,   // #20 Ca
+      true,   // #21 Sc
+      true,   // #22 Ti
+      false,  // #23 V
+      false,  // #24 Cr
+      false,  // #25 Mn
+      false,  // #26 Fe
+      false,  // #27 Co
+      false,  // #28 Ni
+      false,  // #29 Cu
+      true,   // #30 Zn
+      true,   // #31 Ga
+      true,   // #32 Ge  see github #2606
+      false,  // #33 As
+      false,  // #34 Se
+      false,  // #35 Br
+      false,  // #36 Kr
+      true,   // #37 Rb
+      true,   // #38 Sr
+      true,   // #39 Y
+      true,   // #40 Zr
+      true,   // #41 Nb
+      false,  // #42 Mo
+      false,  // #43 Tc
+      false,  // #44 Ru
+      false,  // #45 Rh
+      false,  // #46 Pd
+      false,  // #47 Ag
+      true,   // #48 Cd
+      true,   // #49 In
+      true,   // #50 Sn  see github #2606
+      true,   // #51 Sb  see github #2775
+      false,  // #52 Te
+      false,  // #53 I
+      false,  // #54 Xe
+      true,   // #55 Cs
+      true,   // #56 Ba
+      true,   // #57 La
+      true,   // #58 Ce
+      true,   // #59 Pr
+      true,   // #60 Nd
+      true,   // #61 Pm
+      false,  // #62 Sm
+      false,  // #63 Eu
+      false,  // #64 Gd
+      false,  // #65 Tb
+      false,  // #66 Dy
+      false,  // #67 Ho
+      false,  // #68 Er
+      false,  // #69 Tm
+      false,  // #70 Yb
+      false,  // #71 Lu
+      true,   // #72 Hf
+      true,   // #73 Ta
+      false,  // #74 W
+      false,  // #75 Re
+      false,  // #76 Os
+      false,  // #77 Ir
+      false,  // #78 Pt
+      false,  // #79 Au
+      true,   // #80 Hg
+      true,   // #81 Tl
+      true,   // #82 Pb  see github #2606
+      true,   // #83 Bi  see github #2775
+      false,  // #84 Po
+      false,  // #85 At
+      false,  // #86 Rn
+      true,   // #87 Fr
+      true,   // #88 Ra
+      true,   // #89 Ac
+      true,   // #90 Th
+      true,   // #91 Pa
+      true,   // #92 U
+      true,   // #93 Np
+      false,  // #94 Pu
+      false,  // #95 Am
+      false,  // #96 Cm
+      false,  // #97 Bk
+      false,  // #98 Cf
+      false,  // #99 Es
+      false,  // #100 Fm
+      false,  // #101 Md
+      false,  // #102 No
+      false,  // #103 Lr
+      true,   // #104 Rf
+      true,   // #105 Db
+      true,   // #106 Sg
+      true,   // #107 Bh
+      true,   // #108 Hs
+      true,   // #109 Mt
+      true,   // #110 Ds
+      true,   // #111 Rg
+      true,   // #112 Cn
+      true,   // #113 Nh
+      true,   // #114 Fl
+      true,   // #115 Mc
+      true,   // #116 Lv
+      true,   // #117 Ts
+      true,   // #118 Og
   };
   return ((unsigned int)atomicNum < 119) && table[atomicNum];
 }
@@ -618,14 +731,50 @@ double Atom::getMass() const {
   }
 }
 
-void Atom::setQuery(Atom::QUERYATOM_QUERY *) {
-  //  Atoms don't have complex queries so this has to fail
-  PRECONDITION(0, "plain atoms have no Query");
+void Atom::setQuery(Atom::QUERYATOM_QUERY *what) {
+  delete dp_query;
+  dp_query = what;
 }
-Atom::QUERYATOM_QUERY *Atom::getQuery() const { return nullptr; };
-void Atom::expandQuery(Atom::QUERYATOM_QUERY *, Queries::CompositeQueryType,
-                       bool) {
-  PRECONDITION(0, "plain atoms have no Query");
+
+Atom::QUERYATOM_QUERY *Atom::getQuery() const { return dp_query; };
+
+void Atom::expandQuery(QUERYATOM_QUERY *what, Queries::CompositeQueryType how,
+                       bool maintainOrder) {
+  bool thisIsNullQuery = dp_query->getDescription() == "AtomNull";
+  bool otherIsNullQuery = what->getDescription() == "AtomNull";
+
+  if (thisIsNullQuery || otherIsNullQuery) {
+    mergeNullQueries(dp_query, thisIsNullQuery, what, otherIsNullQuery, how);
+    delete what;
+    return;
+  }
+
+  QUERYATOM_QUERY *origQ = dp_query;
+  std::string descrip;
+  switch (how) {
+    case Queries::COMPOSITE_AND:
+      dp_query = new ATOM_AND_QUERY;
+      descrip = "AtomAnd";
+      break;
+    case Queries::COMPOSITE_OR:
+      dp_query = new ATOM_OR_QUERY;
+      descrip = "AtomOr";
+      break;
+    case Queries::COMPOSITE_XOR:
+      dp_query = new ATOM_XOR_QUERY;
+      descrip = "AtomXor";
+      break;
+    default:
+      UNDER_CONSTRUCTION("unrecognized combination query");
+  }
+  dp_query->setDescription(descrip);
+  if (maintainOrder) {
+    dp_query->addChild(QUERYATOM_QUERY::CHILD_TYPE(origQ));
+    dp_query->addChild(QUERYATOM_QUERY::CHILD_TYPE(what));
+  } else {
+    dp_query->addChild(QUERYATOM_QUERY::CHILD_TYPE(what));
+    dp_query->addChild(QUERYATOM_QUERY::CHILD_TYPE(origQ));
+  }
 }
 
 bool Atom::Match(Atom const *what) const {
@@ -664,6 +813,17 @@ bool Atom::Match(Atom const *what) const {
   }
   return res;
 }
+
+bool Atom::QueryMatch(Atom const *what) const {
+  PRECONDITION(what && what->hasQuery(), "bad query atom");
+  PRECONDITION(dp_query, "no query set");
+  if (!what->hasQuery()) {
+    return dp_query->Match(what);
+  } else {
+    return queriesMatch(dp_query, what->getQuery());
+  }
+}
+
 void Atom::updatePropertyCache(bool strict) {
   calcExplicitValence(strict);
   calcImplicitValence(strict);

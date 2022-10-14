@@ -16,7 +16,7 @@
 
 #include <GraphMol/RDKitBase.h>
 #include <GraphMol/MolPickler.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/QueryBond.h>
 #include <GraphMol/SmilesParse/SmilesParse.h>
 #include <GraphMol/SmilesParse/SmilesWrite.h>

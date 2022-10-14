@@ -11,9 +11,9 @@
 #ifndef _RD_QUERYBOND_H
 #define _RD_QUERYBOND_H
 
-#include <Query/QueryObjects.h>
 #include "Bond.h"
 #include "QueryOps.h"
+#include <Query/QueryObjects.h>
 
 namespace RDKit {
 

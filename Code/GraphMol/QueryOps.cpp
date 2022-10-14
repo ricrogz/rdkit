@@ -10,7 +10,7 @@
 #include "QueryOps.h"
 #include <algorithm>
 #include <RDGeneral/types.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <boost/range/iterator_range.hpp>
 #include <boost/dynamic_bitset.hpp>
 #include <boost/algorithm/string.hpp>

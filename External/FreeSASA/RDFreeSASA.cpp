@@ -29,13 +29,15 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryOps.h>
-#include <GraphMol/RDKitQueries.h>
-#include <GraphMol/MonomerInfo.h>
-#include <RDGeneral/types.h>
 #include "RDFreeSASA.h"
+
 #include "boost/format.hpp"
+
+#include <GraphMol/MonomerInfo.h>
+#include <GraphMol/QueryOps.h>
+#include <GraphMol/RDKitBase.h>
+#include <GraphMol/RDKitQueries.h>
+#include <RDGeneral/types.h>
 
 extern "C" {
 #include "freesasa.h"

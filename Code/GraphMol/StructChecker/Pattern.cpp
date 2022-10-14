@@ -13,7 +13,7 @@
 #endif
 
 #include <map>
-#include "../QueryAtom.h"
+#include "../Atom.h"
 #include "Pattern.h"
 
 // define snprintf for msvc

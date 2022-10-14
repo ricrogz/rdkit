@@ -11,7 +11,7 @@
 #include "catch.hpp"
 #include <RDGeneral/Invariant.h>
 #include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/MolPickler.h>
 #include <GraphMol/Chirality.h>
 #include <GraphMol/FileParsers/FileParsers.h>

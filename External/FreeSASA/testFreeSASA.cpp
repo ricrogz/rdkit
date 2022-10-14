@@ -32,7 +32,7 @@
 #include "RDFreeSASA.h"
 
 #include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/SmilesParse/SmilesParse.h>
 #include <GraphMol/FileParsers/FileParsers.h>
 

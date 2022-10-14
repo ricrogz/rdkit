@@ -13,7 +13,6 @@
 
 #include <Geometry/point.h>
 #include <GraphMol/Atom.h>
-#include <GraphMol/QueryAtom.h>
 #include <GraphMol/Bond.h>
 #include <GraphMol/QueryBond.h>
 #include <RDGeneral/StreamOps.h>

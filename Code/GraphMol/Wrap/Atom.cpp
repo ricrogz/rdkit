@@ -10,32 +10,34 @@
 
 #define NO_IMPORT_ARRAY
 #include <RDBoost/python.h>
+
+#include <algorithm>
 #include <string>
 
-#include <GraphMol/RDKitBase.h>
-#include <GraphMol/QueryAtom.h>
-#include <GraphMol/MonomerInfo.h>
-#include <RDGeneral/types.h>
 #include <Geometry/point.h>
-#include <GraphMol/SmilesParse/SmilesWrite.h>
+#include <GraphMol/Atom.h>
+#include <GraphMol/MonomerInfo.h>
+#include <GraphMol/QueryOps.h>
+#include <GraphMol/RDKitBase.h>
 #include <GraphMol/SmilesParse/SmartsWrite.h>
+#include <GraphMol/SmilesParse/SmilesWrite.h>
 #include <RDBoost/Wrap.h>
+#include <RDGeneral/types.h>
 
-#include "seqs.hpp"
 #include "props.hpp"
-#include <algorithm>
+#include "seqs.hpp"
 
 namespace python = boost::python;
 namespace RDKit {
-void expandQuery(QueryAtom *self, const QueryAtom *other,
-                 Queries::CompositeQueryType how, bool maintainOrder) {
+void expandQuery(Atom *self, const Atom *other, Queries::CompositeQueryType how,
+                 bool maintainOrder) {
   if (other->hasQuery()) {
-    const QueryAtom::QUERYATOM_QUERY *qry = other->getQuery();
+    const Atom::QUERYATOM_QUERY *qry = other->getQuery();
     self->expandQuery(qry->copy(), how, maintainOrder);
   }
 }
 
-void setQuery(QueryAtom *self, const QueryAtom *other) {
+void setQuery(Atom *self, const Atom *other) {
   if (other->hasQuery()) {
     self->setQuery(other->getQuery()->copy());
   }
@@ -94,7 +96,7 @@ std::string AtomGetSmarts(const Atom *atom, bool doKekule, bool allHsExplicit,
                           bool isomericSmiles) {
   std::string res;
   if (atom->hasQuery()) {
-    res = SmartsWrite::GetAtomSmarts(static_cast<const QueryAtom *>(atom));
+    res = SmartsWrite::GetAtomSmarts(static_cast<const Atom *>(atom));
   } else {
     // FIX: this should not be necessary
     res = SmilesWrite::GetAtomSmiles(atom, doKekule, nullptr, allHsExplicit,
@@ -239,7 +241,7 @@ struct atom_wrapper {
         .def("GetBonds", AtomGetBonds,
              "Returns a read-only sequence of the atom's bonds\n")
 
-        .def("Match", (bool (Atom::*)(const Atom *) const) & Atom::Match,
+        .def("Match", (bool(Atom::*)(const Atom *) const) & Atom::Match,
              "Returns whether or not this atom matches another Atom.\n\n"
              "  Each Atom (or query Atom) has a query function which is\n"
              "  used for this type of matching.\n\n"
@@ -261,6 +263,15 @@ struct atom_wrapper {
         .def("DescribeQuery", describeQuery,
              "returns a text description of the query. Primarily intended for "
              "debugging purposes.\n\n")
+
+        .def("ExpandQuery", expandQuery,
+             (python::arg("self"), python::arg("other"),
+              python::arg("how") = Queries::COMPOSITE_AND,
+              python::arg("maintainOrder") = true),
+             "combines the query from other with ours")
+
+        .def("SetQuery", setQuery, (python::arg("self"), python::arg("other")),
+             "Replace our query with a copy of the other query")
 
         .def("GetSmarts", AtomGetSmarts,
              (python::arg("self"), python::arg("doKekule") = false,
@@ -449,20 +460,6 @@ struct atom_wrapper {
         .value("COMPOSITE_OR", Queries::COMPOSITE_OR)
         .value("COMPOSITE_XOR", Queries::COMPOSITE_XOR)
         .export_values();
-    ;
-
-    atomClassDoc =
-        "The class to store QueryAtoms.\n\
-These cannot currently be constructed directly from Python\n";
-    python::class_<QueryAtom, python::bases<Atom>>(
-        "QueryAtom", atomClassDoc.c_str(), python::no_init)
-        .def("ExpandQuery", expandQuery,
-             (python::arg("self"), python::arg("other"),
-              python::arg("how") = Queries::COMPOSITE_AND,
-              python::arg("maintainOrder") = true),
-             "combines the query from other with ours")
-        .def("SetQuery", setQuery, (python::arg("self"), python::arg("other")),
-             "Replace our query with a copy of the other query");
 
     python::def(
         "GetAtomRLabel", getAtomRLabel, (python::arg("atom")),

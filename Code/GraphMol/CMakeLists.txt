@@ -6,13 +6,11 @@ else()
 endif()
 
 rdkit_library(GraphMol
-              Atom.cpp QueryAtom.cpp QueryBond.cpp Bond.cpp
-              MolOps.cpp FindRings.cpp ROMol.cpp RWMol.cpp PeriodicTable.cpp
-              atomic_data.cpp QueryOps.cpp MolPickler.cpp Canon.cpp
-              AtomIterators.cpp BondIterators.cpp Aromaticity.cpp Kekulize.cpp
-              ConjugHybrid.cpp AddHs.cpp
-              Matrices.cpp Chirality.cpp RingInfo.cpp Conformer.cpp
-              Renumber.cpp AdjustQuery.cpp Resonance.cpp StereoGroup.cpp
+              Atom.cpp QueryBond.cpp Bond.cpp MolOps.cpp FindRings.cpp ROMol.cpp
+              RWMol.cpp PeriodicTable.cpp atomic_data.cpp QueryOps.cpp MolPickler.cpp
+              Canon.cpp AtomIterators.cpp BondIterators.cpp Aromaticity.cpp Kekulize.cpp
+              ConjugHybrid.cpp AddHs.cpp Matrices.cpp Chirality.cpp RingInfo.cpp
+              Conformer.cpp Renumber.cpp AdjustQuery.cpp Resonance.cpp StereoGroup.cpp
               new_canon.cpp SubstanceGroup.cpp FindStereo.cpp MonomerInfo.cpp
               NontetrahedralStereo.cpp
               SHARED
@@ -38,7 +36,6 @@ rdkit_headers(Atom.h
               MolOps.h
               MolPickler.h
               PeriodicTable.h
-              QueryAtom.h
               QueryBond.h
               QueryOps.h
               RDKitBase.h

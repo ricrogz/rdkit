@@ -16,7 +16,7 @@
 #include <GraphMol/MolStandardize/Tautomer.h>
 #include <GraphMol/Bond.h>
 #include <GraphMol/QueryOps.h>
-#include <GraphMol/QueryAtom.h>
+#include <GraphMol/Atom.h>
 #include <GraphMol/QueryBond.h>
 #include <GraphMol/Substruct/SubstructUtils.h>
 #include <GraphMol/Fingerprints/Fingerprints.h>
