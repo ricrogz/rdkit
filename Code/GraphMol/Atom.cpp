@@ -736,11 +736,17 @@ void Atom::setQuery(Atom::QUERYATOM_QUERY *what) {
   dp_query = what;
 }
 
-Atom::QUERYATOM_QUERY *Atom::getQuery() const { return dp_query; };
+Atom::QUERYATOM_QUERY *Atom::getQuery() const {
+  if (dp_query == nullptr) {
+    auto atom = const_cast<Atom *>(this);
+    atom->dp_query = makeAtomNumQuery(d_atomicNum);
+  }
+  return dp_query;
+};
 
 void Atom::expandQuery(QUERYATOM_QUERY *what, Queries::CompositeQueryType how,
                        bool maintainOrder) {
-  bool thisIsNullQuery = dp_query->getDescription() == "AtomNull";
+  bool thisIsNullQuery = getQuery()->getDescription() == "AtomNull";
   bool otherIsNullQuery = what->getDescription() == "AtomNull";
 
   if (thisIsNullQuery || otherIsNullQuery) {
@@ -815,13 +821,8 @@ bool Atom::Match(Atom const *what) const {
 }
 
 bool Atom::QueryMatch(Atom const *what) const {
-  PRECONDITION(what && what->hasQuery(), "bad query atom");
-  PRECONDITION(dp_query, "no query set");
-  if (!what->hasQuery()) {
-    return dp_query->Match(what);
-  } else {
-    return queriesMatch(dp_query, what->getQuery());
-  }
+  PRECONDITION(what, "bad query atom");
+  return queriesMatch(getQuery(), what->getQuery());
 }
 
 void Atom::updatePropertyCache(bool strict) {
