@@ -314,6 +314,9 @@ void Atom::initFromOther(const Atom &other) {
   } else {
     dp_monomerInfo = nullptr;
   }
+  if (other.hasQuery()) {
+    dp_query = other.dp_query->copy();
+  }
 }
 
 Atom::Atom(const Atom &other) : RDProps() { initFromOther(other); }
@@ -739,23 +742,38 @@ void Atom::setQuery(Atom::QUERYATOM_QUERY *what) {
 Atom::QUERYATOM_QUERY *Atom::getQuery() const {
   if (dp_query == nullptr) {
     auto atom = const_cast<Atom *>(this);
-    atom->dp_query = makeAtomNumQuery(d_atomicNum);
+    atom->setQuery(makeAtomNumQuery(d_atomicNum));
+
+    if (getIsotope()) {
+      atom->expandQuery(makeAtomIsotopeQuery(getIsotope()),
+                        Queries::CompositeQueryType::COMPOSITE_AND);
+    }
+    if (getFormalCharge()) {
+      atom->expandQuery(makeAtomFormalChargeQuery(getFormalCharge()),
+                        Queries::CompositeQueryType::COMPOSITE_AND);
+    }
+    if (getNumRadicalElectrons()) {
+      atom->expandQuery(
+          makeAtomNumRadicalElectronsQuery(getNumRadicalElectrons()),
+          Queries::CompositeQueryType::COMPOSITE_AND);
+    }
   }
   return dp_query;
 };
 
 void Atom::expandQuery(QUERYATOM_QUERY *what, Queries::CompositeQueryType how,
                        bool maintainOrder) {
-  bool thisIsNullQuery = getQuery()->getDescription() == "AtomNull";
+  auto q = getQuery();  // Make sure we have a query to expand
+  bool thisIsNullQuery = q->getDescription() == "AtomNull";
   bool otherIsNullQuery = what->getDescription() == "AtomNull";
 
   if (thisIsNullQuery || otherIsNullQuery) {
-    mergeNullQueries(dp_query, thisIsNullQuery, what, otherIsNullQuery, how);
+    mergeNullQueries(q, thisIsNullQuery, what, otherIsNullQuery, how);
     delete what;
     return;
   }
 
-  QUERYATOM_QUERY *origQ = dp_query;
+  QUERYATOM_QUERY *origQ = q;
   std::string descrip;
   switch (how) {
     case Queries::COMPOSITE_AND:
@@ -785,44 +803,57 @@ void Atom::expandQuery(QUERYATOM_QUERY *what, Queries::CompositeQueryType how,
 
 bool Atom::Match(Atom const *what) const {
   PRECONDITION(what, "bad query atom");
-  bool res = getAtomicNum() == what->getAtomicNum();
 
-  // special dummy--dummy match case:
-  //   [*] matches [*],[1*],[2*],etc.
-  //   [1*] only matches [*] and [1*]
-  if (res) {
-    if (this->dp_mol && what->dp_mol &&
-        this->getOwningMol().getRingInfo()->isInitialized() &&
-        what->getOwningMol().getRingInfo()->isInitialized() &&
-        this->getOwningMol().getRingInfo()->numAtomRings(d_index) >
-            what->getOwningMol().getRingInfo()->numAtomRings(what->d_index)) {
-      res = false;
-    } else if (!this->getAtomicNum()) {
-      // this is the new behavior, based on the isotopes:
-      int tgt = this->getIsotope();
-      int test = what->getIsotope();
-      if (tgt && test && tgt != test) {
+  if (!hasQuery()) {
+    bool res = getAtomicNum() == what->getAtomicNum();
+
+    // special dummy--dummy match case:
+    //   [*] matches [*],[1*],[2*],etc.
+    //   [1*] only matches [*] and [1*]
+    if (res) {
+      if (this->dp_mol && what->dp_mol &&
+          this->getOwningMol().getRingInfo()->isInitialized() &&
+          what->getOwningMol().getRingInfo()->isInitialized() &&
+          this->getOwningMol().getRingInfo()->numAtomRings(d_index) >
+              what->getOwningMol().getRingInfo()->numAtomRings(what->d_index)) {
         res = false;
-      }
-    } else {
-      // standard atom-atom match: The general rule here is that if this atom
-      // has a property that
-      // deviates from the default, then the other atom should match that value.
-      if ((this->getFormalCharge() &&
-           this->getFormalCharge() != what->getFormalCharge()) ||
-          (this->getIsotope() && this->getIsotope() != what->getIsotope()) ||
-          (this->getNumRadicalElectrons() &&
-           this->getNumRadicalElectrons() != what->getNumRadicalElectrons())) {
-        res = false;
+      } else if (!this->getAtomicNum()) {
+        // this is the new behavior, based on the isotopes:
+        int tgt = this->getIsotope();
+        int test = what->getIsotope();
+        if (tgt && test && tgt != test) {
+          res = false;
+        }
+      } else {
+        // standard atom-atom match: The general rule here is that if this atom
+        // has a property that
+        // deviates from the default, then the other atom should match that
+        // value.
+        if ((this->getFormalCharge() &&
+             this->getFormalCharge() != what->getFormalCharge()) ||
+            (this->getIsotope() && this->getIsotope() != what->getIsotope()) ||
+            (this->getNumRadicalElectrons() &&
+             this->getNumRadicalElectrons() !=
+                 what->getNumRadicalElectrons())) {
+          res = false;
+        }
       }
     }
+    return res;
+  } else {
+    return getQuery()->Match(what);
   }
-  return res;
 }
 
 bool Atom::QueryMatch(Atom const *what) const {
   PRECONDITION(what, "bad query atom");
-  return queriesMatch(getQuery(), what->getQuery());
+
+  auto query = getQuery();
+  if (!what->hasQuery()) {
+    return query->Match(what);
+  } else {
+    return queriesMatch(query, what->getQuery());
+  }
 }
 
 void Atom::updatePropertyCache(bool strict) {
