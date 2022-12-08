@@ -306,4 +306,17 @@ struct iterable_converter {
   }
 };
 
+// pattern from here:
+// https://stackoverflow.com/questions/11448735/boostpython-export-custom-exception-and-inherit-from-pythons-exception
+template <typename EXC_TYPE>
+void exceptionTranslator(const EXC_TYPE &x, PyObject *pyExcType) {
+  PRECONDITION(pyExcType != nullptr, "global type not initialized");
+  python::object pyExcInstance(python::handle<>(python::borrowed(pyExcType)));
+  pyExcInstance.attr("cause") = x;
+  PyErr_SetString(pyExcType, x.what());
+}
+
+RDKIT_RDBOOST_EXPORT PyObject *createExceptionClass(
+    const char *name, PyObject *baseTypeObj = PyExc_ValueError);
+
 #endif

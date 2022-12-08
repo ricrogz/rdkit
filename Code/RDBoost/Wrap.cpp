@@ -13,10 +13,9 @@
 // Generic Wrapper utility functionality
 //
 #include "Wrap.h"
+
 #include "pyint_api.h"
 #include <RDBoost/PySequenceHolder.h>
-#include <sstream>
-#include <iostream>
 
 // A helper function for dealing with errors. Throw a Python IndexError
 void throw_index_error(int key) {
@@ -136,6 +135,22 @@ std::vector<unsigned int> *translateIntSeq(const python::object &intSeq) {
     }
   }
   return intVec;
+}
+
+// pattern from here:
+// https://stackoverflow.com/questions/9620268/boost-python-custom-exception-class
+PyObject *createExceptionClass(const char *name, PyObject *baseTypeObj) {
+  std::string scopeName =
+      python::extract<std::string>(python::scope().attr("__name__"));
+  std::string qualifiedName0 = scopeName + "." + name;
+  char *qualifiedName1 = const_cast<char *>(qualifiedName0.c_str());
+
+  PyObject *typeObj = PyErr_NewException(qualifiedName1, baseTypeObj, nullptr);
+  if (!typeObj) {
+    python::throw_error_already_set();
+  }
+  python::scope().attr(name) = python::handle<>(python::borrowed(typeObj));
+  return typeObj;
 }
 
 #endif

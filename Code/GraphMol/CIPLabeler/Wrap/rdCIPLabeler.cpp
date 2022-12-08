@@ -15,11 +15,12 @@
 
 #include <GraphMol/RDKitBase.h>
 #include <GraphMol/CIPLabeler/CIPLabeler.h>
-#include <GraphMol/FileParsers/FileParsers.h>
-
+#include <GraphMol/CIPLabeler/TooManyNodesException.h>
 
 namespace python = boost::python;
 using RDKit::CIPLabeler::assignCIPLabels;
+using RDKit::CIPLabeler::MaxIterationsExceeded;
+using RDKit::CIPLabeler::TooManyNodesException;
 
 void rdMaxIterationsExceededTranslator(RDKit::CIPLabeler::MaxIterationsExceeded const &x) {
   std::ostringstream ss;
@@ -40,8 +41,11 @@ void assignCIPLabelsWrapHelper(RDKit::ROMol &mol,
     bonds.set();
   }
 
-  assignCIPLabels(mol, atoms, bonds,maxRecursiveIterations);
+  assignCIPLabels(mol, atoms, bonds, maxRecursiveIterations);
 }
+
+PyObject *maxIterationsExceededExceptionType = nullptr;
+PyObject *tooManyNodesExceptionType = nullptr;
 
 BOOST_PYTHON_MODULE(rdCIPLabeler) {
   python::scope().attr("__doc__") =
@@ -61,7 +65,8 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
       "New implementation of Stereo assignment using a true CIP ranking.\n"
       "On return:  The molecule to contains CIP flags\n"
       "Errors:  when maxRecursiveIterations is exceeded, throws a "
-      "MaxIterationsExceeded error\nARGUMENTS:\n\n"
+      "MaxIterationsExceededException error. May also throw a \n"
+      "TooManyNodesException for exceedingly complex graphs.\nARGUMENTS:\n\n"
       " - mol: the molecule\n"
       " - atomsToLabel: (optional) list of atoms to label\n"
       " - bondsToLabel: (optional) list of bonds to label\n"
@@ -73,9 +78,27 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
 
   python::def(
       "AssignCIPLabels", assignCIPLabelsWrapHelper,
-      (python::arg("mol"), 
-       python::arg("atomsToLabel") = python::object(),
+      (python::arg("mol"), python::arg("atomsToLabel") = python::object(),
        python::arg("bondsToLabel") = python::object(),
        python::arg("maxRecursiveIterations") = 0),
       docString.c_str());
+
+  boost::python::class_<MaxIterationsExceeded>("MaxIterationsExceededException",
+                                               python::no_init);
+  boost::python::class_<TooManyNodesException>("TooManyNodesException",
+                                               python::no_init);
+
+  maxIterationsExceededExceptionType = createExceptionClass(
+      "MaxIterationsExceededException", PyExc_RuntimeError);
+  tooManyNodesExceptionType =
+      createExceptionClass("TooManyNodesException", PyExc_RuntimeError);
+
+  python::register_exception_translator<MaxIterationsExceeded>(
+      [&](const MaxIterationsExceeded &exc) {
+        exceptionTranslator(exc, maxIterationsExceededExceptionType);
+      });
+  python::register_exception_translator<TooManyNodesException>(
+      [&](const TooManyNodesException &exc) {
+        exceptionTranslator(exc, tooManyNodesExceptionType);
+      });
 }
