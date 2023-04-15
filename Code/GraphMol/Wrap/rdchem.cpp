@@ -14,6 +14,7 @@
 #include <GraphMol/RDKitBase.h>
 #include <GraphMol/SanitException.h>
 #include <RDBoost/import_array.h>
+#include <boost/python/iterator.hpp>
 
 #include <sstream>
 #include <utility>
@@ -168,6 +169,10 @@ BOOST_PYTHON_MODULE(rdchem) {
   //  Utility Classes
   //
   //*********************************************
+  python::class_<CXXAtomIterator<MolGraph, Atom *>>(
+      "CXXAtomIterWrap", "Atom iterator.", python::no_init)
+      .def("__iter__", python::iterator<CXXAtomIterator<MolGraph, Atom *>>());
+
   python::class_<AtomIterSeq>(
       "_ROAtomSeq",
       "Read-only sequence of atoms, not constructible from Python.",

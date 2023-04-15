@@ -116,7 +116,7 @@ struct CXXAtomIterator {
   Graph *graph;
   Iterator vstart, vend;
 
-  struct CXXAtomIter {
+  struct iterator {
     using iterator_category = std::forward_iterator_tag;
     using difference_type = std::ptrdiff_t;
     using value_type = Vertex;
@@ -127,19 +127,25 @@ struct CXXAtomIterator {
     Iterator pos;
     Atom *current;
 
-    CXXAtomIter(Graph *graph, Iterator pos)
+    iterator(Graph *graph, Iterator pos)
         : graph(graph), pos(pos), current(nullptr) {}
 
     reference operator*() {
       current = (*graph)[*pos];
       return current;
     }
-    CXXAtomIter &operator++() {
+    iterator &operator++() {
       ++pos;
       return *this;
     }
-    bool operator==(const CXXAtomIter &it) const { return pos == it.pos; }
-    bool operator!=(const CXXAtomIter &it) const { return pos != it.pos; }
+    iterator operator++(int) {
+      iterator ret(graph, pos);
+      ++pos;
+      return ret;
+    }
+
+    bool operator==(const iterator &it) const { return pos == it.pos; }
+    bool operator!=(const iterator &it) const { return pos != it.pos; }
   };
 
   CXXAtomIterator(Graph *graph) : graph(graph) {
@@ -149,8 +155,8 @@ struct CXXAtomIterator {
   }
   CXXAtomIterator(Graph *graph, Iterator start, Iterator end)
       : graph(graph), vstart(start), vend(end){};
-  CXXAtomIter begin() { return {graph, vstart}; }
-  CXXAtomIter end() { return {graph, vend}; }
+  iterator begin() { return {graph, vstart}; }
+  iterator end() { return {graph, vend}; }
 };
 
 template <class Graph, class Edge,

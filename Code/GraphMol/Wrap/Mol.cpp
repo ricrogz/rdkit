@@ -117,10 +117,8 @@ void MolDebug(const ROMol &mol, bool useStdout) {
 }
 
 // FIX: we should eventually figure out how to do iterators properly
-AtomIterSeq *MolGetAtoms(const ROMOL_SPTR &mol) {
-  AtomIterSeq *res = new AtomIterSeq(mol, mol->beginAtoms(), mol->endAtoms(),
-                                     AtomCountFunctor(mol));
-  return res;
+CXXAtomIterator<MolGraph, Atom *> MolGetAtoms(const ROMOL_SPTR &mol) {
+  return mol->atoms();
 }
 QueryAtomIterSeq *MolGetAromaticAtoms(const ROMOL_SPTR &mol) {
   auto *qa = new QueryAtom();
@@ -777,9 +775,6 @@ struct mol_wrapper {
              "  RETURNS: a dictionary\n")
 
         .def("GetAtoms", MolGetAtoms,
-             python::return_value_policy<
-                 python::manage_new_object,
-                 python::with_custodian_and_ward_postcall<0, 1>>(),
              "Returns a read-only sequence containing all of the molecule's "
              "Atoms.\n")
         .def("GetAromaticAtoms", MolGetAromaticAtoms,
