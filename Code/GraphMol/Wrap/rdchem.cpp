@@ -173,21 +173,6 @@ BOOST_PYTHON_MODULE(rdchem) {
       "CXXAtomIterWrap", "Atom iterator.", python::no_init)
       .def("__iter__", python::iterator<CXXAtomIterator<MolGraph, Atom *>>());
 
-  python::class_<AtomIterSeq>(
-      "_ROAtomSeq",
-      "Read-only sequence of atoms, not constructible from Python.",
-      python::no_init)
-      .def("__iter__", &AtomIterSeq::__iter__,
-           python::return_internal_reference<
-               1, python::with_custodian_and_ward_postcall<0, 1>>())
-      .def("__next__", &AtomIterSeq::next,
-           python::return_internal_reference<
-               1, python::with_custodian_and_ward_postcall<0, 1>>())
-
-      .def("__len__", &AtomIterSeq::len)
-      .def("__getitem__", &AtomIterSeq::get_item,
-           python::return_internal_reference<
-               1, python::with_custodian_and_ward_postcall<0, 1>>());
   python::class_<QueryAtomIterSeq>("_ROQAtomSeq",
                                    "Read-only sequence of atoms matching a "
                                    "query, not constructible from Python.",

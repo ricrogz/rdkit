@@ -122,7 +122,6 @@ class ReadOnlySeq {
   }
 };
 
-typedef ReadOnlySeq<ROMol::AtomIterator, Atom *, AtomCountFunctor> AtomIterSeq;
 typedef ReadOnlySeq<ROMol::QueryAtomIterator, Atom *, AtomCountFunctor>
     QueryAtomIterSeq;
 typedef ReadOnlySeq<ROMol::BondIterator, Bond *, BondCountFunctor> BondIterSeq;
