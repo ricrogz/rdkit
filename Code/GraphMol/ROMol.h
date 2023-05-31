@@ -125,15 +125,10 @@ struct CXXAtomIterator {
 
     Graph *graph;
     Iterator pos;
-    Atom *current;
 
-    iterator(Graph *graph, Iterator pos)
-        : graph(graph), pos(pos), current(nullptr) {}
+    iterator(Graph *graph, Iterator pos) : graph(graph), pos(pos) {}
 
-    reference operator*() {
-      current = (*graph)[*pos];
-      return current;
-    }
+    reference operator*() { return (*graph)[*pos]; }
     iterator &operator++() {
       ++pos;
       return *this;

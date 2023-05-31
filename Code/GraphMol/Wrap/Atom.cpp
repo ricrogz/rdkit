@@ -140,8 +140,8 @@ Note that, though it is possible to create one, having an Atom on its own\n\
 (i.e not associated with a molecule) is not particularly useful.\n";
 struct atom_wrapper {
   static void wrap() {
-    python::class_<Atom>("Atom", atomClassDoc.c_str(),
-                         python::init<std::string>())
+    python::class_<Atom, Atom *>("Atom", atomClassDoc.c_str(),
+                                 python::init<std::string>())
 
         .def(python::init<const Atom &>())
         .def(python::init<unsigned int>(
@@ -276,16 +276,18 @@ struct atom_wrapper {
              "    - key: the name of the property to be set (a string).\n"
              "    - value: the property value (a string).\n\n")
 
-        .def("GetProp", GetPyProp<Atom>,
-	     (python::arg("self"), python::arg("key"), python::arg("autoConvert")=false),
-             "Returns the value of the property.\n\n"
-             "  ARGUMENTS:\n"
-             "    - key: the name of the property to return (a string).\n\n"
-             "    - autoConvert: if True attempt to convert the property into a python object\n\n"
-             "  RETURNS: a string\n\n"
-             "  NOTE:\n"
-             "    - If the property has not been set, a KeyError exception "
-             "will be raised.\n")
+        .def(
+            "GetProp", GetPyProp<Atom>,
+            (python::arg("self"), python::arg("key"),
+             python::arg("autoConvert") = false),
+            "Returns the value of the property.\n\n"
+            "  ARGUMENTS:\n"
+            "    - key: the name of the property to return (a string).\n\n"
+            "    - autoConvert: if True attempt to convert the property into a python object\n\n"
+            "  RETURNS: a string\n\n"
+            "  NOTE:\n"
+            "    - If the property has not been set, a KeyError exception "
+            "will be raised.\n")
 
         .def("SetIntProp", AtomSetProp<int>,
              (python::arg("self"), python::arg("key"), python::arg("val")),
@@ -391,7 +393,7 @@ struct atom_wrapper {
         .def("GetPropsAsDict", GetPropsAsDict<Atom>,
              (python::arg("self"), python::arg("includePrivate") = true,
               python::arg("includeComputed") = true,
-	      python::arg("autoConvertStrings") = true),
+              python::arg("autoConvertStrings") = true),
              "Returns a dictionary of the properties set on the Atom.\n"
              " n.b. some properties cannot be converted to python types.\n")
 
