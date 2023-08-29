@@ -348,7 +348,7 @@ Finally, if you disable parsing of both CXSMILES and names, then extra text in t
   >>> m5 is None
   True
 
-The examples in this sectin all used the SMILES parser, but the SMARTS parser behaves the same way.
+The examples in this section all used the SMILES parser, but the SMARTS parser behaves the same way.
 
 SMARTS Support and Extensions
 =============================
@@ -493,13 +493,13 @@ Primitive        Property               Notes
 Mol/SDF Support and Extensions
 ==============================
 
-The RDKit covers an extensive subset of the features in the V2000 and V3000 CTAB specfication.
+The RDKit covers an extensive subset of the features in the V2000 and V3000 CTAB specification.
 This subset should be better documented.
 
 Here are the non-element atom queries that are supported:
   - A: any heavy atom
   - Q: any non-carbon heavy atom
-  - \*: unspecfied (interpreted as any atom)
+  - \*: unspecified (interpreted as any atom)
   - L: (V2000): atom list
   - AH: (ChemAxon Extension) any atom
   - QH: (ChemAxon Extension) any non-carbon atom
@@ -656,9 +656,9 @@ Brief description of the ``findPotentialStereo()`` algorithm
       atom
    6. Set the symbol of any double bond which has two identically ranked atoms
       attached to either end [#eitherend]_ to the default for that bond
-   7. If steps 5 and 6 modfied any atoms or bonds, loop back to step 4. 
-   8. Add any potential stereogenic atom which does not have to identically 
-      ranked neighbors to the results 
+   7. If steps 5 and 6 modified any atoms or bonds, loop back to step 4.
+   8. Add any potential stereogenic atom which does not have to identically
+      ranked neighbors to the results
    9. Add any potential stereogenic atom which does not have two identically
       ranked atoms attached to either end [#eitherend]_ to the results
    10. Return the results
@@ -1052,7 +1052,7 @@ Chirality
 ---------
 
 This section describes how chirality information in the reaction
-defition is handled. A consistent example, esterification of secondary
+definition is handled. A consistent example, esterification of secondary
 alcohols, is used throughout [#chiralRxn]_.
 
 If no chiral information is present in the reaction definition, the
@@ -1292,7 +1292,7 @@ For example, this excerpt from an FDef file defines another atom type - Hphobe -
   AtomType Carbon_NonPolar [C&!$(C=[O,N,P,S])&!$(C#N)]
   AtomType Hphobe [{Carbon_NonPolar},c,s,S&H0&v2,F,Cl,Br,I]
 
-Note that ``{Carbon_NonPolar}`` is used in the new AtomType definition without any additional decoration (no square brackes or recursive SMARTS markers are required).
+Note that ``{Carbon_NonPolar}`` is used in the new AtomType definition without any additional decoration (no square brackets or recursive SMARTS markers are required).
 
 
 Repeating an AtomType results in the two definitions being combined using the SMARTS "," (or) operator.
@@ -1546,43 +1546,43 @@ Here's an example of using the features:
 
 Here are the supported groups and a brief description of what they mean:
 
- ========================   =========
-  Alkyl (ALK)               alkyl side chains (not an H atom)
-  AlkylH (ALH)              alkyl side chains including an H atom
-  Alkenyl (AEL)             alkenyl side chains      
-  AlkenylH (AEH)            alkenyl side chains or an H atom 
-  Alkynyl (AYL)             alkynyl side chains               
-  AlkynylH (AYH)            alkynyl side chains or an H atom
-  Alkoxy (AOX)              alkoxy side chains           
-  AlkoxyH (AOH)             alkoxy side chains or an H atom
-  Carbocyclic (CBC)         carbocyclic side chains
-  CarbocyclicH (CBH)        carbocyclic side chains or an H atom
-  Carbocycloalkyl (CAL)     cycloalkyl side chains
-  CarbocycloalkylH (CAH)    cycloalkyl side chains or an H atom
-  Carbocycloalkenyl (CEL)   cycloalkenyl side chains
-  CarbocycloalkenylH (CEH)  cycloalkenyl side chains or an H atom
-  Carboaryl (ARY)           all-carbon aryl side chains
-  CarboarylH (ARH)          all-carbon aryl side chains or an H atom
-  Cyclic (CYC)              cyclic side chains
-  CyclicH (CYH)             cyclic side chains or an H atom
-  Acyclic(ACY)              acyclic side chains (not an H atom)
-  AcyclicH (ACH)            acyclic side chains or an H atom
-  Carboacyclic (ABC)        all-carbon acyclic side chains
-  CarboacyclicH (ABH)       all-carbon acyclic side chains or an H atom
-  Heteroacyclic (AHC)       acyclic side chains with at least one heteroatom
-  HeteroacyclicH (AHH)      acyclic side chains with at least one heteroatom or an H atom
-  Heterocyclic (CHC)        cyclic side chains with at least one heteroatom
-  HeterocyclicH (CHH)       cyclic side chains with at least one heteroatom or an H atom
-  Heteroaryl (HAR)          aryl side chains with at least one heteroatom
-  HeteroarylH (HAH)         aryl side chains with at least one heteroatom or an H atom
-  NoCarbonRing (CXX)        ring containing no carbon atoms
-  NoCarbonRingH (CXH)       ring containing no carbon atoms or an H atom
-  Group (G)                 any group (not H atom)
-  GroupH (GH)               any group (including H atom)
-  Group* (G*)               any group with a ring closure
-  GroupH* (GH*)             any group with a ring closure or an H atom
- ========================   =========
- 
+ =========================   =========
+  Alkyl (ALK)                alkyl side chains (not an H atom)
+  AlkylH (ALH)               alkyl side chains including an H atom
+  Alkenyl (AEL)              alkenyl side chains
+  AlkenylH (AEH)             alkenyl side chains or an H atom
+  Alkynyl (AYL)              alkynyl side chains
+  AlkynylH (AYH)             alkynyl side chains or an H atom
+  Alkoxy (AOX)               alkoxy side chains
+  AlkoxyH (AOH)              alkoxy side chains or an H atom
+  Carbocyclic (CBC)          carbocyclic side chains
+  CarbocyclicH (CBH)         carbocyclic side chains or an H atom
+  Carbocycloalkyl (CAL)      cycloalkyl side chains
+  CarbocycloalkylH (CAH)     cycloalkyl side chains or an H atom
+  Carbocycloalkenyl (CEL)    cycloalkenyl side chains
+  CarbocycloalkenylH (CEH)   cycloalkenyl side chains or an H atom
+  Carboaryl (ARY)            all-carbon aryl side chains
+  CarboarylH (ARH)           all-carbon aryl side chains or an H atom
+  Cyclic (CYC)               cyclic side chains
+  CyclicH (CYH)              cyclic side chains or an H atom
+  Acyclic(ACY)               acyclic side chains (not an H atom)
+  AcyclicH (ACH)             acyclic side chains or an H atom
+  Carboacyclic (ABC)         all-carbon acyclic side chains
+  CarboacyclicH (ABH)        all-carbon acyclic side chains or an H atom
+  Heteroacyclic (AHC)        acyclic side chains with at least one heteroatom
+  HeteroacyclicH (AHH)       acyclic side chains with at least one heteroatom or an H atom
+  Heterocyclic (CHC)         cyclic side chains with at least one heteroatom
+  HeterocyclicH (CHH)        cyclic side chains with at least one heteroatom or an H atom
+  Heteroaryl (HAR)           aryl side chains with at least one heteroatom
+  HeteroarylH (HAH)          aryl side chains with at least one heteroatom or an H atom
+  NoCarbonRing (CXX)         ring containing no carbon atoms
+  NoCarbonRingH (CXH)        ring containing no carbon atoms or an H atom
+  Group (G)                  any group (not H atom)
+  GroupH (GH)                any group (including H atom)
+  Group* (G*)                any group with a ring closure
+  GroupH* (GH*)              any group with a ring closure or an H atom
+ =========================   =========
+
 For more detailed descriptions, look at the documentation for the C++ file GenericGroups.h
 
 

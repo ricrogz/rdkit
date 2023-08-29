@@ -50,7 +50,8 @@ Individual molecules can be constructed using a variety of approaches:
 
   >>> m = Chem.MolFromSmiles('Cc1ccccc1')
   >>> m = Chem.MolFromMolFile('data/input.mol')
-  >>> stringWithMolData=open('data/input.mol','r').read()
+  >>> with open('data/input.mol','r') as f:
+  ...   stringWithMolData=f.read()
   >>> m = Chem.MolFromMolBlock(stringWithMolData)
 
 All of these functions return a :py:class:`rdkit.Chem.rdchem.Mol` object on success:
@@ -354,7 +355,7 @@ molecule before generating the conformer. This is essential to get good structur
     4 11  1  0
     4 12  1  0
   M  END
-<BLANKLINE>
+  <BLANKLINE>
 
 If we don't want the Hs in our later analysis, they are easy to remove:
 
@@ -381,7 +382,8 @@ If you'd like to write the molecule to a file, use Python file objects:
 
 .. doctest::
 
-  >>> print(Chem.MolToMolBlock(m2),file=open('data/foo.mol','w+'))
+  >>> with open('data/foo.mol','w+') as f:
+  ...   print(Chem.MolToMolBlock(m2),file=f)
   >>>
 
 
@@ -393,7 +395,7 @@ Multiple molecules can be written to a file using an :py:class:`rdkit.Chem.rdmol
 .. doctest::
 
   >>> with Chem.SDWriter('data/foo.sdf') as w:
-  ...   for m in mols: 
+  ...   for m in mols:
   ...     w.write(m)
   >>>
 
@@ -404,7 +406,7 @@ An SDWriter can also be initialized using a file-like object:
   >>> from rdkit.six import StringIO
   >>> sio = StringIO()
   >>> with Chem.SDWriter(sio) as w:
-  ...   for m in mols: 
+  ...   for m in mols:
   ...     w.write(m)
   >>> print(sio.getvalue())
   mol-295
@@ -962,7 +964,7 @@ sequence numbers.
 
 .. doctest::
    
-   >>> mol = Chem.MolFromSmiles('Cl[C@H](F)NC\C=C\C')
+   >>> mol = Chem.MolFromSmiles(r'Cl[C@H](F)NC\C=C\C')
    >>> d = rdMolDraw2D.MolDraw2DCairo(250, 200) # or MolDraw2DSVG to get SVGs
    >>> mol.GetAtomWithIdx(2).SetProp('atomNote', 'foo')
    >>> mol.GetBondWithIdx(0).SetProp('bondNote', 'bar')

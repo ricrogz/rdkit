@@ -913,7 +913,7 @@ Identifying Stereochemistry
 
    # Identifying Double Bond Stereochemistry
    IPythonConsole.molSize = 250,250
-   mol = Chem.MolFromSmiles("C\C=C(/F)\C(=C\F)\C=C")
+   mol = Chem.MolFromSmiles(r"C\C=C(/F)\C(=C\F)\C=C")
    mol
 
 .. image:: images/RDKitCB_30_im1.png
@@ -1730,7 +1730,7 @@ Molecule Hash Strings
 .. image:: images/RDKitCB_21_im5.png
 
 Contiguous Rotatable Bonds
-=========================
+==========================
 
 | **Author:** Paulo Tosco
 | **Source:** `<https://sourceforge.net/p/rdkit/mailman/message/36405144/>`_
