@@ -117,6 +117,20 @@ jobs:
     cxx: g++-10
   steps:
   - template: .azure-pipelines/linux_build_limitexternal.yml
+- job: Ubuntu_x64_mem_sanitizer
+  timeoutInMinutes: 180
+  pool:
+    vmImage: ubuntu-20.04
+  variables:
+    python: python=3.8
+    boost_version: 1.71.0
+    compiler: gxx_linux-64
+    number_of_cores: nproc
+    python_name: python38
+    cc: gcc-10
+    cxx: g++-10
+  steps:
+  - template: .azure-pipelines/linux_build_sanitizer.yml
 
 # - job: Ubuntu_18_04_x64_fuzzer
 #  timeoutInMinutes: 90
