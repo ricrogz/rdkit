@@ -51,7 +51,7 @@ enum class Descriptor {
   OC_6
 };
 
-static std::string to_string(const Descriptor &desc) {
+static inline std::string to_string(const Descriptor &desc) {
   switch (desc) {
     case Descriptor::NONE:
       return "NONE";

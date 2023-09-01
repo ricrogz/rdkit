@@ -1306,6 +1306,7 @@ int yyparse(const char *input, std::vector<RDKit::RWMol *> *molList,
   yystate = 0;
   yyerrstatus = 0;
   yynerrs = 0;
+  (void) yynerrs;
   yychar = YYEMPTY; /* Cause a token to be read.  */
   goto yysetstate;
 

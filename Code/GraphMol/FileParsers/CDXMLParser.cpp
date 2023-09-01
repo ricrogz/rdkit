@@ -78,13 +78,6 @@ struct SchemeInfo {
   std::vector<unsigned int> ReactionStepAtomMap;
 };
 
-unsigned int get_fuse_label(Atom *atm) {
-  // return atm->getAtomMapNum(); easier debugging
-  unsigned int label = 0;  // default is no label
-  atm->getPropIfPresent<unsigned int>(FUSE_LABEL, label);
-  return label;
-}
-
 void set_fuse_label(Atom *atm, unsigned int idx) {
   // atm->setAtomMapNum(idx); //for debugging
   if (idx) {

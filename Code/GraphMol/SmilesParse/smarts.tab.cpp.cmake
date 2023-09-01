@@ -1248,6 +1248,7 @@ int yyparse(const char *input, std::vector<RDKit::RWMol *> *molList,
 
   /* Number of syntax errors so far.  */
   int yynerrs = 0;
+  (void) yynerrs;
 
   yy_state_fast_t yystate = 0;
   /* Number of tokens to shift before error messages enabled.  */

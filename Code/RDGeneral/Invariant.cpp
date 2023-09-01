@@ -11,66 +11,75 @@
 
 #include "Invariant.h"
 
-#include <string>
 #include <iostream>
-#include <boost/lexical_cast.hpp>
+#include <string>
 #include "versions.h"
 
+#include <RDGeneral/BoostStartInclude.h>
+#include <boost/lexical_cast.hpp>
+#include <RDGeneral/BoostEndInclude.h>
+
 #ifdef RDK_USE_BOOST_STACKTRACE
-#include <boost/stacktrace.hpp>
 #include <sstream>
+#include <RDGeneral/BoostStartInclude.h>
+#include <boost/stacktrace.hpp>
+#include <RDGeneral/BoostEndInclude.h>
 #endif
 
-namespace Invar {
+namespace Invar
+{
 
-std::ostream &operator<<(std::ostream &s, const Invariant &inv) {
-  return s << inv.toString().c_str();
+std::ostream& operator<<(std::ostream& s, const Invariant& inv)
+{
+    return s << inv.toString().c_str();
 }
 
-std::string Invariant::toString() const {
-  std::string line = std::to_string(this->getLine());
+std::string Invariant::toString() const
+{
+    std::string line = std::to_string(this->getLine());
 
-  std::string stringRep =
-      this->prefix_d + "\n" + this->what() + "\nViolation occurred on line " +
-      line + " in file " + this->getFile() +
-      "\nFailed Expression: " + this->getExpression() + "\n";
+    std::string stringRep =
+        this->prefix_d + "\n" + this->what() + "\nViolation occurred on line " +
+        line + " in file " + this->getFile() +
+        "\nFailed Expression: " + this->getExpression() + "\n";
 #ifdef RDK_USE_BOOST_STACKTRACE
-  std::stringstream sstr;
-  sstr << "----------\n"
-       << "Stacktrace:\n"
-       << boost::stacktrace::stacktrace() << "----------\n";
-  stringRep += sstr.str();
+    std::stringstream sstr;
+    sstr << "----------\n"
+         << "Stacktrace:\n"
+         << boost::stacktrace::stacktrace() << "----------\n";
+    stringRep += sstr.str();
 #endif
-  return stringRep;
+    return stringRep;
 }
 
-std::string Invariant::toUserString() const {
-  std::string line = std::to_string(this->getLine());
+std::string Invariant::toUserString() const
+{
+    std::string line = std::to_string(this->getLine());
 
-  std::string filename = this->getFile();
+    std::string filename = this->getFile();
 
-  std::size_t pos = filename.find("Code");  // strip out build directory info
-  if (pos != std::string::npos) {
-    filename = filename.substr(pos);
-  }
+    std::size_t pos = filename.find("Code"); // strip out build directory info
+    if (pos != std::string::npos) {
+        filename = filename.substr(pos);
+    }
 
-  std::string stringRep = this->prefix_d + "\n\t" + this->what() +
-                          "\n\tViolation occurred on line " + line +
-                          " in file " + filename +
-                          "\n\tFailed Expression: " + this->getExpression() +
-                          "\n\t" + "RDKIT: " + RDKit::rdkitVersion + "\n\t" +
-                          "BOOST: " + RDKit::boostVersion + "\n";
+    std::string stringRep = this->prefix_d + "\n\t" + this->what() +
+                            "\n\tViolation occurred on line " + line +
+                            " in file " + filename +
+                            "\n\tFailed Expression: " + this->getExpression() +
+                            "\n\t" + "RDKIT: " + RDKit::rdkitVersion + "\n\t" +
+                            "BOOST: " + RDKit::boostVersion + "\n";
 
 #ifdef SHOW_BACKTRACES_WITH_INVARIANT_ERRORS
-  void *arr[10];
-  size_t sz;
-  sz = backtrace(arr, 10);
-  std::cerr << " STACK TRACE\n--------------\n" << std::endl;
-  backtrace_symbols_fd(arr, sz, 2);
-  std::cerr << "\n--------------\n" << std::endl;
+    void* arr[10];
+    size_t sz;
+    sz = backtrace(arr, 10);
+    std::cerr << " STACK TRACE\n--------------\n" << std::endl;
+    backtrace_symbols_fd(arr, sz, 2);
+    std::cerr << "\n--------------\n" << std::endl;
 #endif
 
-  return stringRep;
+    return stringRep;
 }
 
-};  // namespace Invar
+}; // namespace Invar

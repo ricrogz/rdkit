@@ -1272,6 +1272,7 @@ int yyparse(const char *input, std::vector<RDKit::RWMol *> *molList,
   yystate = 0;
   yyerrstatus = 0;
   yynerrs = 0;
+  (void) yynerrs;
   yychar = YYEMPTY; /* Cause a token to be read.  */
   goto yysetstate;
 
@@ -2282,6 +2283,7 @@ yyerrlab:
   /* If not already recovering from an error, report this error.  */
   if (!yyerrstatus) {
     ++yynerrs;
+    (void)yynerrs;
 #if !YYERROR_VERBOSE
     yyerror(input, molList, doQueries, scanner, YY_("syntax error"));
 #else
