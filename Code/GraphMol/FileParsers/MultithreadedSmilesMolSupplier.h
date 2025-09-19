@@ -28,7 +28,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
       const Parameters &params = Parameters(),
       const SmilesMolSupplierParams &parseParams = SmilesMolSupplierParams());
   MultithreadedSmilesMolSupplier();
-  virtual ~MultithreadedSmilesMolSupplier() {close();};
+  virtual ~MultithreadedSmilesMolSupplier() { close(); };
 
   void init() override {}
   //! returns df_end
@@ -51,10 +51,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
       const SmilesMolSupplierParams &parseParams = SmilesMolSupplierParams());
 
  private:
-  bool df_end = false;                 //!< have we reached the end of the file?
-  int d_line = 0;                      //!< line number we are currently on
-  STR_VECT d_props;                    //!< vector of property names
-  unsigned int d_currentRecordId = 1;  //!< current record id
+  int d_line = 0;    //!< line number we are currently on
+  STR_VECT d_props;  //!< vector of property names
   SmilesMolSupplierParams d_parseParams;
 };
 }  // namespace FileParsers
@@ -118,8 +116,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
   }
 
   //! returns the record id of the last extracted item
-  //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
-  //! if and only if the function is called before extracting the first
+  //! Note: d_lastReturnedRecordId = 0, initially therefore the value 0 is
+  //! returned if and only if the function is called before extracting the first
   //! record
   unsigned int getLastRecordId() const {
     PRECONDITION(dp_supplier, "no supplier");
