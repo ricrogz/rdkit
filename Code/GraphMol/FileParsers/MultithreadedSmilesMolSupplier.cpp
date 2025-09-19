@@ -69,12 +69,12 @@ void MultithreadedSmilesMolSupplier::initFromSettings(
 //
 void MultithreadedSmilesMolSupplier::processTitleLine() {
   PRECONDITION(dp_inStream, "bad stream");
-
   // loop until we get a valid line
   std::string tempStr;
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
          lineIsEmptyOrComment(tempStr)) {
     tempStr = getLine(dp_inStream);
+    ++d_line;
   }
 
   boost::char_separator<char> sep(d_parseParams.delimiter.c_str(), "",
@@ -92,15 +92,22 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
                                                        unsigned int &index) {
   PRECONDITION(dp_inStream, "bad stream");
   if (dp_inStream->eof()) {
+    if (d_lastReadRecordId == 0) {
+      df_eofHitOnRead = true;
+    }
     return false;
   }
 
   // need to process title line
   // if we have not called next yet and the current record id = 1
   // then we are seeking the first record
-  if (d_lastRecordId == 0 && d_currentRecordId == 1) {
+  if (d_lastReadRecordId == 0) {
     if (d_parseParams.titleLine) {
       this->processTitleLine();
+      if (dp_inStream->eof()) {
+        df_eofHitOnRead = true;
+        return false;
+      }
     }
   }
 
@@ -109,12 +116,23 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
          lineIsEmptyOrComment(tempStr)) {
     tempStr = getLine(dp_inStream);
+    ++d_line;
+  }
+
+  // SmilesMolSupplier skips comments and blank lines and does not expose an
+  // extra null record when none remain.
+  if (lineIsEmptyOrComment(tempStr) &&
+      (dp_inStream->eof() || dp_inStream->fail())) {
+    if (d_lastReadRecordId == 0) {
+      df_eofHitOnRead = true;
+    }
+    return false;
   }
 
   record = tempStr;
   lineNum = d_line;
-  index = d_currentRecordId;
-  ++d_currentRecordId;
+  ++d_lastReadRecordId;
+  index = d_lastReadRecordId;
   return true;
 }
 
