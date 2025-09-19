@@ -130,10 +130,9 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
       const std::string &record, unsigned int lineNum) = 0;
 
   //!< stores last extracted record id
-  std::atomic<unsigned int> d_lastRecordId = 0;
+  std::atomic<unsigned int> d_lastReadRecordId = 0;
 
-  int d_line = 0;                      //!< line number we are currently on
-  unsigned int d_currentRecordId = 1;  //!< current record id
+  int d_line = 0;  //!< line number we are currently on
 
   //!< concurrent input queue
   std::unique_ptr<inputQueue_t> d_inputQueue;
@@ -171,13 +170,16 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
 
   std::atomic<bool> df_started = false;
   std::atomic<bool> df_forceStop = false;
+  std::atomic<bool> df_readerDone = false;
 
   std::mutex d_threadCounterMutex;
   unsigned int d_threadEndCounter{1};        //!< thread counter
   std::vector<std::thread> d_writerThreads;  //!< vector writer threads
   std::thread d_readerThread;                //!< single reader thread
 
-  std::string d_lastItemText;  //!< stores last extracted record
+  std::string d_lastItemText;               //!< stores last extracted record
+  unsigned int d_lastReturnedRecordId = 0;  //!< stores last extracted record id
+  unsigned int d_returnedCount = 0;
 
   readCallBackFn_t readCallback = nullptr;
   nextCallBackFn_t nextCallback = nullptr;

@@ -37,7 +37,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
 
   ~MultithreadedSmilesMolSupplier() final { close(); };
 
-  bool getEOFHitOnRead() const final { return false; }
+  bool getEOFHitOnRead() const final { return df_eofHitOnRead.load(); }
 
   //! reads next record and returns whether or not EOF was hit
   bool extractNextRecord(std::string &record, unsigned int &lineNum,
@@ -56,6 +56,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
   void processTitleLine();
 
   STR_VECT d_props;  //!< vector of property names
+  std::atomic<bool> df_eofHitOnRead = false;
   SmilesMolSupplierParams d_parseParams;
 };
 }  // namespace FileParsers
