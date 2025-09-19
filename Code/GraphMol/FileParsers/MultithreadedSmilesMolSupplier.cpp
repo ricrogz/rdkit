@@ -61,13 +61,7 @@ void MultithreadedSmilesMolSupplier::initFromSettings(
   d_outputQueue.reset(
       new ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>(
           d_params.sizeOutputQueue));
-  df_end = false;
   d_line = -1;
-}
-
-bool MultithreadedSmilesMolSupplier::getEnd() const {
-  PRECONDITION(dp_inStream, "no stream");
-  return df_end;
 }
 
 // --------------------------------------------------
@@ -77,10 +71,12 @@ bool MultithreadedSmilesMolSupplier::getEnd() const {
 void MultithreadedSmilesMolSupplier::processTitleLine() {
   PRECONDITION(dp_inStream, "bad stream");
   std::string tempStr = getLine(dp_inStream);
+  ++d_line;
   // loop until we get a valid line
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
          ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
     tempStr = getLine(dp_inStream);
+    ++d_line;
   }
   boost::char_separator<char> sep(d_parseParams.delimiter.c_str(), "",
                                   boost::keep_empty_tokens);
@@ -97,33 +93,51 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
                                                        unsigned int &index) {
   PRECONDITION(dp_inStream, "bad stream");
   if (dp_inStream->eof()) {
-    df_end = true;
+    if (d_lastReadRecordId == 0) {
+      df_eofHitOnRead = true;
+    }
     return false;
   }
 
   // need to process title line
   // if we have not called next yet and the current record id = 1
   // then we are seeking the first record
-  if (d_lastRecordId == 0 && d_currentRecordId == 1) {
+  if (d_lastReadRecordId == 0) {
     if (d_parseParams.titleLine) {
       this->processTitleLine();
+      if (dp_inStream->eof()) {
+        df_eofHitOnRead = true;
+        return false;
+      }
     }
   }
   std::string tempStr = getLine(dp_inStream);
+  ++d_line;
   record = "";
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
          ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
     tempStr = getLine(dp_inStream);
+    ++d_line;
+  }
+
+  // SmilesMolSupplier skips comments and blank lines and does not expose an
+  // extra null record when none remain.
+  if ((tempStr.empty() || tempStr[0] == '#' || strip(tempStr).empty()) &&
+      (dp_inStream->eof() || dp_inStream->fail())) {
+    if (d_lastReadRecordId == 0) {
+      df_eofHitOnRead = true;
+    }
+    return false;
   }
 
   record = tempStr;
   lineNum = d_line;
-  index = d_currentRecordId;
-  ++d_currentRecordId;
+  ++d_lastReadRecordId;
+  index = d_lastReadRecordId;
   return true;
 }
 
-RWMol *MultithreadedSmilesMolSupplier::processMoleculeRecord(
+std::unique_ptr<RWMol> MultithreadedSmilesMolSupplier::processMoleculeRecord(
     const std::string &record, unsigned int lineNum) {
   // -----------
   // tokenize the input line:
@@ -184,17 +198,16 @@ RWMol *MultithreadedSmilesMolSupplier::processMoleculeRecord(
     std::string pname, pval;
     if (d_props.size() > col) {
       pname = d_props[col];
-    } else {
+    }
+    if (pname.empty()) {
       pname = "Column_";
-      std::stringstream ss;
-      ss << col;
-      pname += ss.str();
+      pname += std::to_string(col);
     }
 
     pval = recs[col];
     res->setProp(pname, pval);
   }
-  return res.release();
+  return res;
 }
 
 }  // namespace FileParsers

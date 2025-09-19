@@ -19,21 +19,27 @@ namespace FileParsers {
 
 void MultithreadedMolSupplier::close() {
   df_forceStop = true;
-  d_outputQueue->setDone();
+  if (d_outputQueue) {
+    d_outputQueue->setDone();
+  }
 
   if (df_started) {
-    // Clear the queues until they are empty
-    //  d_inputQueue->clear is not thread-safe
-    std::tuple<std::string, unsigned int, unsigned int> r;
-    while (d_inputQueue->pop(r)) {
+    if (d_inputQueue) {
+      // Clear the queues until they are empty
+      //  d_inputQueue->clear is not thread-safe
+      std::tuple<std::string, unsigned int, unsigned int> r;
+      while (d_inputQueue->pop(r)) {
+      }
     }
     // clear the output queues, they might be full
     //  and blocking the writer threads, note
     //  that while ending threads the writers may
     //  put a few more items back in the queue
-    std::tuple<RWMol *, std::string, unsigned int> mol_r;
-    while (d_outputQueue->pop(mol_r)) {
-      delete std::get<0>(mol_r);
+    if (d_outputQueue) {
+      std::tuple<RWMol *, std::string, unsigned int> mol_r;
+      while (d_outputQueue->pop(mol_r)) {
+        delete std::get<0>(mol_r);
+      }
     }
   }
 
@@ -41,12 +47,14 @@ void MultithreadedMolSupplier::close() {
 
   // notify the queue again that it is done in case
   //  anyone is waiting on it
-  d_outputQueue->setDone();
+  if (d_outputQueue) {
+    d_outputQueue->setDone();
+  }
 
   // destroy all objects in the input and output queues
   //  and anything missed put in the queues while
   //  the threads were endings
-  if (df_started) {
+  if (d_inputQueue) {
     d_inputQueue->clear();
   }
 
@@ -83,6 +91,7 @@ void MultithreadedMolSupplier::reader() {
       d_inputQueue->push(r);
     }
   }
+  df_readerDone = true;
   d_inputQueue->setDone();
 }
 
@@ -90,8 +99,7 @@ void MultithreadedMolSupplier::writer() {
   std::tuple<std::string, unsigned int, unsigned int> r;
   while (!df_forceStop && d_inputQueue->pop(r)) {
     try {
-      std::unique_ptr<RWMol> mol(
-          processMoleculeRecord(std::get<0>(r), std::get<1>(r)));
+      auto mol = processMoleculeRecord(std::get<0>(r), std::get<1>(r));
       if (!df_forceStop && mol && writeCallback) {
         writeCallback(*mol, std::get<0>(r), std::get<2>(r));
       }
@@ -107,12 +115,15 @@ void MultithreadedMolSupplier::writer() {
     }
   }
 
-  // we need a lock here otherwise two threads
-  //  can increment d_threadCounter even though it's
-  //  atomic.
+  // Protect the shared writer-thread counter.
+  // Note that d_threadEndCounter starts at 1, so that the last thread
+  // to finish will set the output queue to done.
+  // We can't use d_writerThreads.size() here because for the case
+  // of many threads and a small number of records, some threads may
+  // finish before others have started.
   d_threadCounterMutex.lock();
-  if (d_threadCounter < d_params.numWriterThreads) {
-    ++d_threadCounter;
+  if (d_threadEndCounter < d_params.numWriterThreads) {
+    ++d_threadEndCounter;
     d_threadCounterMutex.unlock();
   } else {
     // Here we need to unlock the threadCounterMutex before we setDone on the
@@ -133,7 +144,7 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
   std::tuple<RWMol *, std::string, unsigned int> r;
   if (!df_forceStop && d_outputQueue->pop(r)) {
     d_lastItemText = std::get<1>(r);
-    d_lastRecordId = std::get<2>(r);
+    d_lastReturnedRecordId = std::get<2>(r);
     std::unique_ptr<RWMol> res{std::get<0>(r)};
     if (res && nextCallback) {
       try {
@@ -142,6 +153,7 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
         // Ignore exception and proceed with mol as is.
       }
     }
+    ++d_returnedCount;
     return res;
   }
   return nullptr;
@@ -164,9 +176,9 @@ void MultithreadedMolSupplier::endThreads() {
 }
 
 void MultithreadedMolSupplier::startThreads() {
-  // run the reader function in a seperate thread
+  // run the reader function in a separate thread
   d_readerThread = std::thread(&MultithreadedMolSupplier::reader, this);
-  // run the writer function in seperate threads
+  // run the writer function in separate threads
   for (unsigned int i = 0; i < d_params.numWriterThreads; i++) {
     d_writerThreads.emplace_back(
         std::thread(&MultithreadedMolSupplier::writer, this));
@@ -174,11 +186,17 @@ void MultithreadedMolSupplier::startThreads() {
 }
 
 bool MultithreadedMolSupplier::atEnd() {
-  return (d_outputQueue->isEmpty() && d_outputQueue->getDone());
+  // Check reader completion first. Its set to 'done' happens after all updates
+  // to d_lastReadRecordId and all input-queue pushes, so a true value
+  // guarantees that the record count below is final.
+  if (!df_readerDone) {
+    return false;
+  }
+  return d_returnedCount == d_lastReadRecordId;
 }
 
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {
-  return d_lastRecordId;
+  return d_lastReturnedRecordId;
 }
 
 std::string MultithreadedMolSupplier::getLastItemText() const {

@@ -51,7 +51,6 @@ void MultithreadedSDMolSupplier::initFromSettings(
       new ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>(
           d_params.sizeOutputQueue));
 
-  df_end = false;
   d_line = 0;
   df_processPropertyLists = true;
 }
@@ -62,49 +61,7 @@ void MultithreadedSDMolSupplier::closeStreams() {
     df_owner = false;
     dp_inStream = nullptr;
   }
-  df_started = false; // this is in the base constructor
-}
-
-// ensures that there is a line available to be read
-// from the file, implementation identical to the method in
-// in ForwardSDMolSupplier
-void MultithreadedSDMolSupplier::checkForEnd() {
-  PRECONDITION(dp_inStream, "no stream");
-  // we will call it end of file if we have more than 4 contiguous empty lines
-  // or we reach end of file in the meantime
-  if (dp_inStream->eof()) {
-    df_end = true;
-    return;
-  }
-
-  /*
-    // we are not at the end of file, check for blank lines
-    unsigned int numEmpty = 0;
-    std::string tempStr;
-    // in case df_end is not set then, reset file pointer
-    std::streampos holder = dp_inStream->tellg();
-          if(static_cast<long int>(holder) == -1){ std::cerr << "putan\n";
-    return;} for (unsigned int i = 0; i < 4; i++) { tempStr =
-    getLine(dp_inStream); if (dp_inStream->eof()) { df_end = true; break;
-      }
-      if (tempStr.find_first_not_of(" \t\r\n") == std::string::npos) {
-        ++numEmpty;
-      }
-    }
-    if (numEmpty == 4) {
-      df_end = true;
-    }
-    // we need to reset the file pointer to read the next record
-    if (!df_end) {
-      dp_inStream->clear();
-      dp_inStream->seekg(holder);
-    }
-  */
-}
-
-bool MultithreadedSDMolSupplier::getEnd() const {
-  PRECONDITION(dp_inStream, "no stream");
-  return df_end;
+  df_started = false;  // this is in the base constructor
 }
 
 bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
@@ -112,11 +69,14 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
                                                    unsigned int &index) {
   PRECONDITION(dp_inStream, "no stream");
   if (dp_inStream->eof()) {
-    df_end = true;
+    if (d_lastReadRecordId == 0) {
+      df_eofHitOnRead = true;
+    }
     return false;
   }
 
   std::string currentStr, prevStr;
+  bool readAnyLine = false;
   record = "";
   lineNum = d_line;
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
@@ -124,22 +84,29 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
            prevStr.find("M  END") != 0) ||
           currentStr[0] != '$' || currentStr.substr(0, 4) != "$$$$")) {
     prevStr = currentStr;
-    std::getline(*dp_inStream, currentStr);
+    if (std::getline(*dp_inStream, currentStr)) {
+      readAnyLine = true;
+    }
     record += currentStr + "\n";
     ++d_line;
-    if (prevStr.find_first_not_of(" \t\r\n") == std::string::npos &&
-        currentStr[0] == '$' && currentStr.substr(0, 4) == "$$$$") {
-      this->checkForEnd();
-    }
   }
 
-  // ignore trailing new lines
-  if (record.find_first_not_of("\n\r") == std::string::npos) {
+  // A truly empty stream is logical EOF. If getline() successfully read one
+  // or more blank lines, preserve them as a null record, matching
+  // ForwardSDMolSupplier.
+  if (record.find_first_not_of("\n\r") == std::string::npos && !readAnyLine) {
+    if (dp_inStream->eof() && d_lastReadRecordId == 0) {
+      // Match ForwardSDMolSupplier's empty-input behavior. Do not set this
+      // after a real record: the multithreaded supplier has already prefetched
+      // EOF at that point, and the Python wrapper would otherwise discard the
+      // final molecule.
+      df_eofHitOnRead = true;
+    }
     return false;
   }
 
-  index = d_currentRecordId;
-  ++d_currentRecordId;
+  ++d_lastReadRecordId;
+  index = d_lastReadRecordId;
   return true;
 }
 
@@ -166,9 +133,9 @@ void MultithreadedSDMolSupplier::readMolProps(RWMol &mol,
         // situation - so ignore such data items for now
         hasProp = true;
         warningIssued = false;
-        tempStr.erase(0, 1);            // remove the first ">" sign
-        size_t sl = tempStr.find("<");  // begin datalabel
-        size_t se = tempStr.find(">");  // end datalabel
+        tempStr.erase(0, 1);             // remove the first ">" sign
+        size_t sl = tempStr.find("<");   // begin datalabel
+        size_t se = tempStr.rfind(">");  // end datalabel
         if ((sl == std::string::npos) || (se == std::string::npos) ||
             (se == (sl + 1))) {
           // we either do not have a data label or the label is empty
@@ -244,7 +211,7 @@ void MultithreadedSDMolSupplier::readMolProps(RWMol &mol,
   }
 }
 
-RWMol *MultithreadedSDMolSupplier::processMoleculeRecord(
+std::unique_ptr<RWMol> MultithreadedSDMolSupplier::processMoleculeRecord(
     const std::string &record, unsigned int lineNum) {
   PRECONDITION(dp_inStream, "no stream");
   std::istringstream inStream(record);
@@ -252,9 +219,8 @@ RWMol *MultithreadedSDMolSupplier::processMoleculeRecord(
       v2::FileParsers::MolFromMolDataStream(inStream, lineNum, d_parseParams);
   if (res) {
     this->readMolProps(*res, inStream);
-    return res.release();
   }
-  return nullptr;
+  return res;
 }
 }  // namespace FileParsers
 }  // namespace v2
