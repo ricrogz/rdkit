@@ -30,7 +30,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
       const MolFileParserParams &parseParams = MolFileParserParams());
 
   MultithreadedSDMolSupplier();
-  virtual ~MultithreadedSDMolSupplier() {close();}
+  virtual ~MultithreadedSDMolSupplier() { close(); }
   void init() override {}
 
   void checkForEnd();
@@ -46,18 +46,17 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
   //! parses the record and returns the resulting molecule
   RWMol *processMoleculeRecord(const std::string &record,
                                unsigned int lineNum) override;
+
  protected:
-    void closeStreams() override;
+  void closeStreams() override;
 
  private:
   void initFromSettings(bool takeOwnership, const Parameters &params,
                         const MolFileParserParams &parseParams);
 
-  bool df_end = false;  //!< have we reached the end of the file?
-  int d_line = 0;       //!< line number we are currently on
+  int d_line = 0;  //!< line number we are currently on
   bool df_processPropertyLists = true;
   bool df_eofHitOnRead = false;
-  unsigned int d_currentRecordId = 1;  //!< current record id
   MolFileParserParams d_parseParams;
 };
 }  // namespace FileParsers
@@ -114,8 +113,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier : public MolSupplier {
   }
 
   //! returns the record id of the last extracted item
-  //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
-  //! if and only if the function is called before extracting the first
+  //! Note: d_lastReturnedRecordId = 0, initially therefore the value 0 is
+  //! returned if and only if the function is called before extracting the first
   //! record
   unsigned int getLastRecordId() const {
     PRECONDITION(dp_supplier, "no supplier");

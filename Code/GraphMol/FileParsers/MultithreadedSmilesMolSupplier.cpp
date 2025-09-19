@@ -104,7 +104,7 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
   // need to process title line
   // if we have not called next yet and the current record id = 1
   // then we are seeking the first record
-  if (d_lastRecordId == 0 && d_currentRecordId == 1) {
+  if (d_lastReturnedRecordId == 0 && d_lastReadRecordId == 0) {
     if (d_parseParams.titleLine) {
       this->processTitleLine();
     }
@@ -115,11 +115,14 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
          ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
     tempStr = getLine(dp_inStream);
   }
+  if (dp_inStream->eof()) {
+    df_end = true;
+  }
 
   record = tempStr;
   lineNum = d_line;
-  index = d_currentRecordId;
-  ++d_currentRecordId;
+  ++d_lastReadRecordId;
+  index = d_lastReadRecordId;
   return true;
 }
 

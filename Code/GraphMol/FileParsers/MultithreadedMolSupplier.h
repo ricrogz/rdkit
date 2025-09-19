@@ -43,10 +43,9 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
 
   MultithreadedMolSupplier() {}
 
-  
   // Derived classes MUST have a destructor that calls close
   //  to properly end threads while the instance is alive
-  virtual ~MultithreadedMolSupplier() {close();}
+  virtual ~MultithreadedMolSupplier() { close(); }
 
   //! shut down the supplier
   virtual void close() override;
@@ -60,8 +59,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   bool getEOFHitOnRead() const { return false; }
 
   //! returns the record id of the last extracted item
-  //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
-  //! if and only if the function is called before extracting the first
+  //! Note: d_lastReturnedRecordId = 0, initially therefore the value 0 is
+  //! returned if and only if the function is called before extracting the first
   //! record
   unsigned int getLastRecordId() const;
   //! returns the text block for the last extracted item
@@ -139,13 +138,16 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::thread d_readerThread;                    //!< single reader thread
 
  protected:
+  std::atomic<bool> df_end = false;  //!< have we reached the end of the file?
   std::atomic<bool> df_started = false;
   std::atomic<bool> df_forceStop = false;
 
-  std::atomic<unsigned int> d_lastRecordId =
+  std::atomic<unsigned int> d_lastReadRecordId = 0;
+  std::atomic<unsigned int> d_lastReturnedRecordId =
       0;                       //!< stores last extracted record id
   std::string d_lastItemText;  //!< stores last extracted record
   const unsigned int d_numReaderThread = 1;  //!< number of reader thread
+  unsigned int d_returnedCount = 0;
 
   std::unique_ptr<
       ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>>
@@ -160,7 +162,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
       writeCallback = nullptr;
   std::function<std::string(const std::string &, unsigned int)> readCallback =
       nullptr;
-
 };
 }  // namespace FileParsers
 }  // namespace v2
@@ -182,8 +183,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   }
 
   //! returns the record id of the last extracted item
-  //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
-  //! if and only if the function is called before extracting the first
+  //! Note: d_lastReturnedRecordId = 0, initially therefore the value 0 is
+  //! returned if and only if the function is called before extracting the first
   //! record
   unsigned int getLastRecordId() const {
     PRECONDITION(dp_supplier, "no supplier");

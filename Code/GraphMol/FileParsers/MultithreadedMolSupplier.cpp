@@ -131,9 +131,15 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
     startThreads();
   }
   std::tuple<RWMol *, std::string, unsigned int> r;
-  if (!df_forceStop && d_outputQueue->pop(r)) {
+  if (!df_forceStop) {
+    if (!d_outputQueue->pop(r)) {
+      d_inputQueue->setDone();
+      d_outputQueue->setDone();
+      throw FileParseException("something went wrong");
+    }
+
     d_lastItemText = std::get<1>(r);
-    d_lastRecordId = std::get<2>(r);
+    d_lastReturnedRecordId = std::get<2>(r);
     std::unique_ptr<RWMol> res{std::get<0>(r)};
     if (res && nextCallback) {
       try {
@@ -142,9 +148,16 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
         // Ignore exception and proceed with mol as is.
       }
     }
+    ++d_returnedCount;
+    if (atEnd()) {
+      d_inputQueue->setDone();
+      d_outputQueue->setDone();
+    }
     return res;
   }
-  return nullptr;
+  d_inputQueue->setDone();
+  d_outputQueue->setDone();
+  throw FileParseException("stop forced");
 }
 
 // this calls joins on the reader and writer threads
@@ -164,9 +177,9 @@ void MultithreadedMolSupplier::endThreads() {
 }
 
 void MultithreadedMolSupplier::startThreads() {
-  // run the reader function in a seperate thread
+  // run the reader function in a separate thread
   d_readerThread = std::thread(&MultithreadedMolSupplier::reader, this);
-  // run the writer function in seperate threads
+  // run the writer function in separate threads
   for (unsigned int i = 0; i < d_params.numWriterThreads; i++) {
     d_writerThreads.emplace_back(
         std::thread(&MultithreadedMolSupplier::writer, this));
@@ -174,11 +187,11 @@ void MultithreadedMolSupplier::startThreads() {
 }
 
 bool MultithreadedMolSupplier::atEnd() {
-  return (d_outputQueue->isEmpty() && d_outputQueue->getDone());
+  return d_returnedCount == d_lastReadRecordId && getEnd();
 }
 
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {
-  return d_lastRecordId;
+  return d_lastReturnedRecordId;
 }
 
 std::string MultithreadedMolSupplier::getLastItemText() const {
