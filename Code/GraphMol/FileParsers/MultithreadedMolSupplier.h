@@ -146,8 +146,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::atomic<unsigned int> d_lastReturnedRecordId =
       0;                       //!< stores last extracted record id
   std::string d_lastItemText;  //!< stores last extracted record
-  const unsigned int d_numReaderThread = 1;  //!< number of reader thread
-  unsigned int d_returnedCount = 0;
+  std::atomic<unsigned int> d_returnedCount = 0;
 
   std::unique_ptr<
       ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>>
