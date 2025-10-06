@@ -83,6 +83,7 @@ void MultithreadedMolSupplier::reader() {
       d_inputQueue->push(r);
     }
   }
+  df_end = true;
   d_inputQueue->setDone();
 }
 
