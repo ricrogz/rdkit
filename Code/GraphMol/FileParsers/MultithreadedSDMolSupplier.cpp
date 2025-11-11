@@ -62,7 +62,7 @@ void MultithreadedSDMolSupplier::closeStreams() {
     df_owner = false;
     dp_inStream = nullptr;
   }
-  df_started = false; // this is in the base constructor
+  df_started = false;  // this is in the base constructor
 }
 
 // ensures that there is a line available to be read
@@ -108,11 +108,9 @@ bool MultithreadedSDMolSupplier::getEnd() const {
 }
 
 bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
-                                                   unsigned int &lineNum,
-                                                   unsigned int &index) {
+                                                   unsigned int &lineNum) {
   PRECONDITION(dp_inStream, "no stream");
   if (dp_inStream->eof()) {
-    df_end = true;
     return false;
   }
 
@@ -123,7 +121,7 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
          ((prevStr.find_first_not_of(" \t\r\n") != std::string::npos &&
            prevStr.find("M  END") != 0) ||
           currentStr[0] != '$' || currentStr.substr(0, 4) != "$$$$")) {
-    prevStr = currentStr;
+    std::swap(prevStr, currentStr);
     std::getline(*dp_inStream, currentStr);
     record += currentStr + "\n";
     ++d_line;
@@ -133,13 +131,7 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
     }
   }
 
-  // ignore trailing new lines
-  if(record.find_first_not_of("\n\r") == std::string::npos)
-    return false;
-  
-  index = d_currentRecordId;
-  ++d_currentRecordId;
-  return true;
+  return record.find_first_not_of("\n\r") != std::string::npos;
 }
 
 void MultithreadedSDMolSupplier::readMolProps(RWMol &mol,

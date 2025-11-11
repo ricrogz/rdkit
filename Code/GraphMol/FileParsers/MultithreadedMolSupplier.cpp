@@ -68,21 +68,26 @@ void MultithreadedMolSupplier::close() {
 
 void MultithreadedMolSupplier::reader() {
   std::string record;
-  unsigned int lineNum, index;
-  while (!df_forceStop && extractNextRecord(record, lineNum, index)) {
+  unsigned int lineNum = 0;
+  while (!df_forceStop && extractNextRecord(record, lineNum)) {
+    // increment before assigning because d_recordId == d_readCount
+    // and d_recordId == 0 means nothing returned yet
+    ++d_readCount;
     if (readCallback) {
       try {
-        record = readCallback(record, index);
+        record = readCallback(record, d_readCount);
       } catch (std::exception &e) {
         BOOST_LOG(rdErrorLog)
             << "Read callback exception: " << e.what() << std::endl;
       }
     }
-    auto r = std::make_tuple(record, lineNum, index);
+    auto r = std::make_tuple(record, lineNum,
+                             static_cast<unsigned int>(d_readCount));
     if (!df_forceStop) {
       d_inputQueue->push(r);
     }
   }
+  df_end = true;
   d_inputQueue->setDone();
 }
 
@@ -130,9 +135,17 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
     df_started = true;
     startThreads();
   }
+
   std::tuple<RWMol *, std::string, unsigned int> r;
-  if (!df_forceStop && d_outputQueue->pop(r)) {
-    d_lastItemText = std::get<1>(r);
+  if (!df_forceStop) {
+    if (!d_outputQueue->pop(r)) {
+      d_inputQueue->setDone();
+      d_outputQueue->setDone();
+      throw FileParseException("something went wrong");
+    }
+    ++d_returnedCount;
+
+    d_lastItemText = std::move(std::get<1>(r));
     d_lastRecordId = std::get<2>(r);
     std::unique_ptr<RWMol> res{std::get<0>(r)};
     if (res && nextCallback) {
@@ -142,9 +155,16 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
         // Ignore exception and proceed with mol as is.
       }
     }
+    if (atEnd()) {
+      d_inputQueue->setDone();
+      d_outputQueue->setDone();
+    }
     return res;
   }
-  return nullptr;
+
+  d_inputQueue->setDone();
+  d_outputQueue->setDone();
+  throw FileParseException("stop forced");
 }
 
 // this calls joins on the reader and writer threads
@@ -164,9 +184,9 @@ void MultithreadedMolSupplier::endThreads() {
 }
 
 void MultithreadedMolSupplier::startThreads() {
-  // run the reader function in a seperate thread
+  // run the reader function in a separate thread
   d_readerThread = std::thread(&MultithreadedMolSupplier::reader, this);
-  // run the writer function in seperate threads
+  // run the writer function in separate threads
   for (unsigned int i = 0; i < d_params.numWriterThreads; i++) {
     d_writerThreads.emplace_back(
         std::thread(&MultithreadedMolSupplier::writer, this));
@@ -174,7 +194,7 @@ void MultithreadedMolSupplier::startThreads() {
 }
 
 bool MultithreadedMolSupplier::atEnd() {
-  return (d_outputQueue->isEmpty() && d_outputQueue->getDone());
+  return getEnd() && d_returnedCount == d_readCount;
 }
 
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {

@@ -43,10 +43,9 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
 
   MultithreadedMolSupplier() {}
 
-  
   // Derived classes MUST have a destructor that calls close
   //  to properly end threads while the instance is alive
-  virtual ~MultithreadedMolSupplier() {close();}
+  virtual ~MultithreadedMolSupplier() { close(); }
 
   //! shut down the supplier
   virtual void close() override;
@@ -105,12 +104,12 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   //! Close down any external streams
   virtual void closeStreams() {}
 
+ private:
   //! starts reader and writer threads
   void startThreads();
   //! finalizes the reader and writer threads
   void endThreads();
 
- private:
   //! reads lines from input stream to populate the input queue
   void reader();
   //! parses lines from the input queue converting them to RWMol objects
@@ -127,8 +126,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   void init() override = 0;
   virtual bool getEnd() const = 0;
   //! extracts next record from the input file or stream
-  virtual bool extractNextRecord(std::string &record, unsigned int &lineNum,
-                                 unsigned int &index) = 0;
+  virtual bool extractNextRecord(std::string &record,
+                                 unsigned int &lineNum) = 0;
   //! processes the record into an RWMol object
   virtual RWMol *processMoleculeRecord(const std::string &record,
                                        unsigned int lineNum) = 0;
@@ -139,13 +138,14 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::thread d_readerThread;                    //!< single reader thread
 
  protected:
-  std::atomic<bool> df_started = false;
+  bool df_started = false;
+  std::atomic<bool> df_end = false;  //!< have we reached the end of the file?
   std::atomic<bool> df_forceStop = false;
 
-  std::atomic<unsigned int> d_lastRecordId =
-      0;                       //!< stores last extracted record id
+  unsigned int d_lastRecordId = 0;  //!< stores last extracted record id
+  unsigned int d_returnedCount = 0;
+  std::atomic<unsigned int> d_readCount = 0;
   std::string d_lastItemText;  //!< stores last extracted record
-  const unsigned int d_numReaderThread = 1;  //!< number of reader thread
 
   std::unique_ptr<
       ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>>
@@ -160,7 +160,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
       writeCallback = nullptr;
   std::function<std::string(const std::string &, unsigned int)> readCallback =
       nullptr;
-
 };
 }  // namespace FileParsers
 }  // namespace v2

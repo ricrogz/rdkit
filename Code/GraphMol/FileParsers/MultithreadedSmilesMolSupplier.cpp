@@ -76,12 +76,15 @@ bool MultithreadedSmilesMolSupplier::getEnd() const {
 //
 void MultithreadedSmilesMolSupplier::processTitleLine() {
   PRECONDITION(dp_inStream, "bad stream");
-  std::string tempStr = getLine(dp_inStream);
+
+  std::string tempStr;
   // loop until we get a valid line
-  while (!dp_inStream->eof() && !dp_inStream->fail() &&
-         ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
+  do {
     tempStr = getLine(dp_inStream);
-  }
+    ++d_line;
+  } while (!dp_inStream->eof() && !dp_inStream->fail() &&
+           (tempStr[0] == '#' || strip(tempStr).empty()));
+
   boost::char_separator<char> sep(d_parseParams.delimiter.c_str(), "",
                                   boost::keep_empty_tokens);
   tokenizer tokens(tempStr, sep);
@@ -93,33 +96,27 @@ void MultithreadedSmilesMolSupplier::processTitleLine() {
 }
 
 bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
-                                                       unsigned int &lineNum,
-                                                       unsigned int &index) {
+                                                       unsigned int &lineNum) {
   PRECONDITION(dp_inStream, "bad stream");
   if (dp_inStream->eof()) {
-    df_end = true;
     return false;
   }
 
   // need to process title line
-  // if we have not called next yet and the current record id = 1
+  // if we have not called next yet and the read count = 0
   // then we are seeking the first record
-  if (d_lastRecordId == 0 && d_currentRecordId == 1) {
-    if (d_parseParams.titleLine) {
-      this->processTitleLine();
-    }
-  }
-  std::string tempStr = getLine(dp_inStream);
-  record = "";
-  while (!dp_inStream->eof() && !dp_inStream->fail() &&
-         ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
-    tempStr = getLine(dp_inStream);
+  if (d_readCount == 0 && d_parseParams.titleLine) {
+    this->processTitleLine();
   }
 
-  record = tempStr;
+  do {
+    record = getLine(dp_inStream);
+    ++d_line;
+  } while (!dp_inStream->eof() && !dp_inStream->fail() &&
+           (record[0] == '#' || strip(record).empty()));
+
   lineNum = d_line;
-  index = d_currentRecordId;
-  ++d_currentRecordId;
+
   return true;
 }
 
