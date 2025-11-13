@@ -69,11 +69,19 @@ void MultithreadedMolSupplier::close() {
 void MultithreadedMolSupplier::reader() {
   std::string record;
   unsigned int lineNum = 0;
-  while (!df_forceStop && extractNextRecord(record, lineNum)) {
-    // increment before assigning because d_recordId == d_readCount
-    // and d_recordId == 0 means nothing returned yet
-    ++d_readCount;
-    if (readCallback) {
+  while (!df_forceStop) {
+    {
+      std::lock_guard<std::mutex> readLock(d_atEndMutex);
+      if (!df_forceStop && extractNextRecord(record, lineNum)) {
+        // increment before assigning because d_recordId == d_readCount
+        // and d_recordId == 0 means nothing returned yet
+        ++d_readCount;
+      } else {
+        df_end = true;
+        break;
+      }
+    }
+    if (!df_forceStop && readCallback) {
       try {
         record = readCallback(record, d_readCount);
       } catch (std::exception &e) {
@@ -81,13 +89,12 @@ void MultithreadedMolSupplier::reader() {
             << "Read callback exception: " << e.what() << std::endl;
       }
     }
-    auto r = std::make_tuple(record, lineNum,
-                             static_cast<unsigned int>(d_readCount));
     if (!df_forceStop) {
+      auto r = std::make_tuple(record, lineNum,
+                               static_cast<unsigned int>(d_readCount));
       d_inputQueue->push(r);
     }
   }
-  df_end = true;
   d_inputQueue->setDone();
 }
 
@@ -136,6 +143,7 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
     startThreads();
   }
 
+  std::unique_ptr<RWMol> res;
   std::tuple<RWMol *, std::string, unsigned int> r;
   if (!df_forceStop) {
     if (!d_outputQueue->pop(r)) {
@@ -145,16 +153,18 @@ std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
     }
     ++d_returnedCount;
 
+    res.reset(std::get<0>(r));
     d_lastItemText = std::move(std::get<1>(r));
     d_lastRecordId = std::get<2>(r);
-    std::unique_ptr<RWMol> res{std::get<0>(r)};
-    if (res && nextCallback) {
-      try {
-        nextCallback(*res, *this);
-      } catch (...) {
-        // Ignore exception and proceed with mol as is.
-      }
+  }
+  if (!df_forceStop && res && nextCallback) {
+    try {
+      nextCallback(*res, *this);
+    } catch (...) {
+      // Ignore exception and proceed with mol as is.
     }
+  }
+  if (!df_forceStop) {
     if (atEnd()) {
       d_inputQueue->setDone();
       d_outputQueue->setDone();
@@ -194,6 +204,10 @@ void MultithreadedMolSupplier::startThreads() {
 }
 
 bool MultithreadedMolSupplier::atEnd() {
+  std::lock_guard<std::mutex> readLock(d_atEndMutex);
+  if (df_forceStop) {
+    throw FileParseException("stop forced");
+  }
   return getEnd() && d_returnedCount == d_readCount;
 }
 

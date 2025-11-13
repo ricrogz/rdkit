@@ -132,6 +132,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   virtual RWMol *processMoleculeRecord(const std::string &record,
                                        unsigned int lineNum) = 0;
 
+  std::mutex d_atEndMutex;  // prevent checking for end while reading
   std::mutex d_threadCounterMutex;
   std::atomic<unsigned int> d_threadCounter{1};  //!< thread counter
   std::vector<std::thread> d_writerThreads;      //!< vector writer threads
