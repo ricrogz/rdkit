@@ -61,13 +61,7 @@ void MultithreadedSmilesMolSupplier::initFromSettings(
   d_outputQueue.reset(
       new ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>(
           d_params.sizeOutputQueue));
-  df_end = false;
   d_line = -1;
-}
-
-bool MultithreadedSmilesMolSupplier::getEnd() const {
-  PRECONDITION(dp_inStream, "no stream");
-  return df_end;
 }
 
 // --------------------------------------------------

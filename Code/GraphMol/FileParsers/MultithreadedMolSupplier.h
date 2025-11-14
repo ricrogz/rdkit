@@ -124,7 +124,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   //! not yet implemented
   void reset() override;
   void init() override = 0;
-  virtual bool getEnd() const = 0;
+
   //! extracts next record from the input file or stream
   virtual bool extractNextRecord(std::string &record,
                                  unsigned int &lineNum) = 0;
@@ -140,7 +140,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
 
  protected:
   bool df_started = false;
-  std::atomic<bool> df_end = false;  //!< have we reached the end of the file?
+  bool df_end = false;  //!< have we reached the end of the file?
   std::atomic<bool> df_forceStop = false;
 
   unsigned int d_lastRecordId = 0;  //!< stores last extracted record id

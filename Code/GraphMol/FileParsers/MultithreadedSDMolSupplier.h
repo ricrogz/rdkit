@@ -33,8 +33,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
   virtual ~MultithreadedSDMolSupplier() { close(); }
   void init() override {}
 
-  void checkForEnd();
-  bool getEnd() const override;
   void setProcessPropertyLists(bool val) { df_processPropertyLists = val; }
   bool getProcessPropertyLists() const { return df_processPropertyLists; }
   bool getEOFHitOnRead() const { return df_eofHitOnRead; }

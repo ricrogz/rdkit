@@ -31,8 +31,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
   virtual ~MultithreadedSmilesMolSupplier() { close(); };
 
   void init() override {}
-  //! returns df_end
-  bool getEnd() const override;
   //! reads and processes the title line
   void processTitleLine();
   //! reads next record and returns whether or not EOF was hit

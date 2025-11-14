@@ -208,7 +208,7 @@ bool MultithreadedMolSupplier::atEnd() {
   if (df_forceStop) {
     throw FileParseException("stop forced");
   }
-  return getEnd() && d_returnedCount == d_readCount;
+  return df_end && d_returnedCount == d_readCount;
 }
 
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {
