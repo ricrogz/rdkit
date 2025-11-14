@@ -30,7 +30,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
   MultithreadedSmilesMolSupplier();
   virtual ~MultithreadedSmilesMolSupplier() { close(); };
 
-  void init() override {}
   //! reads and processes the title line
   void processTitleLine();
   //! reads next record and returns whether or not EOF was hit
@@ -48,7 +47,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
       const SmilesMolSupplierParams &parseParams = SmilesMolSupplierParams());
 
  private:
-  int d_line = 0;    //!< line number we are currently on
   STR_VECT d_props;  //!< vector of property names
   SmilesMolSupplierParams d_parseParams;
 };

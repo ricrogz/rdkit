@@ -123,7 +123,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   MultithreadedMolSupplier &operator=(const MultithreadedMolSupplier &);
   //! not yet implemented
   void reset() override;
-  void init() override = 0;
+  void init() final {};
 
   //! extracts next record from the input file or stream
   virtual bool extractNextRecord(std::string &record,
@@ -139,6 +139,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::thread d_readerThread;                    //!< single reader thread
 
  protected:
+  int d_line = 0;  //!< line number we are currently on
   bool df_started = false;
   bool df_end = false;  //!< have we reached the end of the file?
   std::atomic<bool> df_forceStop = false;

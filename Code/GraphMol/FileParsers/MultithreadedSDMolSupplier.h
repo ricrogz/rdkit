@@ -31,7 +31,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
 
   MultithreadedSDMolSupplier();
   virtual ~MultithreadedSDMolSupplier() { close(); }
-  void init() override {}
 
   void setProcessPropertyLists(bool val) { df_processPropertyLists = val; }
   bool getProcessPropertyLists() const { return df_processPropertyLists; }
@@ -51,7 +50,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
   void initFromSettings(bool takeOwnership, const Parameters &params,
                         const MolFileParserParams &parseParams);
 
-  int d_line = 0;  //!< line number we are currently on
   bool df_processPropertyLists = true;
   bool df_eofHitOnRead = false;
   MolFileParserParams d_parseParams;
