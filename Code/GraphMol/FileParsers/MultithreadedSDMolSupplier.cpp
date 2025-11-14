@@ -61,7 +61,6 @@ void MultithreadedSDMolSupplier::closeStreams() {
     df_owner = false;
     dp_inStream = nullptr;
   }
-  df_started = false;  // this is in the base constructor
 }
 
 bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,

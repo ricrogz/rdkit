@@ -102,7 +102,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
 
  protected:
   //! Close down any external streams
-  virtual void closeStreams() {}
+  virtual void closeStreams() = 0;
 
  private:
   //! starts reader and writer threads
@@ -132,22 +132,11 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   virtual RWMol *processMoleculeRecord(const std::string &record,
                                        unsigned int lineNum) = 0;
 
-  std::mutex d_atEndMutex;  // prevent checking for end while reading
-  std::mutex d_threadCounterMutex;
-  std::atomic<unsigned int> d_threadCounter{1};  //!< thread counter
-  std::vector<std::thread> d_writerThreads;      //!< vector writer threads
-  std::thread d_readerThread;                    //!< single reader thread
-
  protected:
   int d_line = 0;  //!< line number we are currently on
-  bool df_started = false;
-  bool df_end = false;  //!< have we reached the end of the file?
-  std::atomic<bool> df_forceStop = false;
-
-  unsigned int d_lastRecordId = 0;  //!< stores last extracted record id
-  unsigned int d_returnedCount = 0;
   std::atomic<unsigned int> d_readCount = 0;
-  std::string d_lastItemText;  //!< stores last extracted record
+
+  Parameters d_params;
 
   std::unique_ptr<
       ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>>
@@ -155,7 +144,22 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::unique_ptr<
       ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>>
       d_outputQueue;  //!< concurrent output queue
-  Parameters d_params;
+
+ private:
+  std::mutex d_atEndMutex;  // prevent checking for end while reading
+  std::mutex d_threadCounterMutex;
+  std::atomic<unsigned int> d_threadCounter{1};  //!< thread counter
+  std::vector<std::thread> d_writerThreads;      //!< vector writer threads
+  std::thread d_readerThread;                    //!< single reader thread
+
+  bool df_started = false;
+  bool df_end = false;  //!< have we reached the end of the file?
+  std::atomic<bool> df_forceStop = false;
+
+  unsigned int d_lastRecordId = 0;  //!< stores last extracted record id
+  unsigned int d_returnedCount = 0;
+  std::string d_lastItemText;  //!< stores last extracted record
+
   std::function<void(RWMol &, const MultithreadedMolSupplier &)> nextCallback =
       nullptr;
   std::function<void(RWMol &, const std::string &, unsigned int)>
