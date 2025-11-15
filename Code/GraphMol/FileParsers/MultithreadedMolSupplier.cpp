@@ -72,13 +72,16 @@ void MultithreadedMolSupplier::reader() {
   while (!df_forceStop) {
     {
       std::lock_guard<std::mutex> readLock(d_atEndMutex);
-      if (!df_forceStop && extractNextRecord(record, lineNum)) {
-        // increment before assigning because d_recordId == d_readCount
-        // and d_recordId == 0 means nothing returned yet
-        ++d_readCount;
-      } else {
-        df_end = true;
-        break;
+      if (!df_forceStop) {
+        if (extractNextRecord(record, lineNum)) {
+          // increment before assigning because d_recordId == d_readCount
+
+          // and d_recordId == 0 means nothing returned yet
+          ++d_readCount;
+        } else {
+          df_end = true;
+          break;
+        }
       }
     }
     if (!df_forceStop && readCallback) {
