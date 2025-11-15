@@ -55,14 +55,6 @@ void MultithreadedSDMolSupplier::initFromSettings(
   df_processPropertyLists = true;
 }
 
-void MultithreadedSDMolSupplier::closeStreams() {
-  if (df_owner && dp_inStream) {
-    delete dp_inStream;
-    df_owner = false;
-    dp_inStream = nullptr;
-  }
-}
-
 bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
                                                    unsigned int &lineNum) {
   PRECONDITION(dp_inStream, "no stream");

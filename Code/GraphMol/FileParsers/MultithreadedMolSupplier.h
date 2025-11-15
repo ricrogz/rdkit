@@ -100,15 +100,14 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
     readCallback = cb;
   }
 
- protected:
-  //! Close down any external streams
-  virtual void closeStreams() = 0;
-
  private:
   //! starts reader and writer threads
   void startThreads();
   //! finalizes the reader and writer threads
   void endThreads();
+
+  //! Close down any external streams
+  void closeStreams();
 
   //! reads lines from input stream to populate the input queue
   void reader();

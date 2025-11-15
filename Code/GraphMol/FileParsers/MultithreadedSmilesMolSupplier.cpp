@@ -39,14 +39,6 @@ MultithreadedSmilesMolSupplier::MultithreadedSmilesMolSupplier() {
   initFromSettings(true, d_params, d_parseParams);
 }
 
-void MultithreadedSmilesMolSupplier::closeStreams() {
-  if (df_owner && dp_inStream) {
-    delete dp_inStream;
-    df_owner = false;
-    dp_inStream = nullptr;
-  }
-}
-
 void MultithreadedSmilesMolSupplier::initFromSettings(
     bool takeOwnership, const Parameters &params,
     const SmilesMolSupplierParams &parseParams) {

@@ -66,6 +66,14 @@ void MultithreadedMolSupplier::close() {
   df_started = false;
 }
 
+void MultithreadedMolSupplier::closeStreams() {
+  if (df_owner && dp_inStream) {
+    delete dp_inStream;
+    df_owner = false;
+    dp_inStream = nullptr;
+  }
+}
+
 void MultithreadedMolSupplier::reader() {
   std::string record;
   unsigned int lineNum = 0;

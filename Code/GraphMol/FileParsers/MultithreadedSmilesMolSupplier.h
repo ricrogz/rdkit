@@ -38,9 +38,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
   RWMol *processMoleculeRecord(const std::string &record,
                                unsigned int lineNum) override;
 
- protected:
-  void closeStreams() override;
-
  private:
   void initFromSettings(
       bool takeOwnership, const Parameters &params,
@@ -55,18 +52,19 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
 
 inline namespace v1 {
 class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
-    : public MolSupplier {
+    : public v1::MultithreadedMolSupplier {
   //! this is an abstract base class to concurrently supply molecules one at a
   //! time
  public:
   using ContainedType = v2::FileParsers::MultithreadedSmilesMolSupplier;
   MultithreadedSmilesMolSupplier() {}
+
   explicit MultithreadedSmilesMolSupplier(
       const std::string &fileName, const std::string &delimiter = " \t",
       int smilesColumn = 0, int nameColumn = 1, bool titleLine = true,
       bool sanitize = true, unsigned int numWriterThreads = 1,
       size_t sizeInputQueue = 5, size_t sizeOutputQueue = 5) {
-    v2::FileParsers::MultithreadedSmilesMolSupplier::Parameters params;
+    ContainedType::Parameters params;
     params.numWriterThreads = numWriterThreads;
     params.sizeInputQueue = sizeInputQueue;
     params.sizeOutputQueue = sizeOutputQueue;
@@ -77,8 +75,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
     parseParams.titleLine = titleLine;
     parseParams.parseParameters.sanitize = sanitize;
 
-    dp_supplier.reset(new v2::FileParsers::MultithreadedSmilesMolSupplier(
-        fileName, params, parseParams));
+    dp_supplier.reset(new ContainedType(fileName, params, parseParams));
   }
 
   explicit MultithreadedSmilesMolSupplier(
@@ -87,7 +84,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
       int nameColumn = 1, bool titleLine = true, bool sanitize = true,
       unsigned int numWriterThreads = 1, size_t sizeInputQueue = 5,
       size_t sizeOutputQueue = 5) {
-    v2::FileParsers::MultithreadedSmilesMolSupplier::Parameters params;
+    ContainedType::Parameters params;
     params.numWriterThreads = numWriterThreads;
     params.sizeInputQueue = sizeInputQueue;
     params.sizeOutputQueue = sizeOutputQueue;
@@ -98,30 +95,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
     parseParams.titleLine = titleLine;
     parseParams.parseParameters.sanitize = sanitize;
 
-    dp_supplier.reset(new v2::FileParsers::MultithreadedSmilesMolSupplier(
-        inStream, takeOwnership, params, parseParams));
-  }
-
-  //! included for the interface, always returns false
-  bool getEOFHitOnRead() const {
-    if (dp_supplier) {
-      return static_cast<ContainedType *>(dp_supplier.get())->getEOFHitOnRead();
-    }
-    return false;
-  }
-
-  //! returns the record id of the last extracted item
-  //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
-  //! if and only if the function is called before extracting the first
-  //! record
-  unsigned int getLastRecordId() const {
-    PRECONDITION(dp_supplier, "no supplier");
-    return static_cast<ContainedType *>(dp_supplier.get())->getLastRecordId();
-  }
-  //! returns the text block for the last extracted item
-  std::string getLastItemText() const {
-    PRECONDITION(dp_supplier, "no supplier");
-    return static_cast<ContainedType *>(dp_supplier.get())->getLastItemText();
+    dp_supplier.reset(
+        new ContainedType(inStream, takeOwnership, params, parseParams));
   }
 };
 }  // namespace v1
