@@ -183,7 +183,6 @@ void canonicalizeDoubleBond(Bond *dblBond, UINT_VECT &bondVisitOrders,
   Bond *firstFromAtom2 = nullptr, *secondFromAtom2 = nullptr;
 
   ROMol &mol = dblBond->getOwningMol();
-  auto firstVisitOrder = mol.getNumBonds() + 1;
 
   ROMol::OBOND_ITER_PAIR atomBonds;
   // -------------------------------------------------------
@@ -191,10 +190,10 @@ void canonicalizeDoubleBond(Bond *dblBond, UINT_VECT &bondVisitOrders,
   // if anything is already constraining our choice of directions:
   bool dir1Set = false, dir2Set = false;
 
-  auto findNeighborBonds = [&mol, &dblBond, &bondDirCounts, &bondVisitOrders,
-                            &firstVisitOrder](
+  auto findNeighborBonds = [&mol, &dblBond, &bondDirCounts, &bondVisitOrders](
                                auto atom, auto &firstNeighborBond,
                                auto &secondNeighborBond, auto &dirSet) {
+    auto firstVisitOrder = mol.getNumBonds() + 1;
     for (const auto bond : mol.atomBonds(atom)) {
       if (bond == dblBond || !canSetDoubleBondStereo(*bond)) {
         continue;
@@ -217,7 +216,6 @@ void canonicalizeDoubleBond(Bond *dblBond, UINT_VECT &bondVisitOrders,
   };
 
   findNeighborBonds(atom1, firstFromAtom1, secondFromAtom1, dir1Set);
-  firstVisitOrder = mol.getNumBonds() + 1;
   findNeighborBonds(atom2, firstFromAtom2, secondFromAtom2, dir2Set);
 
   // Make sure we found everything we need to find.
@@ -682,7 +680,6 @@ void dfsBuildStack(ROMol &mol, int atomIdx, int inBondIdx,
                    std::vector<INT_LIST> &atomTraversalBondOrder,
                    const boost::dynamic_bitset<> *bondsInPlay,
                    const std::vector<std::string> *bondSymbols, bool doRandom) {
-
   Atom *atom = mol.getAtomWithIdx(atomIdx);
   INT_LIST directTravList, cycleEndList;
   boost::dynamic_bitset<> seenFromHere(mol.getNumAtoms());
@@ -1138,6 +1135,18 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
     }
   }
 
+  auto dump_bond_dirs = [](const auto &molStack) {
+    for (auto &msI : molStack) {
+      if (msI.type == MOL_STACK_BOND && msI.obj.bond->getBondDir()) {
+        std::cerr << msI.obj.bond->getIdx() << "  "
+                  << msI.obj.bond->getBondDir() << std::endl;
+      }
+    }
+    std::cerr << std::endl;
+  };
+
+  dump_bond_dirs(molStack);
+
   // traverse the stack and canonicalize double bonds and atoms with (ring)
   // stereochemistry
   for (auto &msI : molStack) {
@@ -1148,6 +1157,7 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
         Canon::canonicalizeDoubleBond(msI.obj.bond, bondVisitOrders,
                                       atomVisitOrders, bondDirCounts,
                                       atomDirCounts, molStack);
+        dump_bond_dirs(molStack);
       } else {
         // bad stereo spec:
         msI.obj.bond->setStereo(Bond::STEREONONE);
