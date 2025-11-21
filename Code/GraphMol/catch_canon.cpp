@@ -1434,3 +1434,24 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
     CHECK(firstRoundtrip != roundtripSmiles(firstRoundtrip, usingLegacyStereo));
   }
 }
+
+TEST_CASE("work") {
+  UseLegacyStereoPerceptionFixture modern_stereo(false);
+
+  auto roundtripSmiles = [](const std::string &smi) -> std::string {
+    auto m = v2::SmilesParse::MolFromSmiles(smi);
+    REQUIRE(m);
+    m->debugMol(std::cerr);
+    auto smi_out = MolToSmiles(*m);
+    std::cerr << smi_out << std::endl;
+    return smi_out;
+  };
+
+  auto smi = R"smi(C/C=C\C=C(/C=C\C)C(/C=C\C)=C/C)smi";
+  std::cerr << smi << std::endl;
+  auto smi2 = roundtripSmiles(smi);
+  auto smi3 = roundtripSmiles(smi2);
+
+  CHECK(smi == smi2);
+  CHECK(smi == smi3);
+}
