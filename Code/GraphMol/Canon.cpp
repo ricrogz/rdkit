@@ -17,6 +17,7 @@
 #include <RDGeneral/Exceptions.h>
 #include <RDGeneral/hash/hash.hpp>
 #include <RDGeneral/utils.h>
+#include <queue>
 #include <algorithm>
 
 namespace RDKit {
@@ -163,7 +164,7 @@ std::pair<Bond::BondDir, bool> getReferenceDirection(
 void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
                             const UINT_VECT &atomVisitOrders,
                             UINT_VECT &bondDirCounts, UINT_VECT &atomDirCounts,
-                            const MolStack &molStack) {
+                            const MolStack &molStack, std::queue<Bond *> q) {
   PRECONDITION(dblBond, "bad bond");
   PRECONDITION(dblBond->getBondType() == Bond::DOUBLE, "bad bond order");
   PRECONDITION(dblBond->getStereo() > Bond::STEREOANY, "bad bond stereo");
@@ -192,6 +193,18 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
   ROMol &mol = dblBond->getOwningMol();
 
+  auto enqueueConnectedStereoBond = [&mol, &q](const Atom *dblBndAtom,
+                                               const Bond *nbrBnd) {
+    auto otherAtom = nbrBnd->getOtherAtom(dblBndAtom);
+    for (const auto bond : mol.atomBonds(otherAtom)) {
+      if (bond != nbrBnd && bond->getBondType() == Bond::DOUBLE &&
+          bond->getStereo() > Bond::STEREOANY) {
+        q.push(bond);
+      }
+    }
+  };
+
+  ROMol::OBOND_ITER_PAIR atomBonds;
   // -------------------------------------------------------
   // find the lowest visit order bonds from each end and determine
   // if anything is already constraining our choice of directions:
@@ -233,6 +246,14 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     return;
   }
 
+  if (dir1Set && dir2Set) {
+    // Both directions are already set. Nothing to do.
+
+    // To do: check that the directions are consistent with each other.
+
+    return;
+  }
+
   bool setFromBond1 = true;
   Bond *atom1ControllingBond = firstFromAtom1;
   Bond *atom2ControllingBond = firstFromAtom2;
@@ -247,7 +268,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
     bondDirCounts[firstFromAtom1->getIdx()] += 1;
     atomDirCounts[atom1->getIdx()] += 1;
-
+    enqueueConnectedStereoBond(atom1, firstFromAtom1);
   } else if (!dir2Set) {
     // at least one of the bonds on atom1 has its directionality set already:
     if (bondDirCounts[firstFromAtom1->getIdx()] > 0) {
@@ -290,6 +311,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       bondDirCounts[firstFromAtom1->getIdx()] += 1;
       atomDirCounts[atom1->getIdx()] += 2;
       atom1ControllingBond = secondFromAtom1;
+      enqueueConnectedStereoBond(atom1, firstFromAtom1);
     }
   } else {
     // dir2 has been set, and dir1 hasn't: we're dealing with a stereochem
@@ -325,6 +347,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       bondDirCounts[firstFromAtom2->getIdx()] += 1;
       atomDirCounts[atom2->getIdx()] += 2;
       atom2ControllingBond = secondFromAtom2;
+      enqueueConnectedStereoBond(atom2, firstFromAtom2);
     }
     // CHECK_INVARIANT(0,"ring stereochemistry not handled");
   }  // end of the ring stereochemistry if
@@ -339,9 +362,10 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     }
 
     firstFromAtom2->setBondDir(atom2Dir);
-
     bondDirCounts[firstFromAtom2->getIdx()] += 1;
     atomDirCounts[atom2->getIdx()] += 1;
+    enqueueConnectedStereoBond(atom2, firstFromAtom2);
+
   } else {
     auto [atom1Dir, isFlipped] = getReferenceDirection(
         dblBond, atom2, atom1, atom2ControllingBond, firstFromAtom1);
@@ -350,6 +374,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
     bondDirCounts[firstFromAtom1->getIdx()] += 1;
     atomDirCounts[atom1->getIdx()] += 1;
+    enqueueConnectedStereoBond(atom1, firstFromAtom1);
   }
 
   // -----------------------------------
@@ -402,6 +427,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       } else {
         secondFromAtom1->setBondDir(firstFromAtom1->getBondDir());
       }
+      enqueueConnectedStereoBond(atom1, secondFromAtom1);
     }
     bondDirCounts[secondFromAtom1->getIdx()] += 1;
     atomDirCounts[atom1->getIdx()] += 1;
@@ -421,6 +447,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
         otherDir = firstFromAtom2->getBondDir();
       }
       secondFromAtom2->setBondDir(otherDir);
+      enqueueConnectedStereoBond(atom2, secondFromAtom2);
     }
     bondDirCounts[secondFromAtom2->getIdx()] += 1;
     atomDirCounts[atom2->getIdx()] += 1;
@@ -499,6 +526,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       otherAtom3Bond->setBondDir(dir);
       bondDirCounts[otherAtom3Bond->getIdx()] += 1;
       atomDirCounts[atom3->getIdx()] += 1;
+      enqueueConnectedStereoBond(atom3, otherAtom3Bond);
     }
   }
 }
@@ -1100,9 +1128,20 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
         msI.obj.bond->getBondType() == Bond::DOUBLE &&
         msI.obj.bond->getStereo() > Bond::STEREOANY) {
       if (msI.obj.bond->getStereoAtoms().size() >= 2) {
-        Canon::canonicalizeDoubleBond(msI.obj.bond, bondVisitOrders,
-                                      atomVisitOrders, bondDirCounts,
-                                      atomDirCounts, molStack);
+        // Setting stereo bond directions in the molStack order may create
+        // neighbors with conflicting directions. Setting the directions
+        // in a cascading way mitigates that risk.
+        std::queue<Bond *> q;
+        q.push(msI.obj.bond);
+
+        while (!q.empty()) {
+          auto currentBond = q.front();
+          q.pop();
+          Canon::canonicalizeDoubleBond(currentBond, bondVisitOrders,
+                                        atomVisitOrders, bondDirCounts,
+                                        atomDirCounts, molStack, q);
+        }
+
       } else {
         // bad stereo spec:
         msI.obj.bond->setStereo(Bond::STEREONONE);
