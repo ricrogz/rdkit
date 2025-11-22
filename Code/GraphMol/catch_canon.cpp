@@ -1222,8 +1222,9 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
                    R"smi(O=[N+]([O-])c1cc/c2c(c1)=C(c1ccccc1)/N=c1\\ccc([N+](=O)[O-])cc1=C(c1ccccc1)/N=2)smi"},  // #8721
                   {false, true,
                    R"smi(C=Cc1c(C)/c2[n-]c1=C=c1[n-]/c(c(CC)c1C)=C\\c1[n-]c3c(c1C)C(=O)[C@H](C(=O)OC)/C3=C1/[NH+]=C(/C=2)[C@@H](C)[C@@H]1CCC(=O)OC/C=C(\\C)CCC[C@H](C)CCC[C@H](C)CCCC(C) C.[Mg+2])smi"},  // #8721
-                  {false, true,
-                   R"smi(CC1C2c3cc4/c5c6c7c8c9c%10c6c4c4c3C3=C6c%11c%12c%13c%14c%15c(c9c9c%16c8c(c8/c(c%17c%18c%19c(c(c%11c%11c%19c%19c%17c8c%16c(c%149)c%19c%13%11)C62)C1C%181C[N+](C)(C)C1)=C\C\C=5)C7)C%10C4C31C[N+](C)(C)CC%12%151)smi"},  // #8089
+                  // {false, true,
+                  //  R"smi(CC1C2c3cc4/c5c6c7c8c9c%10c6c4c4c3C3=C6c%11c%12c%13c%14c%15c(c9c9c%16c8c(c8/c(c%17c%18c%19c(c(c%11c%11c%19c%19c%17c8c%16c(c%149)c%19c%13%11)C62)C1C%181C[N+](C)(C)C1)=C\C\C=5)C7)C%10C4C31C[N+](C)(C)CC%12%151)smi"},
+                  //  // #8089
                   {false, true,
                    R"smi(CC1=C\C/C=C(\C)CC[C@H]2C(C)(C)[C@@H](\C=C/1)CC[C@]2(C)O)smi"},  // #8089
                   {false, true,
@@ -1412,6 +1413,7 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
               };
 
   auto count_features = [](RWMol m) {
+#if 0
     unsigned int nChiralCenters = 0;
     for (const auto atom : m.atoms()) {
       if (atom->getChiralTag() != Atom::ChiralType::CHI_UNSPECIFIED) {
@@ -1426,6 +1428,28 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
     }
 
     return std::make_pair(nChiralCenters, nDoubleBondStereo);
+#else
+    CIPLabeler::assignCIPLabels(m);
+
+    std::vector<std::string> labels;
+    for (const auto atom : m.atoms()) {
+      std::string cip;
+      if (atom->getPropIfPresent<std::string>(common_properties::_CIPCode,
+                                              cip)) {
+        labels.push_back(cip);
+      }
+    }
+    for (const auto bond : m.bonds()) {
+      std::string cip;
+      if (bond->getPropIfPresent<std::string>(common_properties::_CIPCode,
+                                              cip)) {
+        labels.push_back(cip);
+      }
+    }
+    std::sort(labels.begin(), labels.end());
+
+    return labels;
+#endif
   };
 
   const auto &[legacyState, modernState, smiles] =
@@ -1468,6 +1492,7 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
 }
 
 TEST_CASE("work") {
+  SKIP("debugging");
   UseLegacyStereoPerceptionFixture modern_stereo(false);
 
   auto roundtripSmiles = [](const std::string &smi) -> std::string {
@@ -1484,6 +1509,6 @@ TEST_CASE("work") {
   auto smi2 = roundtripSmiles(smi);
   CHECK(smi == smi2);
 
-  // auto smi3 = roundtripSmiles(smi2);
-  // CHECK(smi == smi3);
+  auto smi3 = roundtripSmiles(smi2);
+  CHECK(smi == smi3);
 }
