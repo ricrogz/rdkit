@@ -570,13 +570,13 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
   // We want to start with bonds with the most neighboring stereo
   // bonds, and in case of ties, start with the bond that has
   // the lowest position in the molStack
-  using stereoBndTuple = std::tuple<Bond *, unsigned int, unsigned int>;
-  std::less<const unsigned int &> molStackComparer;
-  std::greater<const unsigned int &> numStereoNbrsComparer;
+  using stereoBndTuple_t = std::tuple<Bond *, unsigned int, unsigned int>;
+  std::greater<const unsigned int &> molStackComparer;
+  std::less<const unsigned int &> numStereoNbrsComparer;
 
   auto compareBondPriority = [&molStackComparer, &numStereoNbrsComparer](
-                                 const stereoBndTuple &a,
-                                 const stereoBndTuple &b) {
+                                 const stereoBndTuple_t &a,
+                                 const stereoBndTuple_t &b) {
     const auto &[aBnd, aNumStereoNbrs, aMolStackPos] = a;
     const auto &[bBnd, bNumStereoNbrs, bMolStackPos] = b;
 
@@ -586,7 +586,7 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
     return numStereoNbrsComparer(aNumStereoNbrs, bNumStereoNbrs);
   };
 
-  std::priority_queue<stereoBndTuple, std::vector<stereoBndTuple>,
+  std::priority_queue<stereoBndTuple_t, std::vector<stereoBndTuple_t>,
                       decltype(compareBondPriority)>
       q{compareBondPriority};
 

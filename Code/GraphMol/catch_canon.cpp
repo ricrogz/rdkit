@@ -1492,7 +1492,6 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
 }
 
 TEST_CASE("work") {
-  SKIP("debugging");
   UseLegacyStereoPerceptionFixture modern_stereo(false);
 
   auto roundtripSmiles = [](const std::string &smi) -> std::string {
