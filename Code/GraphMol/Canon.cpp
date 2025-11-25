@@ -18,6 +18,7 @@
 #include <RDGeneral/hash/hash.hpp>
 #include <RDGeneral/utils.h>
 
+#include <ranges>
 #include <queue>
 #include <algorithm>
 
@@ -570,27 +571,27 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
   // We want to start with bonds with the most neighboring stereo
   // bonds, and in case of ties, start with the bond that has
   // the lowest position in the molStack
-  using stereoBndTuple_t = std::tuple<Bond *, unsigned int, unsigned int>;
   std::greater<const unsigned int &> molStackComparer;
   std::less<const unsigned int &> numStereoNbrsComparer;
 
-  auto compareBondPriority = [&molStackComparer, &numStereoNbrsComparer](
-                                 const stereoBndTuple_t &a,
-                                 const stereoBndTuple_t &b) {
-    const auto &[aBnd, aNumStereoNbrs, aMolStackPos] = a;
-    const auto &[bBnd, bNumStereoNbrs, bMolStackPos] = b;
+  std::unordered_map<const Bond *, std::vector<Bond *>> stereoBondNbrs;
+  auto compareBondPriority = [&stereoBondNbrs, &bondVisitOrders,
+                              &molStackComparer, &numStereoNbrsComparer](
+                                 const Bond *aBnd, const Bond *bBnd) {
+    const auto aNumStereoNbrs = stereoBondNbrs[aBnd].size();
+    const auto bNumStereoNbrs = stereoBondNbrs[bBnd].size();
 
     if (aNumStereoNbrs == bNumStereoNbrs) {
-      return molStackComparer(aMolStackPos, bMolStackPos);
+      return molStackComparer(bondVisitOrders[aBnd->getIdx()],
+                              bondVisitOrders[bBnd->getIdx()]);
     }
     return numStereoNbrsComparer(aNumStereoNbrs, bNumStereoNbrs);
   };
 
-  std::priority_queue<stereoBndTuple_t, std::vector<stereoBndTuple_t>,
+  std::priority_queue<Bond *, std::vector<Bond *>,
                       decltype(compareBondPriority)>
       q{compareBondPriority};
 
-  unsigned int molStackPos = 0;
   for (auto &msI : molStack) {
     if (msI.type != MOL_STACK_BOND) {
       // not a bond, skip it
@@ -611,7 +612,7 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
       continue;
     }
 
-    unsigned int nbrStereoBonds = 0;
+    auto &currentNbrs = stereoBondNbrs[bond];
     for (const auto *dblBondAtom :
          std::array<Atom *, 2>{bond->getBeginAtom(), bond->getEndAtom()}) {
       for (const auto *bond : mol.atomBonds(dblBondAtom)) {
@@ -620,23 +621,51 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
         }
         auto nbrDblBnd = getNeighboringStereoBond(dblBondAtom, bond);
         if (nbrDblBnd != nullptr) {
-          ++nbrStereoBonds;
+          currentNbrs.push_back(nbrDblBnd);
         }
       }
     }
+    std::ranges::sort(currentNbrs,
+                      [&molStackComparer](const Bond *aBnd, const Bond *bBnd) {
+                        // Reversing the bonds is intentional: molStackComparer
+                        // is a "std::greater" comparer (priority queue returns
+                        // the highest element), but here we want to sort in
+                        // increasing order, so we want a std::less comparer,
+                        // which can be achieved by reversing the std::greater
+                        // because we can have no ties here
+                        return molStackComparer(bBnd->getIdx(), aBnd->getIdx());
+                      });
 
-    q.emplace(bond, nbrStereoBonds, molStackPos);
-    ++molStackPos;
+    q.emplace(bond);
   }
 
   // Now that we have bonds in the order we want to handle them,
   // do the canonicalization
+  boost::dynamic_bitset<> seen_bonds(mol.getNumBonds());
   while (!q.empty()) {
-    const auto &[bond, aNumStereoNbrs, aMolStackPos] = q.top();
+    const auto bond = q.top();
     q.pop();
+    if (seen_bonds.test(bond->getIdx())) {
+      continue;
+    }
 
-    Canon::canonicalizeDoubleBond(bond, bondVisitOrders, atomVisitOrders,
-                                  bondDirCounts, atomDirCounts, molStack);
+    std::queue<Bond *> connectedBondsQ;
+    connectedBondsQ.push(bond);
+
+    while (!connectedBondsQ.empty()) {
+      const auto currentBond = connectedBondsQ.front();
+      connectedBondsQ.pop();
+
+      Canon::canonicalizeDoubleBond(currentBond, bondVisitOrders,
+                                    atomVisitOrders, bondDirCounts,
+                                    atomDirCounts, molStack);
+      seen_bonds.set(currentBond->getIdx());
+      for (auto nbrStereoBnd : stereoBondNbrs[currentBond]) {
+        if (!seen_bonds.test(nbrStereoBnd->getIdx())) {
+          connectedBondsQ.push(nbrStereoBnd);
+        }
+      }
+    }
   }
 }
 

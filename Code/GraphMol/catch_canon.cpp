@@ -1173,7 +1173,7 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
               {
                   {false, false,
                    R"smi(O=C1N2[C@H]3[C@@H]2[C@@H]2[C@H]3N12)smi"},  // #7759
-                  {false, false,
+                  {true, true,
                    R"smi(C/C=C\C=C(/C=C\C)C(/C=C\C)=C/C)smi"},  // #8759
                   {false, false,
                    R"smi(O=C=NC1=CC2C3=C(C=C1)C2=C(N=C=O)C=C3)smi"},  // #8721
