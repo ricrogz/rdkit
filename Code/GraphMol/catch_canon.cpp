@@ -1418,9 +1418,80 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
     // Check the second roundtrip too
     auto m3 = v2::SmilesParse::MolFromSmiles(secondRoundtrip);
     REQUIRE(m3);
+
+    const auto thirdRoundtrip = MolToSmiles(*m3);
+
     CHECK(refFeatures == count_features(*m3));
+
+    CHECK(firstRoundtrip == secondRoundtrip);
+    CHECK(firstRoundtrip == thirdRoundtrip);
+
+    auto m4 = v2::SmilesParse::MolFromSmiles(thirdRoundtrip);
+    REQUIRE(m4);
+    CHECK(refFeatures == count_features(*m4));
 
   } else {
     CHECK(firstRoundtrip != secondRoundtrip);
   }
+}
+
+TEST_CASE("work") {
+  auto get_labels = [](RWMol &m) {
+    CIPLabeler::assignCIPLabels(m);
+
+    std::vector<std::string> labels;
+    for (const auto atom : m.atoms()) {
+      std::string cip;
+      if (atom->getPropIfPresent<std::string>(common_properties::_CIPCode,
+                                              cip)) {
+        labels.push_back(cip);
+      }
+    }
+    for (const auto bond : m.bonds()) {
+      std::string cip;
+      if (bond->getPropIfPresent<std::string>(common_properties::_CIPCode,
+                                              cip)) {
+        labels.push_back(cip);
+      }
+    }
+    std::sort(labels.begin(), labels.end());
+
+    return labels;
+  };
+
+  UseLegacyStereoPerceptionFixture useModern(true);
+
+  // const auto smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
+  const auto smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
+
+  // pre-canonicalize SMILES: the inputs get outdated when
+  // we make changes to the canonicalization algorithm
+  auto m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  REQUIRE(m1);
+
+#ifndef NDEBUG
+  m1->debugMol(std::cerr);
+  std::cerr << "#######################################\n";
+#endif
+
+  const auto firstRoundtrip = MolToSmiles(*m1);
+
+  // Get the stereo features after the SMILES roundtrip,
+  // so that assigning labels can't have any influence
+  // on the SMILES
+  const auto refFeatures = get_labels(*m1);
+
+  auto m2 = v2::SmilesParse::MolFromSmiles(firstRoundtrip);
+  REQUIRE(m2);
+  const auto secondRoundtrip = MolToSmiles(*m2);
+
+  CHECK(firstRoundtrip == secondRoundtrip);
+
+  // If the stereo labels don't match after round-tripping, something is wrong
+  CHECK(refFeatures == get_labels(*m2));
+
+  // Check the second roundtrip too
+  auto m3 = v2::SmilesParse::MolFromSmiles(secondRoundtrip);
+  REQUIRE(m3);
+  CHECK(refFeatures == get_labels(*m3));
 }
