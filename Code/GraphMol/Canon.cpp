@@ -175,30 +175,16 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
                    atomVisitOrders[dblBond->getEndAtomIdx()] > 0,
                "neither end atom traversed");
 
-  Atom *atom1 = dblBond->getBeginAtom();
-  Atom *atom2 = dblBond->getEndAtom();
-  // we only worry about double bonds that begin and end at atoms
-  // of degree 2 or 3:
-  if ((atom1->getDegree() != 2 && atom1->getDegree() != 3) ||
-      (atom2->getDegree() != 2 && atom2->getDegree() != 3)) {
-    return;
-  }
-  // ensure that atom1 is the lower numbered atom of the double bond (the one
-  // traversed first)
-  if (atomVisitOrders[dblBond->getBeginAtomIdx()] >=
-      atomVisitOrders[dblBond->getEndAtomIdx()]) {
-    std::swap(atom1, atom2);
-  }
-
-  Bond *firstFromAtom1 = nullptr, *secondFromAtom1 = nullptr;
-  Bond *firstFromAtom2 = nullptr, *secondFromAtom2 = nullptr;
-
   ROMol &mol = dblBond->getOwningMol();
 
-  // -------------------------------------------------------
-  // find the lowest visit order bonds from each end and determine
-  // if anything is already constraining our choice of directions:
-  bool dir1Set = false, dir2Set = false;
+  auto hasClosingProp = [](const Bond *bond) {
+    return bond->hasProp(common_properties::_TraversalRingClosureBond);
+  };
+
+  auto isClosingRingBond = [&hasClosingProp](const Bond *bond) {
+    int distance = bond->getBeginAtomIdx() - bond->getEndAtomIdx();
+    return distance > 1 && hasClosingProp(bond);
+  };
 
   auto findNeighborBonds = [&mol, &dblBond, &bondDirCounts, &bondVisitOrders](
                                auto atom, auto &firstNeighborBond,
@@ -224,6 +210,91 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       }
     }
   };
+
+  auto flipBondDir = [](Bond::BondDir bondDir) {
+    return (bondDir == Bond::ENDUPRIGHT) ? Bond::ENDDOWNRIGHT
+                                         : Bond::ENDUPRIGHT;
+  };
+
+  auto get_direction = [&isClosingRingBond, &hasClosingProp, &flipBondDir,
+                        &dblBond](const Atom *refAtom, const Atom *targetAtom,
+                                  const Bond *refControllingBond,
+                                  const Bond *targetBond) {
+    Bond::BondDir dir = Bond::NONE;
+    if (dblBond->getStereo() == Bond::STEREOE ||
+        dblBond->getStereo() == Bond::STEREOTRANS) {
+      dir = refControllingBond->getBondDir();
+    } else if (dblBond->getStereo() == Bond::STEREOZ ||
+               dblBond->getStereo() == Bond::STEREOCIS) {
+      dir = flipBondDir(refControllingBond->getBondDir());
+    }
+    CHECK_INVARIANT(dir != Bond::NONE, "stereo not set");
+
+    // If we're not looking at the bonds used to determine the
+    // stereochemistry, we need to flip the setting on the other bond:
+    const INT_VECT &stereoAtoms = dblBond->getStereoAtoms();
+
+    auto isFlipped = false;
+
+    if (refAtom->getDegree() == 3 &&
+        std::ranges::find(stereoAtoms,
+                          static_cast<int>(refControllingBond->getOtherAtomIdx(
+                              refAtom->getIdx()))) == stereoAtoms.end()) {
+      isFlipped = true;
+      dir = flipBondDir(dir);
+    }
+    if (targetAtom->getDegree() == 3 &&
+        std::ranges::find(stereoAtoms,
+                          static_cast<int>(targetBond->getOtherAtomIdx(
+                              targetAtom->getIdx()))) == stereoAtoms.end()) {
+      isFlipped = true;
+      dir = flipBondDir(dir);
+    }
+
+    return std::make_pair(dir, isFlipped);
+  };
+
+  auto checkBondsInSameBranch = [&molStack, &bondVisitOrders](Bond *dblBond,
+                                                              Bond *dirBond) {
+    auto start = bondVisitOrders[dblBond->getIdx()];
+    auto end = bondVisitOrders[dirBond->getIdx()];
+    if (start > end) {
+      std::swap(start, end);
+    }
+    unsigned int branchLevel = 0;
+    for (auto i = start + 1; i != end; ++i) {
+      const auto &item = molStack[i];
+      if (item.type == MOL_STACK_BRANCH_OPEN) {
+        ++branchLevel;
+      } else if (item.type == MOL_STACK_BRANCH_CLOSE) {
+        --branchLevel;
+      }
+    }
+    return branchLevel == 0;
+  };
+
+  Atom *atom1 = dblBond->getBeginAtom();
+  Atom *atom2 = dblBond->getEndAtom();
+  // we only worry about double bonds that begin and end at atoms
+  // of degree 2 or 3:
+  if ((atom1->getDegree() != 2 && atom1->getDegree() != 3) ||
+      (atom2->getDegree() != 2 && atom2->getDegree() != 3)) {
+    return;
+  }
+  // ensure that atom1 is the lower numbered atom of the double bond (the one
+  // traversed first)
+  if (atomVisitOrders[dblBond->getBeginAtomIdx()] >=
+      atomVisitOrders[dblBond->getEndAtomIdx()]) {
+    std::swap(atom1, atom2);
+  }
+
+  Bond *firstFromAtom1 = nullptr, *secondFromAtom1 = nullptr;
+  Bond *firstFromAtom2 = nullptr, *secondFromAtom2 = nullptr;
+
+  // -------------------------------------------------------
+  // find the lowest visit order bonds from each end and determine
+  // if anything is already constraining our choice of directions:
+  bool dir1Set = false, dir2Set = false;
 
   findNeighborBonds(atom1, firstFromAtom1, secondFromAtom1, dir1Set);
   findNeighborBonds(atom2, firstFromAtom2, secondFromAtom2, dir2Set);
@@ -345,14 +416,6 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     auto [atom2Dir, isFlipped] = getReferenceDirection(
         dblBond, atom1, atom2, atom1ControllingBond, firstFromAtom2);
 
-    return std::make_pair(dir, isFlipped);
-  };
-
-  // now set the directionality on the other side:
-  if (setFromBond1) {
-    auto [atom2Dir, isFlipped] =
-        get_direction(atom1, atom2, atom1ControllingBond, firstFromAtom2);
-
     if (!isFlipped && isClosingRingBond(dblBond)) {
       atom2Dir = flipBondDir(atom2Dir);
     }
@@ -397,24 +460,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // UNLESS the bond is not in a branch (in the smiles) (e.g. firstFromAtom1
       // branches off a cycle, and secondFromAtom1 shows up at the end of the
       // cycle). This was Github Issue #2023, see it for an example.
-      auto checkBondsInSameBranch = [&molStack, &bondVisitOrders](
-                                        Bond *dblBond, Bond *dirBond) {
-        auto start = bondVisitOrders[dblBond->getIdx()];
-        auto end = bondVisitOrders[dirBond->getIdx()];
-        if (start > end) {
-          std::swap(start, end);
-        }
-        unsigned int branchLevel = 0;
-        for (auto i = start + 1; i != end; ++i) {
-          const auto &item = molStack[i];
-          if (item.type == MOL_STACK_BRANCH_OPEN) {
-            ++branchLevel;
-          } else if (item.type == MOL_STACK_BRANCH_CLOSE) {
-            --branchLevel;
-          }
-        }
-        return branchLevel == 0;
-      };
+
       if (checkBondsInSameBranch(dblBond, secondFromAtom1)) {
         auto otherDir = flipBondDir(firstFromAtom1->getBondDir());
         secondFromAtom1->setBondDir(otherDir);
@@ -431,8 +477,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // Here we set the bond direction to be opposite the other one (since
       // both come after the atom connected to the double bond).
       Bond::BondDir otherDir;
-      if (!secondFromAtom2->hasProp(
-              common_properties::_TraversalRingClosureBond)) {
+      if (!hasClosingProp(secondFromAtom2)) {
         otherDir = flipBondDir(firstFromAtom2->getBondDir());
       } else {
         // another one those irritating little reversal things due to
@@ -465,8 +510,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     if (bondVisitOrders[atom1ControllingBond->getIdx()] >
         atomVisitOrders[atom1->getIdx()]) {
       if (bondDirCounts[atom1ControllingBond->getIdx()] == 1) {
-        if (!atom1ControllingBond->hasProp(
-                common_properties::_TraversalRingClosureBond)) {
+        if (!hasClosingProp(atom1ControllingBond)) {
           // std::cerr<<"  switcheroo 1"<<std::endl;
           switchBondDir(atom1ControllingBond);
         }
@@ -633,6 +677,12 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
       Canon::canonicalizeDoubleBond(currentBond, bondVisitOrders,
                                     atomVisitOrders, bondDirCounts,
                                     atomDirCounts, molStack);
+
+#ifndef NDEBUG
+      mol.debugMol(std::cerr);
+      std::cerr << "#######################################\n";
+#endif
+
       seen_bonds.set(currentBond->getIdx());
       for (auto nbrStereoBnd : stereoBondNbrs[currentBond]) {
         if (!seen_bonds.test(nbrStereoBnd->getIdx())) {
@@ -1317,8 +1367,11 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
       }
     }
   }
+
+#ifndef NDEBUG
   Canon::removeRedundantBondDirSpecs(mol, molStack, bondDirCounts,
                                      atomDirCounts, bondVisitOrders);
+#endif
 }
 
 void canonicalizeEnhancedStereo(ROMol &mol,
