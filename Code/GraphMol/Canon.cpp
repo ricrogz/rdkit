@@ -299,7 +299,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       firstFromAtom1->setBondDir(atom1Dir);
 
       bondDirCounts[firstFromAtom1->getIdx()] += 1;
-      atomDirCounts[atom1->getIdx()] += 2;
+      atomDirCounts[atom1->getIdx()] += 1;
       atom1ControllingBond = secondFromAtom1;
     }
   } else {
@@ -334,7 +334,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       firstFromAtom2->setBondDir(atom2Dir);
 
       bondDirCounts[firstFromAtom2->getIdx()] += 1;
-      atomDirCounts[atom2->getIdx()] += 2;
+      atomDirCounts[atom2->getIdx()] += 1;
       atom2ControllingBond = secondFromAtom2;
     }
     // CHECK_INVARIANT(0,"ring stereochemistry not handled");
@@ -344,6 +344,14 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
   if (setFromBond1) {
     auto [atom2Dir, isFlipped] = getReferenceDirection(
         dblBond, atom1, atom2, atom1ControllingBond, firstFromAtom2);
+
+    return std::make_pair(dir, isFlipped);
+  };
+
+  // now set the directionality on the other side:
+  if (setFromBond1) {
+    auto [atom2Dir, isFlipped] =
+        get_direction(atom1, atom2, atom1ControllingBond, firstFromAtom2);
 
     if (!isFlipped && isClosingRingBond(dblBond)) {
       atom2Dir = flipBondDir(atom2Dir);
