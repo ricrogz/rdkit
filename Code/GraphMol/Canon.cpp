@@ -89,40 +89,6 @@ auto _possibleCompare = [](const PossibleType &arg1, const PossibleType &arg2) {
   return (std::get<0>(arg1) < std::get<0>(arg2));
 };
 
-bool checkBondsInSameBranch(const MolStack &molStack, Bond *dblBnd,
-                            Bond *dirBnd) {
-  bool seenDblBond = false;
-  int branchCounter = 0;
-  for (const auto &item : molStack) {
-    switch (item.type) {
-      case MOL_STACK_BOND:
-        if (item.obj.bond == dirBnd || item.obj.bond == dblBnd) {
-          if (seenDblBond) {
-            return branchCounter == 0;
-          } else {
-            seenDblBond = true;
-          }
-        }
-        break;
-      case MOL_STACK_BRANCH_OPEN:
-        if (seenDblBond) {
-          ++branchCounter;
-        }
-        break;
-      case MOL_STACK_BRANCH_CLOSE:
-        if (seenDblBond) {
-          --branchCounter;
-        }
-        break;
-      default:
-        break;
-    }
-  }
-  // We should not ever hit this. But if we do, returning false
-  // causes the same behavior as before this patch.
-  return false;
-}
-
 void switchBondDir(Bond *bond) {
   PRECONDITION(bond, "bad bond");
   PRECONDITION(bond->getBondType() == Bond::SINGLE || bond->getIsAromatic() ||
