@@ -18,9 +18,10 @@
 #include <RDGeneral/hash/hash.hpp>
 #include <RDGeneral/utils.h>
 
+#include <algorithm>
 #include <ranges>
 #include <queue>
-#include <algorithm>
+#include <tuple>
 
 namespace RDKit {
 namespace Canon {
@@ -566,6 +567,252 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
   }
 }
 
+void newCanonicalizeDoubleBonds(ROMol &mol, const Bond &dblBond,
+                                const UINT_VECT &atomVisitOrders,
+                                const UINT_VECT &bondVisitOrders,
+                                UINT_VECT &atomDirCounts,
+                                UINT_VECT &bondDirCounts) {
+  PRECONDITION(dblBond.getBondType() == Bond::DOUBLE, "bad bond order");
+  PRECONDITION(dblBond.getStereo() > Bond::STEREOANY, "bad bond stereo");
+
+  const INT_VECT &stereoAtoms = dblBond.getStereoAtoms();
+  PRECONDITION(stereoAtoms.size() == 2, "bad bond stereo atoms");
+
+  auto findNeighborBonds = [&mol, &dblBond, &bondVisitOrders,
+                            &bondDirCounts](const Atom *atom) {
+    bool dirSet = false;
+    Bond *first = nullptr;
+    Bond *second = nullptr;
+    auto firstVisitOrder = mol.getNumBonds() + 1;
+    for (const auto bond : mol.atomBonds(atom)) {
+      auto bondIdx = bond->getIdx();
+      if (dblBond.getIdx() == bondIdx || !canSetDoubleBondStereo(*bond)) {
+        continue;
+      }
+      if (bondDirCounts[bondIdx] > 0) {
+        dirSet = true;
+      }
+      if (!first) {
+        first = bond;
+        firstVisitOrder = bondVisitOrders[bondIdx];
+      } else if (bondVisitOrders[bondIdx] < firstVisitOrder) {
+        second = std::exchange(first, bond);
+      } else {
+        second = bond;
+      }
+    }
+
+    return std::make_tuple(first, second, dirSet);
+  };
+
+  auto isStereoAtom = [&stereoAtoms](int atomIdx) {
+    return std::ranges::find(stereoAtoms, atomIdx) != stereoAtoms.end();
+  };
+
+  auto flipBondDir = [](Bond::BondDir bondDir) {
+    return (bondDir == Bond::ENDUPRIGHT) ? Bond::ENDDOWNRIGHT
+                                         : Bond::ENDUPRIGHT;
+  };
+
+  Atom *atom1 = dblBond.getBeginAtom();
+  Atom *atom2 = dblBond.getEndAtom();
+
+  if ((atom1->getDegree() != 2 && atom1->getDegree() != 3) ||
+      (atom2->getDegree() != 2 && atom2->getDegree() != 3)) {
+    return;
+  }
+
+  if (atomVisitOrders[dblBond.getBeginAtomIdx()] >=
+      atomVisitOrders[dblBond.getEndAtomIdx()]) {
+    std::swap(atom1, atom2);
+  }
+
+  auto [firstFromAtom1, secondFromAtom1, dir1Set] = findNeighborBonds(atom1);
+  auto [firstFromAtom2, secondFromAtom2, dir2Set] = findNeighborBonds(atom2);
+
+  if (dir1Set && dir2Set) {
+    // Check that the directions are compatible
+    auto getDirection = [&isStereoAtom, &flipBondDir, &stereoAtoms,
+                         &atomDirCounts, &bondDirCounts](
+                            const Atom &atom, Bond *first, Bond *second) {
+      // At least one of the bonds must be present
+      const Bond *refBond = first;
+      if (!first && second) {
+        refBond = second;
+      } else if (first && second) {
+        auto dir1 = first->getBondDir();
+        auto dir2 = second->getBondDir();
+
+        // At this time we have not factored in branches or rings yet,
+        // so directions on the same side of the double bond must be
+        // different at this point
+        if (dir1 != Bond::NONE && dir2 != Bond::NONE && dir1 == dir2) {
+          throw ValueErrorException("inconsistent bond directions");
+        } else if (dir2 == Bond::NONE) {
+          second->setBondDir(flipBondDir(dir1));
+
+          ++bondDirCounts[second->getIdx()];
+          ++atomDirCounts[atom.getIdx()];
+
+        } else if (dir1 == Bond::NONE) {
+          first->setBondDir(flipBondDir(dir2));
+
+          ++bondDirCounts[first->getIdx()];
+          ++atomDirCounts[atom.getIdx()];
+        }
+      }
+
+      auto dir = refBond->getBondDir();
+      int idx = refBond->getOtherAtomIdx(atom.getIdx());
+
+      if (!isStereoAtom(idx)) {
+        dir = flipBondDir(dir);
+      }
+
+      return dir;
+    };
+
+    auto atom1Dir = getDirection(*atom1, firstFromAtom1, secondFromAtom1);
+    auto atom2Dir = getDirection(*atom2, firstFromAtom2, secondFromAtom2);
+
+    auto ok = false;
+    if (dblBond.getStereo() == Bond::STEREOE ||
+        dblBond.getStereo() == Bond::STEREOTRANS) {
+      ok = (atom1Dir == atom2Dir);
+    } else if (dblBond.getStereo() == Bond::STEREOZ ||
+               dblBond.getStereo() == Bond::STEREOCIS) {
+      ok = (atom1Dir != atom2Dir);
+    }
+    if (!ok) {
+      throw ValueErrorException(
+          "stereo bond directions are inconsistent with stereo label");
+    }
+  } else if (!dir1Set && !dir2Set) {
+    auto atom1Dir = Bond::ENDUPRIGHT;
+
+    firstFromAtom1->setBondDir(atom1Dir);
+    ++bondDirCounts[firstFromAtom1->getIdx()];
+    ++atomDirCounts[atom1->getIdx()];
+
+    if (secondFromAtom1) {
+      secondFromAtom1->setBondDir(Bond::ENDDOWNRIGHT);
+      ++bondDirCounts[secondFromAtom1->getIdx()];
+      ++atomDirCounts[atom1->getIdx()];
+    }
+
+    auto atom2Dir = Bond::NONE;
+    if (dblBond.getStereo() == Bond::STEREOE ||
+        dblBond.getStereo() == Bond::STEREOTRANS) {
+      atom2Dir = atom1Dir;
+    } else if (dblBond.getStereo() == Bond::STEREOZ ||
+               dblBond.getStereo() == Bond::STEREOCIS) {
+      atom2Dir = flipBondDir(atom1Dir);
+    }
+
+    auto otherIdx1 = firstFromAtom1->getOtherAtomIdx(atom1->getIdx());
+    auto otherIdx2 = firstFromAtom2->getOtherAtomIdx(atom2->getIdx());
+    if (isStereoAtom(otherIdx1) ^ isStereoAtom(otherIdx2)) {
+      atom2Dir = flipBondDir(atom2Dir);
+    }
+
+    firstFromAtom2->setBondDir(atom2Dir);
+    ++bondDirCounts[firstFromAtom2->getIdx()];
+    ++atomDirCounts[atom2->getIdx()];
+
+    if (secondFromAtom2) {
+      secondFromAtom2->setBondDir(flipBondDir(atom2Dir));
+      ++bondDirCounts[secondFromAtom2->getIdx()];
+      ++atomDirCounts[atom2->getIdx()];
+    }
+
+  } else if (!dir2Set) {
+    auto atom1Dir = firstFromAtom1->getBondDir();
+    if (atom1Dir == Bond::NONE) {
+      // Direction is set by the second bond
+      atom1Dir = secondFromAtom1->getBondDir();
+      atom1Dir = flipBondDir(atom1Dir);
+      firstFromAtom1->setBondDir(atom1Dir);
+      ++bondDirCounts[firstFromAtom1->getIdx()];
+      ++atomDirCounts[atom1->getIdx()];
+    } else if (secondFromAtom1) {
+      if (secondFromAtom1->getBondDir() == Bond::NONE) {
+        secondFromAtom1->setBondDir(flipBondDir(atom1Dir));
+        ++bondDirCounts[secondFromAtom1->getIdx()];
+        ++atomDirCounts[atom1->getIdx()];
+      } else if (secondFromAtom1->getBondDir() == atom1Dir) {
+        throw std::runtime_error("Inconsistent bond directions");
+      }
+    }
+
+    auto atom2Dir = Bond::NONE;
+    if (dblBond.getStereo() == Bond::STEREOE ||
+        dblBond.getStereo() == Bond::STEREOTRANS) {
+      atom2Dir = atom1Dir;
+    } else if (dblBond.getStereo() == Bond::STEREOZ ||
+               dblBond.getStereo() == Bond::STEREOCIS) {
+      atom2Dir = flipBondDir(atom1Dir);
+    }
+
+    auto otherIdx1 = firstFromAtom1->getOtherAtomIdx(atom1->getIdx());
+    auto otherIdx2 = firstFromAtom2->getOtherAtomIdx(atom2->getIdx());
+    if (isStereoAtom(otherIdx1) ^ isStereoAtom(otherIdx2)) {
+      atom2Dir = flipBondDir(atom2Dir);
+    }
+
+    firstFromAtom2->setBondDir(atom2Dir);
+    ++bondDirCounts[firstFromAtom2->getIdx()];
+    ++atomDirCounts[atom2->getIdx()];
+
+    if (secondFromAtom2) {
+      secondFromAtom2->setBondDir(flipBondDir(atom2Dir));
+      ++bondDirCounts[secondFromAtom2->getIdx()];
+      ++atomDirCounts[atom2->getIdx()];
+    }
+  } else {
+    auto atom2Dir = firstFromAtom2->getBondDir();
+    if (atom2Dir == Bond::NONE) {
+      atom2Dir = secondFromAtom2->getBondDir();
+      atom2Dir = flipBondDir(atom2Dir);
+      firstFromAtom2->setBondDir(atom2Dir);
+      ++bondDirCounts[firstFromAtom2->getIdx()];
+      ++atomDirCounts[atom2->getIdx()];
+    } else if (secondFromAtom2) {
+      if (secondFromAtom2->getBondDir() == Bond::NONE) {
+        secondFromAtom2->setBondDir(flipBondDir(atom2Dir));
+        ++bondDirCounts[secondFromAtom2->getIdx()];
+        ++atomDirCounts[atom2->getIdx()];
+      } else if (secondFromAtom2->getBondDir() == atom2Dir) {
+        throw std::runtime_error("Inconsistent bond directions");
+      }
+    }
+
+    auto atom1Dir = Bond::NONE;
+    if (dblBond.getStereo() == Bond::STEREOE ||
+        dblBond.getStereo() == Bond::STEREOTRANS) {
+      atom1Dir = atom2Dir;
+    } else if (dblBond.getStereo() == Bond::STEREOZ ||
+               dblBond.getStereo() == Bond::STEREOCIS) {
+      atom1Dir = flipBondDir(atom2Dir);
+    }
+
+    auto otherIdx1 = firstFromAtom1->getOtherAtomIdx(atom1->getIdx());
+    auto otherIdx2 = firstFromAtom2->getOtherAtomIdx(atom2->getIdx());
+    if (isStereoAtom(otherIdx1) ^ isStereoAtom(otherIdx2)) {
+      atom1Dir = flipBondDir(atom1Dir);
+    }
+
+    firstFromAtom1->setBondDir(atom1Dir);
+    ++bondDirCounts[firstFromAtom1->getIdx()];
+    ++atomDirCounts[atom1->getIdx()];
+
+    if (secondFromAtom1) {
+      secondFromAtom1->setBondDir(flipBondDir(atom1Dir));
+      ++bondDirCounts[secondFromAtom1->getIdx()];
+      ++atomDirCounts[atom1->getIdx()];
+    }
+  }
+}
+
 void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
                              const UINT_VECT &atomVisitOrders,
                              UINT_VECT &bondDirCounts, UINT_VECT &atomDirCounts,
@@ -674,9 +921,9 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
       const auto currentBond = connectedBondsQ.front();
       connectedBondsQ.pop();
 
-      Canon::canonicalizeDoubleBond(currentBond, bondVisitOrders,
-                                    atomVisitOrders, bondDirCounts,
-                                    atomDirCounts, molStack);
+      Canon::newCanonicalizeDoubleBonds(mol, *currentBond, atomVisitOrders,
+                                        bondVisitOrders, atomDirCounts,
+                                        bondDirCounts);
 
 #ifndef NDEBUG
       mol.debugMol(std::cerr);
