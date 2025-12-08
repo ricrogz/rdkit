@@ -364,7 +364,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     auto [atom2Dir, isFlipped] = getReferenceDirection(
         dblBond, atom1, atom2, atom1ControllingBond, firstFromAtom2);
 
-    if (!isFlipped && isClosingRingBond(dblBond)) {
+    if (isClosingRingBond(dblBond)) {
       atom2Dir = flipBondDir(atom2Dir);
     }
 
@@ -375,6 +375,11 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
   } else {
     auto [atom1Dir, isFlipped] = getReferenceDirection(
         dblBond, atom2, atom1, atom2ControllingBond, firstFromAtom1);
+
+    if (isClosingRingBond(atom2ControllingBond) ^
+        isClosingRingBond(firstFromAtom1)) {
+      atom1Dir = flipBondDir(atom1Dir);
+    }
 
     firstFromAtom1->setBondDir(atom1Dir);
 
@@ -414,6 +419,12 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
                                  secondFromAtom1)) {
         otherDir = flipBondDir(otherDir);
       }
+
+      // Also consider whether the bond is a ring closure:
+      if (isClosingRingBond(secondFromAtom1)) {
+        otherDir = flipBondDir(otherDir);
+      }
+
       secondFromAtom1->setBondDir(otherDir);
     }
     bondDirCounts[secondFromAtom1->getIdx()] += 1;
@@ -1312,10 +1323,8 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
     }
   }
 
-#ifdef NDEBUG
   Canon::removeRedundantBondDirSpecs(mol, molStack, bondDirCounts,
                                      atomDirCounts, bondVisitOrders);
-#endif
 }
 
 void canonicalizeEnhancedStereo(ROMol &mol,

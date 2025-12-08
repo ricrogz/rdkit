@@ -1174,9 +1174,9 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
       {R"smi(O=C(c1ccccc1C(=O)N1C(=O)c2ccccc2C1=O)N1C(=O)c2ccccc2C1=O)smi",
        false, false},  // #8721
       {R"smi(O=[N+]([O-])c1cc/c2c(c1)=C(c1ccccc1)/N=c1\\ccc([N+](=O)[O-])cc1=C(c1ccccc1)/N=2)smi",
-       false, true},  // #8721
+       true, true},  // #8721
       {R"smi(C=Cc1c(C)/c2[n-]c1=C=c1[n-]/c(c(CC)c1C)=C\\c1[n-]c3c(c1C)C(=O)[C@H](C(=O)OC)/C3=C1/[NH+]=C(/C=2)[C@@H](C)[C@@H]1CCC(=O)OC/C=C(\\C)CCC[C@H](C)CCC[C@H](C)CCCC(C)C.[Mg+2])smi",
-       false, true},  // #8721
+       true, true},  // #8721
       {R"smi(CC1=C(/C=C2\C(C)=C3/C(C)=C(/C=C4\C(C)=C5/C(CCC(=O)O)=C(C(C)=C5N4)C=C6\C(CCC(=O)O)=C(C)C(=C6N2)C=C1)N3)C=C(\C=C)C)smi",
        false, false},  // #8089
       {R"smi(COC1=N\C2=CC(=O)c3c(c(O)c(C)c4c3C(=O)C(C)(O/C=C/C(OC)C(C)C(OC(C)=O)C(C)C(O)C(C)C(O)C(C)/C=C\C=C/1C)O4)C2=O)smi",
@@ -1200,15 +1200,15 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
       {R"smi(CC(=O)OCC1=C/[C@@H]2OC(=O)[C@H](C)[C@@]2(O)[C@@H](OC(C)=O)[C@H]2[C@]3(CC[C@H](OC(C)=O)[C@]2(C)[C@@H](OC(C)=O)\C=C/1)CO3)smi",
        false, false},  // #8089
       {R"smi(C=Cc1c(C)/c2[nH]/c1=C\C1=N/C(=C\C3=C(C)C4C(=O)N(Cc5cccc(C#Cc6cccc(Nc7ncnc8cc(OCCOC)c(OCCOC)cc78)c6)c5)C(=O)/C(=C5/N=C(/C=2)[C@@H](C)[C@@H]5CCC(=O)OC)C4N3)C(CC)=C1C)smi",
-       false, true},  // #8089
+       true, true},  // #8089
       {R"smi(CC1=C\C[C@H](O)/C=C/C(C)=C/[C@@H](NC(=O)[C@H](C)O)[C@]2(C)C(=O)O[C@H](C[C@H](O)/C=C/1)[C@@H](C)C2=O)smi",
        false, false},  // #8089
       {R"smi(CC1=C/[C@H]2O[C@@H](C/C=C/C=C/C(=O)O[C@@H]3C[C@@H](/C=C/C/C=C/1)O[C@@H](C/C=C\C[C@@H](O)C(=O)O)[C@]3(C)CO)C[C@H](O)[C@H]2C)smi",
        false, false},  // #8089
       {R"smi(c1ccc2/c3[nH]/c(c2c1)=N\c1ccc(cc1)-c1nc2cc(ccc2o1)/N=c1/[nH]/c(c2ccccc12)=N/c1ccc2nc(oc2c1)-c1ccc(cc1)/N=3)smi",
-       false, false},  // #8089
+       true, false},  // #8089
       {R"smi(c1ccc2/c3[nH]/c(c2c1)=N\c1ccc(cc1)-c1nc2ccc(cc2o1)/N=c1/[nH]/c(c2ccccc12)=N/c1ccc2nc(oc2c1)-c1ccc(cc1)/N=3)smi",
-       false, false},  // #8089
+       true, false},  // #8089
       {R"smi(CC1=C/[C@@H](C)C[C@]2(C)CC[C@H](O2)[C@]23CC[C@](C)(C[C@H](O2)[C@@H]2O[C@@](C)(CC2=O)[C@@H](O)[C@H]2CC[C@@]4(CCC[C@@H](O4)[C@H](C)C(=O)O[C@H]4C[C@H]([C@]5(O)OCC[C@H](C)[C@@H]5O)O[C@H]4\C=C/1)O2)O3)smi",
        false, false},  // #8089
       {R"smi(CC1=C/[C@@H](C)C[C@]2(C)CC[C@H](O2)[C@]23CC[C@](C(=O)O)(C[C@H](O2)[C@@H]2O[C@@](C)(CC2=O)[C@@H](O)[C@H]2CC[C@@]4(CCC[C@@H](O4)[C@H](C)C(=O)O[C@H]4C[C@H]([C@]5(O)OCC[C@H](C)[C@@H]5O)O[C@H]4\C=C/1)O2)O3)smi",
@@ -1461,12 +1461,42 @@ TEST_CASE("work") {
 
   UseLegacyStereoPerceptionFixture useModern(true);
 
-  // const auto smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
-  const auto smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
+  std::string smiles;
+  std::unique_ptr<RWMol> m1;
 
-  // pre-canonicalize SMILES: the inputs get outdated when
-  // we make changes to the canonicalization algorithm
-  auto m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  SECTION("case 1") {
+    // const auto smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
+    smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
+    m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  }
+  SECTION("case 2") {
+    smiles = R"smi(C1CCCCN/C=C/1)smi";
+    m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  }
+  SECTION("case 3") {
+    smiles =
+        R"smi(Cc1ccc(S(=O)(=O)/N=C2\\CC(=N\\C(C)(C)C)/C2=N\\C(C)(C)C)cc1)smi";
+    m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  }
+  SECTION("case 4") {
+    std::string pathName = getenv("RDBASE");
+    pathName += "/Code/GraphMol/test_data/";
+    m1 = v2::FileParsers::MolFromMolFile(pathName + "Issue2316677.mol");
+  }
+  SECTION("case 5") {
+    smiles = R"smi(C1=C\CCCCCC/C=C/C=C/1)smi";
+    m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  }
+  SECTION("case 6") {
+    smiles = R"smi(CCC/[N+]/1=C/c2ccccc2OC(=O)/C=C1/O)smi";
+    m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  }
+  SECTION("case 7") {
+    smiles = R"smi(C1=C\C/C=C2C3=C/C/C=C\C=C/C\3C\2\C=C/1)smi";
+    m1 = v2::SmilesParse::MolFromSmiles(smiles);
+  }
+
+  CAPTURE(smiles);
   REQUIRE(m1);
 
 #ifndef NDEBUG
@@ -1474,6 +1504,8 @@ TEST_CASE("work") {
   std::cerr << "#######################################\n";
 #endif
 
+  // pre-canonicalize SMILES: the inputs get outdated when
+  // we make changes to the canonicalization algorithm
   const auto firstRoundtrip = MolToSmiles(*m1);
 
   // Get the stereo features after the SMILES roundtrip,

@@ -3430,7 +3430,8 @@ TEST_CASE("Testing sf.net issue 2316677 : canonicalization error") {
   REQUIRE(m);
   std::string smi = MolToSmiles(*m, true);
   std::cerr << "smi: " << smi << std::endl;
-  REQUIRE(smi == "Cc1ccc(S(=O)(=O)/N=C2\\CC(=N\\C(C)(C)C)/C2=N\\C(C)(C)C)cc1");
+  REQUIRE(smi ==
+          R"smi(Cc1ccc(S(=O)(=O)\N=C2/CC(=N\C(C)(C)C)/C2=N\C(C)(C)C)cc1)smi");
   delete m;
 }
 
@@ -4934,9 +4935,7 @@ TEST_CASE("Testing github issue 418: removeHs not updating H count") {
     REQUIRE(m->getAtomWithIdx(0)->getNumExplicitHs() == 4);
     delete m;
   }
-  {
-    REQUIRE_THROWS_AS(SmilesToMol("[H]N([H])([H])[H]"), MolSanitizeException);
-  }
+  { REQUIRE_THROWS_AS(SmilesToMol("[H]N([H])([H])[H]"), MolSanitizeException); }
 }
 
 TEST_CASE(
@@ -6934,9 +6933,7 @@ TEST_CASE(
       REQUIRE(m->getNumBonds() == 244);
       REQUIRE_THROWS_AS(MolOps::findSSSR(*m), ValueErrorException);
     }
-    {
-      REQUIRE_THROWS_AS(SmilesToMol(smiles), ValueErrorException);
-    }
+    { REQUIRE_THROWS_AS(SmilesToMol(smiles), ValueErrorException); }
   }
 }
 
