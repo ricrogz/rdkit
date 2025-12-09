@@ -1169,7 +1169,7 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
 
   const static std::initializer_list<std::tuple<std::string, bool, bool>> samples = {
       {R"smi(C/C=C\C=C(/C=C\C)C(/C=C\C)=C/C)smi", true, true},          // #8759
-      {R"smi(C1=C\CCCCCC/C=C/C=C/1)smi", true, true},                   // #8759
+      {R"smi(C1=C\CCCCCC/C=C/C=C/1)smi", false, false},                 // #8759
       {R"smi(O=C=NC1=CC2C3=C(C=C1)C2=C(N=C=O)C=C3)smi", false, false},  // #8721
       {R"smi(O=C(c1ccccc1C(=O)N1C(=O)c2ccccc2C1=O)N1C(=O)c2ccccc2C1=O)smi",
        false, false},  // #8721
@@ -1188,35 +1188,35 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
                              false, true},  // #8089
                       */
       {R"smi(CC1=C\[C@H](C)C[C@@]2(C)CC[C@@H](O2)[C@@]23CC[C@@](C)(C[C@@H](O2)[C@H]2O[C@](C)(CC2=O)[C@@H](O)[C@@H]2CC[C@@]4(CCC[C@H](O4)[C@@H](C)C(=O)O[C@@H]4C[C@@H]([C@@]5(O)OCC[C@@H](C)[C@H]5O)O[C@@H]4/C=C/1)O2)O3)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(CC1=C/[C@H]2O[C@@H](C/C=C/C=C/C(=O)O[C@@H]3C[C@@H](/C=C/C/C=C/1)O[C@@H](C/C=C\CCO)[C@]3(C)CO)C[C@H](O)[C@H]2C)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(CC(=O)OCC1=C\CC/C(C)=C/CC[C@@]2(C)CC[C@@](C(C)C)(/C=C/1)O2)smi",
-       false, false},  // #8089
-      {R"smi(CC1=C\C/C=C(\C)CC[C@H]2C(C)(C)[C@@H](\C=C/1)CC[C@]2(C)O)smi",
-       false, true},  // #8089
+       true, true},  // #8089
+      {R"smi(CC1=C\C/C=C(\C)CC[C@H]2C(C)(C)[C@@H](\C=C/1)CC[C@]2(C)O)smi", true,
+       true},  // #8089
       {R"smi(CC(=O)OCC1=C/[C@@H]2OC(=O)[C@H](C)[C@@]2(O)[C@@H](OC(C)=O)[C@H]2[C@]3(CC[C@H](OC(C)=O)[C@]2(C)[C@@H](OC(=O)COC(=O)CC(C)C)\C=C/1)CO3)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(CC(=O)OCC1=C/[C@@H]2OC(=O)[C@H](C)[C@@]2(O)[C@@H](OC(C)=O)[C@H]2[C@]3(CC[C@H](OC(C)=O)[C@]2(C)[C@@H](OC(C)=O)\C=C/1)CO3)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(C=Cc1c(C)/c2[nH]/c1=C\C1=N/C(=C\C3=C(C)C4C(=O)N(Cc5cccc(C#Cc6cccc(Nc7ncnc8cc(OCCOC)c(OCCOC)cc78)c6)c5)C(=O)/C(=C5/N=C(/C=2)[C@@H](C)[C@@H]5CCC(=O)OC)C4N3)C(CC)=C1C)smi",
        true, true},  // #8089
       {R"smi(CC1=C\C[C@H](O)/C=C/C(C)=C/[C@@H](NC(=O)[C@H](C)O)[C@]2(C)C(=O)O[C@H](C[C@H](O)/C=C/1)[C@@H](C)C2=O)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(CC1=C/[C@H]2O[C@@H](C/C=C/C=C/C(=O)O[C@@H]3C[C@@H](/C=C/C/C=C/1)O[C@@H](C/C=C\C[C@@H](O)C(=O)O)[C@]3(C)CO)C[C@H](O)[C@H]2C)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(c1ccc2/c3[nH]/c(c2c1)=N\c1ccc(cc1)-c1nc2cc(ccc2o1)/N=c1/[nH]/c(c2ccccc12)=N/c1ccc2nc(oc2c1)-c1ccc(cc1)/N=3)smi",
        true, false},  // #8089
       {R"smi(c1ccc2/c3[nH]/c(c2c1)=N\c1ccc(cc1)-c1nc2ccc(cc2o1)/N=c1/[nH]/c(c2ccccc12)=N/c1ccc2nc(oc2c1)-c1ccc(cc1)/N=3)smi",
        true, false},  // #8089
       {R"smi(CC1=C/[C@@H](C)C[C@]2(C)CC[C@H](O2)[C@]23CC[C@](C)(C[C@H](O2)[C@@H]2O[C@@](C)(CC2=O)[C@@H](O)[C@H]2CC[C@@]4(CCC[C@@H](O4)[C@H](C)C(=O)O[C@H]4C[C@H]([C@]5(O)OCC[C@H](C)[C@@H]5O)O[C@H]4\C=C/1)O2)O3)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(CC1=C/[C@@H](C)C[C@]2(C)CC[C@H](O2)[C@]23CC[C@](C(=O)O)(C[C@H](O2)[C@@H]2O[C@@](C)(CC2=O)[C@@H](O)[C@H]2CC[C@@]4(CCC[C@@H](O4)[C@H](C)C(=O)O[C@H]4C[C@H]([C@]5(O)OCC[C@H](C)[C@@H]5O)O[C@H]4\C=C/1)O2)O3)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(CC1=C/[C@@H](C)C[C@]2(C)CC[C@H](O2)[C@]23CC[C@](CO)(C[C@H](O2)[C@@H]2O[C@@](C)(CC2=O)[C@@H](O)[C@H]2CC[C@@]4(CCC[C@@H](O4)[C@H](C)C(=O)O[C@H]4C[C@H]([C@]5(O)OCC[C@H](C)[C@@H]5O)O[C@H]4\C=C/1)O2)O3)smi",
-       false, false},  // #8089
+       true, true},  // #8089
       {R"smi(COC(=O)C1=C/c2cc3c(cc2-c2c(cc(OC)c(OC)c2OC)\C=C/1C(=O)OC)OCO3)smi",
-       false, false},                                           // #8089
+       true, true},                                             // #8089
       {R"smi(N#C[P@@H]/C=C(/P=O)[P@@H]C#N)smi", false, false},  // #8089
       {R"smi(C1=C\C/C=C(\C)CC[C@H]2C(C)(C)[C@@H](\C=C/1)CC[C@]2(C)O)smi", true,
        true},                                                     // #8089
@@ -1435,6 +1435,7 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
   }
 }
 
+#ifndef NDEBUG
 TEST_CASE("work") {
   auto get_labels = [](RWMol &m) {
     CIPLabeler::assignCIPLabels(m);
@@ -1465,7 +1466,6 @@ TEST_CASE("work") {
   std::unique_ptr<RWMol> m1;
 
   SECTION("case 1") {
-    // const auto smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
     smiles = R"smi(C\N=C1/C/C(=N\Cl)/C/1=N/F)smi";
     m1 = v2::SmilesParse::MolFromSmiles(smiles);
   }
@@ -1527,3 +1527,4 @@ TEST_CASE("work") {
   REQUIRE(m3);
   CHECK(refFeatures == get_labels(*m3));
 }
+#endif

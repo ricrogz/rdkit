@@ -376,8 +376,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     auto [atom1Dir, isFlipped] = getReferenceDirection(
         dblBond, atom2, atom1, atom2ControllingBond, firstFromAtom1);
 
-    if (isClosingRingBond(atom2ControllingBond) ^
-        isClosingRingBond(firstFromAtom1)) {
+    if (isClosingRingBond(firstFromAtom1)) {
       atom1Dir = flipBondDir(atom1Dir);
     }
 
@@ -416,12 +415,12 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
       auto otherDir = firstFromAtom1->getBondDir();
       if (checkBondsInSameBranch(molStack, bondVisitOrders, dblBond,
-                                 secondFromAtom1)) {
-        otherDir = flipBondDir(otherDir);
-      }
+                                 secondFromAtom1)
 
-      // Also consider whether the bond is a ring closure:
-      if (isClosingRingBond(secondFromAtom1)) {
+      ) {
+        otherDir = flipBondDir(otherDir);
+      } else if (isClosingRingBond(secondFromAtom1)) {
+        // Also consider whether the bond is a ring closure:
         otherDir = flipBondDir(otherDir);
       }
 
