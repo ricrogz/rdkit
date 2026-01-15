@@ -35,7 +35,8 @@ class Sp2Bond : public Configuration {
   // so we cache CIS/TRANS we found.
   Bond::BondStereo d_cfg;
 
-};  // namespace CIPLabeler
+  std::vector<unsigned int> d_ranked_anchors;
+};
 
 }  // namespace CIPLabeler
 }  // namespace RDKit
