@@ -423,13 +423,18 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // UNLESS the bond is not in a branch (in the smiles) (e.g. firstFromAtom1
       // branches off a cycle, and secondFromAtom1 shows up at the end of the
       // cycle). This was Github Issue #2023, see it for an example.
+
+      Bond::BondDir otherDir = firstFromAtom1->getBondDir();
       if (checkBondsInSameBranch(molStack, bondVisitOrders, dblBond,
                                  secondFromAtom1)) {
-        auto otherDir = flipBondDir(firstFromAtom1->getBondDir());
-        secondFromAtom1->setBondDir(otherDir);
-      } else {
-        secondFromAtom1->setBondDir(firstFromAtom1->getBondDir());
+        otherDir = flipBondDir(otherDir);
       }
+      if (secondFromAtom1->hasProp(
+              common_properties::_TraversalRingClosureBond)) {
+        otherDir = flipBondDir(otherDir);
+      }
+
+      secondFromAtom1->setBondDir(otherDir);
     }
     bondDirCounts[secondFromAtom1->getIdx()] += 1;
     atomDirCounts[atom1->getIdx()] += 1;
@@ -1338,8 +1343,8 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
       }
     }
   }
-  Canon::removeRedundantBondDirSpecs(mol, molStack, bondDirCounts,
-                                     atomDirCounts, bondVisitOrders);
+  // Canon::removeRedundantBondDirSpecs(mol, molStack, bondDirCounts,
+  //                                    atomDirCounts, bondVisitOrders);
 }
 
 void canonicalizeEnhancedStereo(ROMol &mol,
