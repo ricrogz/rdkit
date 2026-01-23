@@ -158,6 +158,26 @@ std::pair<Bond::BondDir, bool> getReferenceDirection(
   return std::make_pair(dir, isFlipped);
 }
 
+bool checkBondsInSameBranch(const MolStack &molStack,
+                            const UINT_VECT &bondVisitOrders, Bond *dblBond,
+                            Bond *dirBond) {
+  auto start = bondVisitOrders[dblBond->getIdx()];
+  auto end = bondVisitOrders[dirBond->getIdx()];
+  if (start > end) {
+    std::swap(start, end);
+  }
+  unsigned int branchLevel = 0;
+  for (auto i = start + 1; i != end; ++i) {
+    const auto &item = molStack[i];
+    if (item.type == MOL_STACK_BRANCH_OPEN) {
+      ++branchLevel;
+    } else if (item.type == MOL_STACK_BRANCH_CLOSE) {
+      --branchLevel;
+    }
+  }
+  return branchLevel == 0;
+};
+
 }  // namespace
 // FIX: this may only be of interest from the SmilesWriter, should we
 // move it there?
@@ -399,25 +419,8 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // UNLESS the bond is not in a branch (in the smiles) (e.g. firstFromAtom1
       // branches off a cycle, and secondFromAtom1 shows up at the end of the
       // cycle). This was Github Issue #2023, see it for an example.
-      auto checkBondsInSameBranch = [&molStack, &bondVisitOrders](
-                                        Bond *dblBond, Bond *dirBond) {
-        auto start = bondVisitOrders[dblBond->getIdx()];
-        auto end = bondVisitOrders[dirBond->getIdx()];
-        if (start > end) {
-          std::swap(start, end);
-        }
-        unsigned int branchLevel = 0;
-        for (auto i = start + 1; i != end; ++i) {
-          const auto &item = molStack[i];
-          if (item.type == MOL_STACK_BRANCH_OPEN) {
-            ++branchLevel;
-          } else if (item.type == MOL_STACK_BRANCH_CLOSE) {
-            --branchLevel;
-          }
-        }
-        return branchLevel == 0;
-      };
-      if (checkBondsInSameBranch(dblBond, secondFromAtom1)) {
+      if (checkBondsInSameBranch(molStack, bondVisitOrders, dblBond,
+                                 secondFromAtom1)) {
         auto otherDir = flipBondDir(firstFromAtom1->getBondDir());
         secondFromAtom1->setBondDir(otherDir);
       } else {
