@@ -1425,3 +1425,20 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
     CHECK(firstRoundtrip != secondRoundtrip);
   }
 }
+
+TEST_CASE("xxxxx") {
+  const std::string smi = "C\\N=c1/s/c(=N\\Cl)/c/1=N/F";
+  RWMol *m = SmilesToMol(smi);
+  REQUIRE(m);
+
+  std::string csmi1 = MolToSmiles(*m, true);
+  REQUIRE(csmi1 == smi);
+  delete m;
+  m = SmilesToMol(csmi1);
+  REQUIRE(m);
+
+  std::string csmi2 = MolToSmiles(*m, true);
+
+  REQUIRE(csmi1 == csmi2);
+  delete m;
+}
