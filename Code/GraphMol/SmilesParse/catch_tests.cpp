@@ -1710,11 +1710,6 @@ M  END)CTAB"_ctab;
     SmilesWriteParams ps;
     ps.doRandom = true;
     for (auto i = 0u; i < 100; ++i) {
-      if (i == 13 || i == 25 || i == 38 || i == 50) {
-        // we know these fail; we hope to address them
-        // together with issue #8965
-        continue;
-      }
       INFO("i = " + std::to_string(i));
       getRandomGenerator(i + 1)();
       auto rsmiles = MolToSmiles(*mol, ps);
