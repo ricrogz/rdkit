@@ -356,6 +356,10 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // This addresses parts of Issue 185 and sf.net Issue 1842174
       //
       auto atom2Dir = secondFromAtom2->getBondDir();
+
+      // Both bonds from atom2 should come after the actual dblBond
+      // atom, which means the should have different directions
+      atom2Dir = flipBondDir(atom2Dir);
       firstFromAtom2->setBondDir(atom2Dir);
 
       // acknowledge that secondFromAtom2 is relevant for this bond,
@@ -448,8 +452,6 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     }
     bondDirCounts[secondFromAtom2->getIdx()] += 1;
     atomDirCounts[atom2->getIdx()] += 1;
-    // std::cerr<<"   other: "<<secondFromAtom2->getIdx()<<"
-    // "<<otherDir<<std::endl;
   }
 
   if (setFromBond1) {
@@ -472,14 +474,11 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       if (bondDirCounts[atom1ControllingBond->getIdx()] == 1) {
         if (!atom1ControllingBond->hasProp(
                 common_properties::_TraversalRingClosureBond)) {
-          // std::cerr<<"  switcheroo 1"<<std::endl;
           switchBondDir(atom1ControllingBond);
         }
       } else if (bondDirCounts[firstFromAtom2->getIdx()] == 1) {
         // the controlling bond at atom1 is being set by someone else, flip the
-        // direction
-        // on the atom2 bond instead:
-        // std::cerr<<"  switcheroo 2"<<std::endl;
+        // direction on the atom2 bond instead:
         switchBondDir(firstFromAtom2);
         if (secondFromAtom2 && bondDirCounts[secondFromAtom2->getIdx()] >= 1) {
           switchBondDir(secondFromAtom2);
@@ -535,7 +534,6 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     }
     if (dblBondPresent && otherAtom3Bond &&
         otherAtom3Bond->getBondDir() == Bond::NONE) {
-      // std::cerr<<"set!"<<std::endl;
       auto dir = firstFromAtom2->getBondDir();
       if (isClosingRingBond(otherAtom3Bond)) {
         dir = flipBondDir(dir);
@@ -1038,10 +1036,8 @@ void clearBondDirs(ROMol &mol, Bond *refBond, const Atom *fromAtom,
       refBond->setBondDir(Bond::NONE);
       atomDirCounts[refBond->getBeginAtomIdx()] -= 1;
       atomDirCounts[refBond->getEndAtomIdx()] -= 1;
-      // std::cerr<<"rb:"<<refBond->getIdx()<<" ";
     }
   }
-  // std::cerr<<std::endl;
 }
 
 void removeRedundantBondDirSpecs(ROMol &mol, MolStack &molStack,
