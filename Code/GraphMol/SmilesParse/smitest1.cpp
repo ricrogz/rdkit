@@ -1342,7 +1342,7 @@ TEST_CASE("Testing Issue 185: Cis/Trans incorrect on writing branches") {
   REQUIRE(mol->getBondWithIdx(1)->getBondType() == Bond::DOUBLE);
   REQUIRE(mol->getBondWithIdx(1)->getStereo() == Bond::STEREOZ);
   refSmi = MolToSmiles(*mol, 1, 0, 0);
-  REQUIRE(refSmi == "C(\\C)=N\\O");
+  CHECK(refSmi == "C(\\C)=N\\O");
   delete mol;
   // make sure we can round-trip:
   mol = SmilesToMol(refSmi);
@@ -1367,11 +1367,11 @@ TEST_CASE("Testing Issue 185: Cis/Trans incorrect on writing branches") {
   for (RWMol::BondIterator bondIt = mol->beginBonds();
        bondIt != mol->endBonds(); bondIt++) {
     if ((*bondIt)->getBondType() == Bond::DOUBLE) {
-      REQUIRE((*bondIt)->getStereo() == Bond::STEREOE);
+      CHECK((*bondIt)->getStereo() == Bond::STEREOE);
     }
   }
   smi = MolToSmiles(*mol, 1);
-  REQUIRE(refSmi == smi);
+  CHECK(refSmi == smi);
 
   // now repeat that experiment, but this time root the SMILES so that
   // we go in a "sensible" order:
@@ -1380,14 +1380,14 @@ TEST_CASE("Testing Issue 185: Cis/Trans incorrect on writing branches") {
   mol = SmilesToMol(smi);
   REQUIRE(mol);
   refSmi = MolToSmiles(*mol, true, false, 6);
-  REQUIRE(refSmi == "N/P=C/C(C)=N/O");
+  CHECK(refSmi == "N/P=C/C(C)=N/O");
   delete mol;
   mol = SmilesToMol(refSmi);
   REQUIRE(mol);
   for (RWMol::BondIterator bondIt = mol->beginBonds();
        bondIt != mol->endBonds(); bondIt++) {
     if ((*bondIt)->getBondType() == Bond::DOUBLE) {
-      REQUIRE((*bondIt)->getStereo() == Bond::STEREOE);
+      CHECK((*bondIt)->getStereo() == Bond::STEREOE);
     }
   }
   delete mol;
@@ -3764,13 +3764,13 @@ TEST_CASE(
     auto mol = "C=c1s/c2n(c1=O)CCCCCCC\\N=2"_smiles;
     REQUIRE(mol);
     auto smi = MolToSmiles(*mol);
-    REQUIRE(smi == "C=c1s/c2n(c1=O)CCCCCCC\\N=2");
+    CHECK(smi == "C=c1s/c2n(c1=O)CCCCCCC\\N=2");
   }
   {
     auto mol = R"SMI(C1=C\C/C=C2C3=C/C/C=C\C=C/C\3C\2\C=C/1)SMI"_smiles;
     REQUIRE(mol);
     auto smi = MolToSmiles(*mol);
-    REQUIRE(smi == R"SMI(C1=C\C/C=C2C3=C\C/C=C\C=C/C/3C\2\C=C/1)SMI");
+    CHECK(smi == R"SMI(C1=C\C/C=C2C3=C\C/C=C\C=C/C/3C\2\C=C/1)SMI");
   }
 }
 
