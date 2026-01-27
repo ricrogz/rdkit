@@ -107,13 +107,13 @@ void switchBondDir(Bond *bond) {
 }
 
 namespace {
-bool isClosingRingBond(Bond *bond) {
+bool isClosingRingBond(Bond *bond, const UINT_VECT &atomVisitOrders) {
   if (bond == nullptr) {
     return false;
   }
-  auto beginIdx = bond->getBeginAtomIdx();
-  auto endIdx = bond->getEndAtomIdx();
-  return beginIdx > endIdx && beginIdx - endIdx > 1 &&
+  auto beginPos = atomVisitOrders[bond->getBeginAtomIdx()];
+  auto endPos = atomVisitOrders[bond->getEndAtomIdx()];
+  return beginPos > endPos && beginPos - endPos > 1 &&
          bond->hasProp(common_properties::_TraversalRingClosureBond);
 }
 
@@ -379,7 +379,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     auto [atom2Dir, isFlipped] = getReferenceDirection(
         dblBond, atom1, atom2, atom1ControllingBond, firstFromAtom2);
 
-    if (!isFlipped && isClosingRingBond(dblBond)) {
+    if (!isFlipped && isClosingRingBond(dblBond, atomVisitOrders)) {
       atom2Dir = flipBondDir(atom2Dir);
     }
 
@@ -440,8 +440,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // Here we set the bond direction to be opposite the other one (since
       // both come after the atom connected to the double bond).
       Bond::BondDir otherDir;
-      if (!secondFromAtom2->hasProp(
-              common_properties::_TraversalRingClosureBond)) {
+      if (!isClosingRingBond(secondFromAtom2, atomVisitOrders)) {
         otherDir = flipBondDir(firstFromAtom2->getBondDir());
       } else {
         // another one those irritating little reversal things due to
@@ -472,8 +471,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     if (bondVisitOrders[atom1ControllingBond->getIdx()] >
         atomVisitOrders[atom1->getIdx()]) {
       if (bondDirCounts[atom1ControllingBond->getIdx()] == 1) {
-        if (!atom1ControllingBond->hasProp(
-                common_properties::_TraversalRingClosureBond)) {
+        if (!isClosingRingBond(atom1ControllingBond, atomVisitOrders)) {
           switchBondDir(atom1ControllingBond);
         }
       } else if (bondDirCounts[firstFromAtom2->getIdx()] == 1) {
@@ -492,8 +490,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     if (bondVisitOrders[atom1ControllingBond->getIdx()] >
         atomVisitOrders[atom2->getIdx()]) {
       if (bondDirCounts[atom1ControllingBond->getIdx()] == 1) {
-        if (!atom1ControllingBond->hasProp(
-                common_properties::_TraversalRingClosureBond)) {
+        if (!isClosingRingBond(atom1ControllingBond, atomVisitOrders)) {
           switchBondDir(atom1ControllingBond);
         }
       } else if (bondDirCounts[firstFromAtom2->getIdx()] == 1) {
@@ -535,7 +532,7 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     if (dblBondPresent && otherAtom3Bond &&
         otherAtom3Bond->getBondDir() == Bond::NONE) {
       auto dir = firstFromAtom2->getBondDir();
-      if (isClosingRingBond(otherAtom3Bond)) {
+      if (isClosingRingBond(otherAtom3Bond, atomVisitOrders)) {
         dir = flipBondDir(dir);
       }
       otherAtom3Bond->setBondDir(dir);
