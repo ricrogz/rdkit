@@ -1342,7 +1342,7 @@ TEST_CASE("Testing Issue 185: Cis/Trans incorrect on writing branches") {
   REQUIRE(mol->getBondWithIdx(1)->getBondType() == Bond::DOUBLE);
   REQUIRE(mol->getBondWithIdx(1)->getStereo() == Bond::STEREOZ);
   refSmi = MolToSmiles(*mol, 1, 0, 0);
-  CHECK(refSmi == "C(\\C)=N\\O");
+  CHECK(refSmi == "C(/C)=N/O");
   delete mol;
   // make sure we can round-trip:
   mol = SmilesToMol(refSmi);
@@ -1676,7 +1676,7 @@ TEST_CASE("Testing SF.net bug 1842174: bad bond dirs in branches") {
   CHECK(smi == "F/C=N/Cl");
 
   smi = MolToSmiles(*mol, true, false, 1);
-  CHECK(smi == "C(\\F)=N/Cl");
+  CHECK(smi == R"SMI(C(/F)=N\Cl)SMI");
 
   delete mol;
   smi = "C(\\C=C\\F)=C(/Cl)Br";

@@ -124,7 +124,7 @@ Bond::BondDir flipBondDir(Bond::BondDir bondDir) {
 Bond::BondDir getReferenceDirection(const Bond *dblBond, const Atom *refAtom,
                                     const Atom *targetAtom,
                                     const Bond *refControllingBond,
-                                    const Bond *targetBond) {
+                                    bool refIsFlipped, const Bond *targetBond) {
   Bond::BondDir dir = Bond::NONE;
   if (dblBond->getStereo() == Bond::STEREOE ||
       dblBond->getStereo() == Bond::STEREOTRANS) {
@@ -149,6 +149,10 @@ Bond::BondDir getReferenceDirection(const Bond *dblBond, const Atom *refAtom,
       std::ranges::find(stereoAtoms,
                         static_cast<int>(targetBond->getOtherAtomIdx(
                             targetAtom->getIdx()))) == stereoAtoms.end()) {
+    dir = flipBondDir(dir);
+  }
+
+  if (refIsFlipped) {
     dir = flipBondDir(dir);
   }
 
@@ -261,6 +265,15 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     return;
   }
 
+  bool isFirstFromAtom1Flipped = [&]() {
+    auto firstFromAtom1AnchorIdx =
+        firstFromAtom1->getOtherAtom(atom1)->getIdx();
+    return (atomVisitOrders[atom1->getIdx()] <
+                atomVisitOrders[firstFromAtom1AnchorIdx] &&
+            atomVisitOrders[firstFromAtom1AnchorIdx] <
+                bondVisitOrders[dblBond->getIdx()]);
+  }();
+
   bool setFromBond1 = true;
   Bond *atom1ControllingBond = firstFromAtom1;
   Bond *atom2ControllingBond = firstFromAtom2;
@@ -313,6 +326,14 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       // This addresses parts of Issue 185 and sf.net Issue 1842174
       //
       auto atom1Dir = secondFromAtom1->getBondDir();
+
+      // secondFromAtom1, if present, is always flipped. If firstFromAtom1 is
+      // flipped, then they should have opposite directions to be compatible,
+      // and the same direction if not.
+      if (isFirstFromAtom1Flipped) {
+        atom1Dir = flipBondDir(atom1Dir);
+      }
+
       firstFromAtom1->setBondDir(atom1Dir);
 
       // acknowledge that secondFromAtom1 is relevant for this bond,
@@ -373,16 +394,25 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
   // now set the directionality on the other side:
   if (setFromBond1) {
-    auto atom2Dir = getReferenceDirection(dblBond, atom1, atom2,
-                                          atom1ControllingBond, firstFromAtom2);
+    // firstFromAtom1 *may* be flipped; secondFromAtom1 is always flipped
+    auto isControllingAtomFlipped =
+        (atom1ControllingBond == firstFromAtom1 ? isFirstFromAtom1Flipped
+                                                : true);
+
+    auto atom2Dir =
+        getReferenceDirection(dblBond, atom1, atom2, atom1ControllingBond,
+                              isControllingAtomFlipped, firstFromAtom2);
 
     firstFromAtom2->setBondDir(atom2Dir);
 
     bondDirCounts[firstFromAtom2->getIdx()] += 1;
     atomDirCounts[atom2->getIdx()] += 1;
   } else {
-    auto atom1Dir = getReferenceDirection(dblBond, atom2, atom1,
-                                          atom2ControllingBond, firstFromAtom1);
+    // atom2 is never flipped
+    auto isControllingAtomFlipped = false;
+    auto atom1Dir =
+        getReferenceDirection(dblBond, atom2, atom1, atom2ControllingBond,
+                              isControllingAtomFlipped, firstFromAtom1);
 
     firstFromAtom1->setBondDir(atom1Dir);
 
@@ -398,7 +428,12 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
   if (atom1->getDegree() == 3 && secondFromAtom1) {
     if (!bondDirCounts[secondFromAtom1->getIdx()]) {
       auto otherDir = firstFromAtom1->getBondDir();
-      otherDir = flipBondDir(otherDir);
+
+      // secondFromAtom1 is always flipped. firstFromAtom1 *may* be flipped
+      if (isFirstFromAtom1Flipped) {
+        otherDir = flipBondDir(otherDir);
+      }
+
       secondFromAtom1->setBondDir(otherDir);
     }
     bondDirCounts[secondFromAtom1->getIdx()] += 1;
@@ -408,7 +443,15 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
   if (atom2->getDegree() == 3 && secondFromAtom2) {
     if (!bondDirCounts[secondFromAtom2->getIdx()]) {
       auto otherDir = firstFromAtom2->getBondDir();
+
       otherDir = flipBondDir(otherDir);
+
+      // Directions on ring closures are typically observed in the second
+      // atom of the double bond. They manifest as an additional bond flip.
+      if (isClosingRingBond(secondFromAtom2, atomVisitOrders)) {
+        otherDir = flipBondDir(otherDir);
+      }
+
       secondFromAtom2->setBondDir(otherDir);
     }
     bondDirCounts[secondFromAtom2->getIdx()] += 1;
@@ -1209,8 +1252,13 @@ void canonicalizeFragment(ROMol &mol, int atomIdx,
       }
     }
   }
-  Canon::removeRedundantBondDirSpecs(mol, molStack, bondDirCounts,
-                                     atomDirCounts, bondVisitOrders);
+  // Added for debugging. Please ask me to remove it if I don't
+  // remember doing it before posting a PR
+  bool remove = true;
+  if (remove) {
+    Canon::removeRedundantBondDirSpecs(mol, molStack, bondDirCounts,
+                                       atomDirCounts, bondVisitOrders);
+  }
 }
 
 void canonicalizeEnhancedStereo(ROMol &mol,
