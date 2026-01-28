@@ -1394,33 +1394,31 @@ TEST_CASE("Testing Issue 185: Cis/Trans incorrect on writing branches") {
 }
 
 TEST_CASE("Testing Issue 191: Bad bond directions in a branch") {
-  ROMol *mol;
-  std::string smi, refSmi;
-  int numE = 0;
-
-  smi = "C2=NNC(N=C2)=N\\N=C\\c1ccccc1";
-  mol = SmilesToMol(smi);
+  // Only 1 of the double bonds has stereo defined!
+  constexpr const char *smi = R"SMI(C2=NNC(N=C2)=N\N=C\c1ccccc1)SMI";
+  constexpr const char *refSmi = R"SMI(C(=N\N=c1nccn[nH]1)/c1ccccc1)SMI";
+  ROMol *mol = SmilesToMol(smi);
   REQUIRE(mol);
   REQUIRE(mol->getBondWithIdx(7)->getBondType() == Bond::DOUBLE);
   REQUIRE(mol->getBondWithIdx(7)->getStereo() == Bond::STEREOE);
-  refSmi = MolToSmiles(*mol, 1);
+  auto tmpSmi = MolToSmiles(*mol, 1);
+  CHECK(tmpSmi == refSmi);
   delete mol;
-  mol = SmilesToMol(refSmi);
+  mol = SmilesToMol(tmpSmi);
   REQUIRE(mol);
-  numE = 0;
-  for (RWMol::BondIterator bondIt = mol->beginBonds();
-       bondIt != mol->endBonds(); bondIt++) {
-    if ((*bondIt)->getBondType() == Bond::DOUBLE) {
-      REQUIRE((*bondIt)->getStereo() != Bond::STEREOZ);
-      if ((*bondIt)->getStereo() == Bond::STEREOE) {
-        numE++;
+
+  int numE = 0;
+  for (auto bond : mol->bonds()) {
+    if (bond->getBondType() == Bond::DOUBLE) {
+      CHECK(bond->getStereo() != Bond::STEREOZ);
+      if (bond->getStereo() == Bond::STEREOE) {
+        ++numE;
       }
     }
   }
-  REQUIRE(numE == 1);
-  smi = MolToSmiles(*mol, 1);
-  // std::cout << "ref: " << refSmi << " -> " << smi << std::endl;
-  REQUIRE(refSmi == smi);
+  CHECK(numE == 1);
+  tmpSmi = MolToSmiles(*mol, 1);
+  CHECK(tmpSmi == refSmi);
   delete mol;
 }
 
