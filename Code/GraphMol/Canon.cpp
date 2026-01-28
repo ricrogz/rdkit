@@ -107,15 +107,6 @@ void switchBondDir(Bond *bond) {
 }
 
 namespace {
-bool isClosingRingBond(Bond *bond, const UINT_VECT &atomVisitOrders) {
-  if (bond == nullptr) {
-    return false;
-  }
-  auto beginPos = atomVisitOrders[bond->getBeginAtomIdx()];
-  auto endPos = atomVisitOrders[bond->getEndAtomIdx()];
-  return beginPos > endPos && beginPos - endPos > 1 &&
-         bond->hasProp(common_properties::_TraversalRingClosureBond);
-}
 
 Bond::BondDir flipBondDir(Bond::BondDir bondDir) {
   return (bondDir == Bond::ENDUPRIGHT) ? Bond::ENDDOWNRIGHT : Bond::ENDUPRIGHT;
@@ -188,8 +179,8 @@ bool checkBondsInSameBranch(const MolStack &molStack,
 //
 void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
                             const UINT_VECT &atomVisitOrders,
-                            UINT_VECT &bondDirCounts, UINT_VECT &atomDirCounts,
-                            const MolStack &molStack) {
+                            UINT_VECT &bondDirCounts,
+                            UINT_VECT &atomDirCounts) {
   PRECONDITION(dblBond, "bad bond");
   PRECONDITION(dblBond->getBondType() == Bond::DOUBLE, "bad bond order");
   PRECONDITION(dblBond->getStereo() > Bond::STEREOANY, "bad bond stereo");
@@ -457,7 +448,8 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       }
       // Directions on ring closures are typically observed in the second
       // atom of the double bond. They manifest as an additional bond flip.
-      if (isClosingRingBond(secondFromAtom1, atomVisitOrders)) {
+      if (secondFromAtom1->hasProp(
+              common_properties::_TraversalRingClosureBond)) {
         otherDir = flipBondDir(otherDir);
       }
 
@@ -478,7 +470,8 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
       // Directions on ring closures are typically observed in the second
       // atom of the double bond. They manifest as an additional bond flip.
-      if (isClosingRingBond(secondFromAtom2, atomVisitOrders)) {
+      if (secondFromAtom2->hasProp(
+              common_properties::_TraversalRingClosureBond)) {
         otherDir = flipBondDir(otherDir);
       }
 
@@ -599,7 +592,7 @@ void canonicalizeDoubleBonds(ROMol &mol, const UINT_VECT &bondVisitOrders,
 
       Canon::canonicalizeDoubleBond(currentBond, bondVisitOrders,
                                     atomVisitOrders, bondDirCounts,
-                                    atomDirCounts, molStack);
+                                    atomDirCounts);
       seen_bonds.set(currentBond->getIdx());
       for (auto nbrStereoBnd : stereoBondNbrs[currentBond]) {
         if (!seen_bonds.test(nbrStereoBnd->getIdx())) {
