@@ -277,16 +277,17 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
 
   bool isFirstFromAtom1Flipped = [&]() {
     auto anchorIdx = firstFromAtom1->getOtherAtom(atom1)->getIdx();
-    return atomVisitOrders[atom1->getIdx()] < atomVisitOrders[anchorIdx] &&
-           atomVisitOrders[anchorIdx] < bondVisitOrders[dblBond->getIdx()];
+    return atomVisitOrders[atom1->getIdx()] < atomVisitOrders[anchorIdx] ^
+           firstFromAtom1->hasProp(
+               common_properties::_TraversalRingClosureBond);
   }();
 
   bool isFirstFromAtom2Flipped = [&]() {
     // maybe the second condition is not needed?
     auto anchorIdx = firstFromAtom2->getOtherAtom(atom2)->getIdx();
-    return (atomVisitOrders[anchorIdx] < atomVisitOrders[atom2->getIdx()] &&
-            atomVisitOrders[atom2->getIdx()] <
-                bondVisitOrders[dblBond->getIdx()]);
+    return atomVisitOrders[anchorIdx] < atomVisitOrders[atom2->getIdx()] ^
+           firstFromAtom2->hasProp(
+               common_properties::_TraversalRingClosureBond);
   }();
 
   bool setFromBond1 = true;
