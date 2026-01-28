@@ -455,6 +455,11 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       if (isFirstFromAtom1Flipped) {
         otherDir = flipBondDir(otherDir);
       }
+      // Directions on ring closures are typically observed in the second
+      // atom of the double bond. They manifest as an additional bond flip.
+      if (isClosingRingBond(secondFromAtom1, atomVisitOrders)) {
+        otherDir = flipBondDir(otherDir);
+      }
 
       secondFromAtom1->setBondDir(otherDir);
     }
