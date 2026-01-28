@@ -3770,7 +3770,7 @@ TEST_CASE(
     auto mol = R"SMI(C1=C\C/C=C2C3=C/C/C=C\C=C/C\3C\2\C=C/1)SMI"_smiles;
     REQUIRE(mol);
     auto smi = MolToSmiles(*mol);
-    CHECK(smi == R"SMI(C1=C\C/C=C2C3=C\C/C=C\C=C/C/3C\2\C=C/1)SMI");
+    CHECK(smi == R"SMI(C1=C\C/C=C2\C3=C\C/C=C\C=C/C3C2\C=C/1)SMI");
   }
 }
 

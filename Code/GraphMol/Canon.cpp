@@ -124,7 +124,8 @@ Bond::BondDir flipBondDir(Bond::BondDir bondDir) {
 Bond::BondDir getReferenceDirection(const Bond *dblBond, const Atom *refAtom,
                                     const Atom *targetAtom,
                                     const Bond *refControllingBond,
-                                    bool refIsFlipped, const Bond *targetBond) {
+                                    bool refIsFlipped, const Bond *targetBond,
+                                    bool targetIsFlipped) {
   Bond::BondDir dir = Bond::NONE;
   if (dblBond->getStereo() == Bond::STEREOE ||
       dblBond->getStereo() == Bond::STEREOTRANS) {
@@ -152,7 +153,8 @@ Bond::BondDir getReferenceDirection(const Bond *dblBond, const Atom *refAtom,
     dir = flipBondDir(dir);
   }
 
-  if (refIsFlipped) {
+  // XOR: flips will cancel out if we do both
+  if (refIsFlipped ^ targetIsFlipped) {
     dir = flipBondDir(dir);
   }
 
@@ -265,12 +267,25 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     return;
   }
 
+  // A canonical double bond looks like this:
+  // N/C(/O)=C(/N)\O   (this is an E conformation)
+  // - firstFromAtom1 is considered flipped if the first N atom
+  // would come after the first C, i.e. C(\N)(/O)=C(/N)\O
+  // - firstFromAtom2 is considered flipped if the second N atom
+  //   came before the second C atom (this requires rings).
+  //   An example would be the "C\N=2" in C=c1s/c2n(c1=O)CCCCC\N=2
+
   bool isFirstFromAtom1Flipped = [&]() {
-    auto firstFromAtom1AnchorIdx =
-        firstFromAtom1->getOtherAtom(atom1)->getIdx();
-    return (atomVisitOrders[atom1->getIdx()] <
-                atomVisitOrders[firstFromAtom1AnchorIdx] &&
-            atomVisitOrders[firstFromAtom1AnchorIdx] <
+    auto anchorIdx = firstFromAtom1->getOtherAtom(atom1)->getIdx();
+    return atomVisitOrders[atom1->getIdx()] < atomVisitOrders[anchorIdx] &&
+           atomVisitOrders[anchorIdx] < bondVisitOrders[dblBond->getIdx()];
+  }();
+
+  bool isFirstFromAtom2Flipped = [&]() {
+    // maybe the second condition is not needed?
+    auto anchorIdx = firstFromAtom2->getOtherAtom(atom2)->getIdx();
+    return (atomVisitOrders[anchorIdx] < atomVisitOrders[atom2->getIdx()] &&
+            atomVisitOrders[atom2->getIdx()] <
                 bondVisitOrders[dblBond->getIdx()]);
   }();
 
@@ -375,9 +390,13 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
       //
       auto atom2Dir = secondFromAtom2->getBondDir();
 
-      // Both bonds from atom2 should come after the actual dblBond
-      // atom, which means the should have different directions
-      atom2Dir = flipBondDir(atom2Dir);
+      // secondFromAtom2, if present, should never be flipped. If firstFromAtom2
+      // is flipped, then they should have the same direction to be compatible,
+      // and the same direction if not.
+      if (!isFirstFromAtom2Flipped) {
+        atom2Dir = flipBondDir(atom2Dir);
+      }
+
       firstFromAtom2->setBondDir(atom2Dir);
 
       // acknowledge that secondFromAtom2 is relevant for this bond,
@@ -399,20 +418,22 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
         (atom1ControllingBond == firstFromAtom1 ? isFirstFromAtom1Flipped
                                                 : true);
 
-    auto atom2Dir =
-        getReferenceDirection(dblBond, atom1, atom2, atom1ControllingBond,
-                              isControllingAtomFlipped, firstFromAtom2);
+    auto atom2Dir = getReferenceDirection(
+        dblBond, atom1, atom2, atom1ControllingBond, isControllingAtomFlipped,
+        firstFromAtom2, isFirstFromAtom2Flipped);
 
     firstFromAtom2->setBondDir(atom2Dir);
 
     bondDirCounts[firstFromAtom2->getIdx()] += 1;
     atomDirCounts[atom2->getIdx()] += 1;
   } else {
-    // atom2 is never flipped
-    auto isControllingAtomFlipped = false;
-    auto atom1Dir =
-        getReferenceDirection(dblBond, atom2, atom1, atom2ControllingBond,
-                              isControllingAtomFlipped, firstFromAtom1);
+    // firstFromAtom2 *may* be flipped; secondFromAtom2 is never flipped
+    auto isControllingAtomFlipped =
+        (atom2ControllingBond == firstFromAtom2 ? isFirstFromAtom2Flipped
+                                                : false);
+    auto atom1Dir = getReferenceDirection(
+        dblBond, atom2, atom1, atom2ControllingBond, isControllingAtomFlipped,
+        firstFromAtom1, isFirstFromAtom1Flipped);
 
     firstFromAtom1->setBondDir(atom1Dir);
 
@@ -444,7 +465,10 @@ void canonicalizeDoubleBond(Bond *dblBond, const UINT_VECT &bondVisitOrders,
     if (!bondDirCounts[secondFromAtom2->getIdx()]) {
       auto otherDir = firstFromAtom2->getBondDir();
 
-      otherDir = flipBondDir(otherDir);
+      // secondFromAtom2 is never flipped. firstFromAtom2 *may* be flipped
+      if (!isFirstFromAtom2Flipped) {
+        otherDir = flipBondDir(otherDir);
+      }
 
       // Directions on ring closures are typically observed in the second
       // atom of the double bond. They manifest as an additional bond flip.
