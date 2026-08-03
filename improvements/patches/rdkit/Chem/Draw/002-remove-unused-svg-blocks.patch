@@ -1,0 +1,10 @@
+diff --git a/rdkit/Chem/Draw/__init__.py b/rdkit/Chem/Draw/__init__.py
+--- a/rdkit/Chem/Draw/__init__.py
++++ b/rdkit/Chem/Draw/__init__.py
+@@ -562,6 +562,4 @@ def _MolsToGridSVG(mols, molsPerRow=3, subImgSize=(200, 200), legends=None, high
+   if len(mols) % molsPerRow:
+     nRows += 1
+ 
+-  blocks = [''] * (nRows * molsPerRow)
+-
+   fullSize = (molsPerRow * subImgSize[0], nRows * subImgSize[1])

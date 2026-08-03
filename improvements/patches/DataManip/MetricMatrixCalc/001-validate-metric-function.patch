@@ -1,0 +1,19 @@
+diff --git a/Code/DataManip/MetricMatrixCalc/MetricMatrixCalc.h b/Code/DataManip/MetricMatrixCalc/MetricMatrixCalc.h
+--- a/Code/DataManip/MetricMatrixCalc/MetricMatrixCalc.h
++++ b/Code/DataManip/MetricMatrixCalc/MetricMatrixCalc.h
+@@ -79,6 +79,7 @@ class MetricMatrixCalc {
+   void calcMetricMatrix(const vectType &descripts, unsigned int nItems,
+                         unsigned int dim, double *distMat) {
+     CHECK_INVARIANT(distMat, "invalid pointer to a distance matix");
++    CHECK_INVARIANT(dp_metricFunc, "metric function has not been set");
+ 
+     for (unsigned int i = 1; i < nItems; i++) {
+       unsigned int itab = i * (i - 1) / 2;
+@@ -98,5 +99,6 @@ class MetricMatrixCalc {
+    * we woul like this interface to support other containers lines double*
+    * in which case the 'dim' value is useful in cumputing the metric.
+    */
+-  double (*dp_metricFunc)(const entryType &, const entryType &, unsigned int);
++  double (*dp_metricFunc)(const entryType &, const entryType &,
++                          unsigned int){nullptr};
+ };

@@ -1,0 +1,12 @@
+diff --git a/Code/GraphMol/FMCS/Seed.cpp b/Code/GraphMol/FMCS/Seed.cpp
+--- a/Code/GraphMol/FMCS/Seed.cpp
++++ b/Code/GraphMol/FMCS/Seed.cpp
+@@ -271,6 +271,6 @@ void Seed::grow(const ROMol &qmol, MaximumCommonSubgraph &mcs,
+   // if just one new bond, then seed has already been created
+   if (NewBonds.size() > 1) {
+-    if (sizeof(unsigned long long) * 8 < NewBonds.size()) {
++    if (sizeof(BitSet) * 8 <= NewBonds.size()) {
+       throw std::runtime_error(
+-          "Max number of new external bonds of a seed >64");
++          "Number of new external bonds of a seed must be below 64");
+     }

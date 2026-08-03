@@ -1,0 +1,11 @@
+diff --git a/Code/GraphMol/ChemTransforms/MolFragmenter.cpp b/Code/GraphMol/ChemTransforms/MolFragmenter.cpp
+--- a/Code/GraphMol/ChemTransforms/MolFragmenter.cpp
++++ b/Code/GraphMol/ChemTransforms/MolFragmenter.cpp
+@@ -22,7 +22,6 @@
+ 
+ #include <RDGeneral/BoostStartInclude.h>
+ #include <boost/algorithm/string.hpp>
+-#include <boost/algorithm/string/trim.hpp>
+ #include <boost/dynamic_bitset.hpp>
+ #include <boost/flyweight.hpp>
+ #include <boost/flyweight/no_tracking.hpp>

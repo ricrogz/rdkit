@@ -1,0 +1,14 @@
+diff --git a/Code/GraphMol/Depictor/EmbeddedFrag.cpp b/Code/GraphMol/Depictor/EmbeddedFrag.cpp
+index e11656600..b9e32f367 100644
+--- a/Code/GraphMol/Depictor/EmbeddedFrag.cpp
++++ b/Code/GraphMol/Depictor/EmbeddedFrag.cpp
+@@ -111,8 +111,7 @@ void EmbeddedFrag::computeNbrsAndAng(unsigned int aid,
+   std::list<DOUBLE_INT_PAIR> anglePairs;
+   double ang;
+   for (auto nbi1 = doneNbrs.begin(); nbi1 != doneNbrs.end(); ++nbi1) {
+-    auto nbi3 = nbi1;
+-    for (auto nbi2 = nbi3++; nbi2 != doneNbrs.end(); ++nbi2) {
++    for (auto nbi2 = std::next(nbi1); nbi2 != doneNbrs.end(); ++nbi2) {
+       ang = computeAngle(d_eatoms[aid].loc, d_eatoms[*nbi1].loc,
+                          d_eatoms[*nbi2].loc);
+       auto nbrPair = std::make_pair((*nbi1), (*nbi2));

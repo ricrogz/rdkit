@@ -1,0 +1,13 @@
+diff --git a/Code/GraphMol/FileParsers/MolFileStereochem.cpp b/Code/GraphMol/FileParsers/MolFileStereochem.cpp
+--- a/Code/GraphMol/FileParsers/MolFileStereochem.cpp
++++ b/Code/GraphMol/FileParsers/MolFileStereochem.cpp
+@@ -136,7 +136,8 @@ void addWavyBondsForStereoAny(RWMol &mol, bool clearDoubleBondFlags,
+       continue;
+     }
+     sortedScores.push_back(
+-        std::make_tuple(-1 * singleBondNeighbors[i].size(), score, i));
++        std::make_tuple(-static_cast<int>(singleBondNeighbors[i].size()), score,
++                        i));
+   }
+   std::sort(sortedScores.begin(), sortedScores.end());
+   for (const auto &tpl : sortedScores) {

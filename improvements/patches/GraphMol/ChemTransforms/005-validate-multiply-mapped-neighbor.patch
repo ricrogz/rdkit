@@ -1,0 +1,27 @@
+diff --git a/Code/GraphMol/ChemTransforms/ChemTransforms.cpp b/Code/GraphMol/ChemTransforms/ChemTransforms.cpp
+--- a/Code/GraphMol/ChemTransforms/ChemTransforms.cpp
++++ b/Code/GraphMol/ChemTransforms/ChemTransforms.cpp
+@@ -495,12 +495,17 @@ ROMol *replaceCore(const ROMol &mol, const ROMol &core,
+             "atoms has degree > 1 ");
+         auto coreNeighborIdx =
+             core[*core.getAtomNeighbors(coreAtom).first]->getIdx();
+-        auto molNeighborIdx =
+-            std::find_if(matchV.cbegin(), matchV.cend(),
+-                         [coreNeighborIdx](std::pair<int, int> p) {
+-                           return p.first == static_cast<int>(coreNeighborIdx);
+-                         })
+-                ->second;
++        auto molNeighborMatch =
++            std::find_if(matchV.cbegin(), matchV.cend(),
++                         [coreNeighborIdx](std::pair<int, int> p) {
++                           return p.first == static_cast<int>(coreNeighborIdx);
++                         });
++        if (molNeighborMatch == matchV.cend()) {
++          throw ValueErrorException(
++              "Supplied MatchVect is missing the neighbor of a multiply "
++              "mapped core atom");
++        }
++        auto molNeighborIdx = molNeighborMatch->second;
+         if (molNeighborIdx > -1) {
+           auto connectingBond =
+               mol.getBondBetweenAtoms(mappingInfo.molIndex, molNeighborIdx);

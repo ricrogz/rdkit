@@ -1,0 +1,20 @@
+diff --git a/Code/GraphMol/MolDraw2D/side_by_side_images.py b/Code/GraphMol/MolDraw2D/side_by_side_images.py
+--- a/Code/GraphMol/MolDraw2D/side_by_side_images.py
++++ b/Code/GraphMol/MolDraw2D/side_by_side_images.py
+@@ -1,6 +1,5 @@
+ #!/usr/bin/env python
+ # quick script for comparing SVGs in 2 different directories.
+ import argparse
+-import glob
+ import hashlib
+ from pathlib import Path
+diff --git a/Code/GraphMol/MolDraw2D/update_hash_codes.py b/Code/GraphMol/MolDraw2D/update_hash_codes.py
+--- a/Code/GraphMol/MolDraw2D/update_hash_codes.py
++++ b/Code/GraphMol/MolDraw2D/update_hash_codes.py
+@@ -8,6 +8,5 @@
+ # better to do the non-Freetype builds first, otherwise the PNG
+ # hashes will definitely be wrong.
+ 
+-import json
+ import re
+ import sys

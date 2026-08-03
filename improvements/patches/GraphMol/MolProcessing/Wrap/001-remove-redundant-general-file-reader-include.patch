@@ -1,0 +1,11 @@
+diff --git a/Code/GraphMol/MolProcessing/Wrap/rdMolProcessing.cpp b/Code/GraphMol/MolProcessing/Wrap/rdMolProcessing.cpp
+--- a/Code/GraphMol/MolProcessing/Wrap/rdMolProcessing.cpp
++++ b/Code/GraphMol/MolProcessing/Wrap/rdMolProcessing.cpp
+@@ -11,7 +11,6 @@
+ #include <RDBoost/python.h>
+ #include <RDBoost/Wrap.h>
+ #include <GraphMol/MolProcessing/MolProcessing.h>
+-#include <GraphMol/FileParsers/GeneralFileReader.h>
+ 
+ namespace python = boost::python;
+ using namespace RDKit;

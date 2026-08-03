@@ -1,0 +1,15 @@
+diff --git a/Code/GraphMol/FileParsers/TDTWriter.cpp b/Code/GraphMol/FileParsers/TDTWriter.cpp
+--- a/Code/GraphMol/FileParsers/TDTWriter.cpp
++++ b/Code/GraphMol/FileParsers/TDTWriter.cpp
+@@ -66,6 +66,10 @@ TDTWriter::~TDTWriter() {
+   // close the writer if it's still open:
+   if (dp_ostream != nullptr) {
+-    close();
++    try {
++      close();
++    } catch (...) {
++      // Destructors must not propagate stream exceptions.
++    }
+   }
+ }
+ 

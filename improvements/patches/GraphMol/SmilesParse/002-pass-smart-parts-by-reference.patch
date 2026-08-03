@@ -1,0 +1,18 @@
+diff --git a/Code/GraphMol/SmilesParse/SmartsWrite.cpp b/Code/GraphMol/SmilesParse/SmartsWrite.cpp
+--- a/Code/GraphMol/SmilesParse/SmartsWrite.cpp
++++ b/Code/GraphMol/SmilesParse/SmartsWrite.cpp
+@@ -42,8 +42,11 @@ std::string _recurseBondSmarts(const Bond *bond,
+                                unsigned int &features,
+                                const SmilesWriteParams &params);
+ 
+-std::string _combineChildSmarts(std::string cs1, unsigned int features1,
+-                                std::string cs2, unsigned int features2,
+-                                std::string descrip, unsigned int &features) {
++std::string _combineChildSmarts(const std::string &cs1,
++                                unsigned int features1,
++                                const std::string &cs2,
++                                unsigned int features2,
++                                const std::string &descrip,
++                                unsigned int &features) {
+   std::string res = "";
+   if ((descrip.find("Or") > 0) && (descrip.find("Or") < descrip.length())) {

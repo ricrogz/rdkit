@@ -1,0 +1,13 @@
+diff --git a/Code/GraphMol/MolDraw2D/AtomSymbol.cpp b/Code/GraphMol/MolDraw2D/AtomSymbol.cpp
+--- a/Code/GraphMol/MolDraw2D/AtomSymbol.cpp
++++ b/Code/GraphMol/MolDraw2D/AtomSymbol.cpp
+@@ -129,6 +129,9 @@ void AtomSymbol::adjustColons() {
+       break;
+     }
+     size_t gtPos = tmpSym.find('>');
++    if (gtPos == std::string::npos) {
++      return;
++    }
+     tmpSym = tmpSym.substr(0, ltPos) + tmpSym.substr(gtPos + 1);
+   }
+   colonPos = tmpSym.find(':');

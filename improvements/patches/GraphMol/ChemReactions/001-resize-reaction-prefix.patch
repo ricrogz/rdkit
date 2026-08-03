@@ -1,0 +1,9 @@
+diff --git a/Code/GraphMol/ChemReactions/DaylightParser.cpp b/Code/GraphMol/ChemReactions/DaylightParser.cpp
+--- a/Code/GraphMol/ChemReactions/DaylightParser.cpp
++++ b/Code/GraphMol/ChemReactions/DaylightParser.cpp
+@@ -182,4 +182,4 @@ ChemicalReaction *RxnSmartsToChemicalReaction(std::string text,
+   auto sidx = text.find_first_of(" \t");
+   if (sidx != std::string::npos && sidx != 0) {
+-    text = text.substr(0, sidx);
++    text.resize(sidx);
+   }

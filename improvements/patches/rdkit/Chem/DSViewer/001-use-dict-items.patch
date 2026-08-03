@@ -1,0 +1,13 @@
+diff --git a/rdkit/Chem/DSViewer.py b/rdkit/Chem/DSViewer.py
+index 197a757db..aeadf14ff 100644
+--- a/rdkit/Chem/DSViewer.py
++++ b/rdkit/Chem/DSViewer.py
+@@ -179,7 +179,7 @@ class MolViewer(object):
+           if id in tmpD:
+             molIds.append(tmpD[id])
+           else:
+-            for k, v in self.displayables.iteritems():
++            for k, v in self.displayables.items():
+               if id == v.id:
+                 tmpD[id] = k
+                 molIds.append(k)

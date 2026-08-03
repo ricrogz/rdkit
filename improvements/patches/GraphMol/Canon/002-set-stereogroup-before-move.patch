@@ -1,0 +1,18 @@
+diff --git a/Code/GraphMol/Canon.cpp b/Code/GraphMol/Canon.cpp
+--- a/Code/GraphMol/Canon.cpp
++++ b/Code/GraphMol/Canon.cpp
+@@ -1726,11 +1726,11 @@ void canonicalizeStereoGroups(ROMol &mol) {
+       }
+     }
++    if (!sgAtoms.empty()) {
++      sgAtoms.front()->setProp("_stereoGroup", newSgs.size(), true);
++    }
+     newSgs.emplace_back(
+         StereoGroup(sg.getGroupType(), std::move(sgAtoms), std::move(sgBonds)));
+ 
+     // note that we do not forward the Group Ids: this is intentional, so that
+     // the Ids are reassigned based on the canonicalized order.
+-    if (sgAtoms.size() > 0) {
+-      sgAtoms.front()->setProp("_stereoGroup", newSgs.size() - 1, true);
+-    }
+   }

@@ -1,0 +1,26 @@
+diff --git a/rdkit/Chem/MolDb/Loader_orig.py b/rdkit/Chem/MolDb/Loader_orig.py
+index 85c2a2125..166c55d3b 100644
+--- a/rdkit/Chem/MolDb/Loader_orig.py
++++ b/rdkit/Chem/MolDb/Loader_orig.py
+@@ -70,7 +70,7 @@ def ProcessMol(mol, typeConversions, globalProps, nDone, nameProp='_Name', nameC
+         pD[pn] = pv
+ 
+   if redraw:
+-    AllChem.Compute2DCoords(m)
++    AllChem.Compute2DCoords(mol)
+   if not skipSmiles:
+     row.append(Chem.MolToSmiles(mol))
+   row.append(DbModule.binaryHolder(mol.ToBinary()))
+diff --git a/rdkit/Chem/MolDb/Loader_sa.py b/rdkit/Chem/MolDb/Loader_sa.py
+index b442802bd..d7cf5f5db 100644
+--- a/rdkit/Chem/MolDb/Loader_sa.py
++++ b/rdkit/Chem/MolDb/Loader_sa.py
+@@ -65,7 +65,7 @@ def ProcessMol(session, mol, globalProps, nDone, nameProp='_Name', nameCol='comp
+   session.add(cmpd)
+ 
+   if redraw:
+-    AllChem.Compute2DCoords(m)
++    AllChem.Compute2DCoords(mol)
+ 
+   if not skipSmiles:
+     cmpd.smiles = Chem.MolToSmiles(mol, True)

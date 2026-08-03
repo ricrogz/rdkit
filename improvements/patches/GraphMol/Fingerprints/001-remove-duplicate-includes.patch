@@ -1,0 +1,29 @@
+diff --git a/Code/GraphMol/Fingerprints/FingerprintUtil.cpp b/Code/GraphMol/Fingerprints/FingerprintUtil.cpp
+index 6370f1f57..0be66fe54 100644
+--- a/Code/GraphMol/Fingerprints/FingerprintUtil.cpp
++++ b/Code/GraphMol/Fingerprints/FingerprintUtil.cpp
+@@ -14,12 +14,10 @@
+ #include <RDGeneral/hash/hash.hpp>
+ #include <boost/dynamic_bitset.hpp>
+ 
+-#include <GraphMol/RDKitBase.h>
+ #include <GraphMol/SmilesParse/SmilesParse.h>
+ #include <GraphMol/Substruct/SubstructMatch.h>
+ #include <GraphMol/Chirality.h>
+ #include <GraphMol/CIPLabeler/CIPLabeler.h>
+-#include <boost/dynamic_bitset.hpp>
+ #include <algorithm>
+ #include <RDGeneral/BoostStartInclude.h>
+ #include <boost/flyweight.hpp>
+diff --git a/Code/GraphMol/Fingerprints/RDKitFPGenerator.cpp b/Code/GraphMol/Fingerprints/RDKitFPGenerator.cpp
+index 2b54da6c8..6a8638aff 100644
+--- a/Code/GraphMol/Fingerprints/RDKitFPGenerator.cpp
++++ b/Code/GraphMol/Fingerprints/RDKitFPGenerator.cpp
+@@ -26,7 +26,6 @@
+ #include <boost/random.hpp>
+ #include <RDGeneral/BoostEndInclude.h>
+ #include <climits>
+-#include <RDGeneral/hash/hash.hpp>
+ #include <RDGeneral/types.h>
+ #include <algorithm>
+ #include <boost/dynamic_bitset.hpp>

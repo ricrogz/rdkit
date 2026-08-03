@@ -1,0 +1,24 @@
+diff --git a/Code/GraphMol/MolDraw2D/DrawTextSVG.cpp b/Code/GraphMol/MolDraw2D/DrawTextSVG.cpp
+index 2f6f19045..eaa919a9c 100644
+--- a/Code/GraphMol/MolDraw2D/DrawTextSVG.cpp
++++ b/Code/GraphMol/MolDraw2D/DrawTextSVG.cpp
+@@ -21,7 +21,6 @@
+ #include <GraphMol/MolDraw2D/MolDraw2DDetails.h>
+ #include <GraphMol/MolDraw2D/DrawTextSVG.h>
+ #include <GraphMol/MolDraw2D/MolDraw2DSVG.h>
+-#include <GraphMol/MolDraw2D/MolDraw2DDetails.h>
+ 
+ namespace RDKit {
+ 
+diff --git a/Code/GraphMol/MolDraw2D/MolDraw2D.cpp b/Code/GraphMol/MolDraw2D/MolDraw2D.cpp
+index 6b457d87e..3ff92976a 100644
+--- a/Code/GraphMol/MolDraw2D/MolDraw2D.cpp
++++ b/Code/GraphMol/MolDraw2D/MolDraw2D.cpp
+@@ -17,7 +17,6 @@
+ #include <GraphMol/MolDraw2D/AtomSymbol.h>
+ #include <GraphMol/MolDraw2D/DrawMol.h>
+ #include <GraphMol/MolDraw2D/DrawText.h>
+-#include <GraphMol/MolDraw2D/DrawMol.h>
+ #include <GraphMol/MolDraw2D/DrawMolMCHCircleAndLine.h>
+ #include <GraphMol/MolDraw2D/DrawMolMCHLasso.h>
+ #include <GraphMol/MolDraw2D/MolDraw2D.h>

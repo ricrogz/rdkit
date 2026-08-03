@@ -1,0 +1,24 @@
+diff --git a/Code/GraphMol/QueryOps.h b/Code/GraphMol/QueryOps.h
+index 01a43ba8a..ce624c333 100644
+--- a/Code/GraphMol/QueryOps.h
++++ b/Code/GraphMol/QueryOps.h
+@@ -24,7 +24,6 @@
+ #include <DataStructs/BitOps.h>
+ #include <functional>
+ 
+-#include <functional>
+ #include <limits>
+ 
+ #ifdef RDK_BUILD_THREADSAFE_SSS
+diff --git a/Code/GraphMol/new_canon.h b/Code/GraphMol/new_canon.h
+index a7cd15081..237481434 100644
+--- a/Code/GraphMol/new_canon.h
++++ b/Code/GraphMol/new_canon.h
+@@ -23,7 +23,6 @@
+ #include <RDGeneral/BoostEndInclude.h>
+ #include <cstring>
+ #include <cassert>
+-#include <cstring>
+ #include <vector>
+ 
+ // #define VERBOSE_CANON 1

@@ -1,0 +1,13 @@
+diff --git a/Code/GraphMol/RGroupDecomposition/RGroupGa.h b/Code/GraphMol/RGroupDecomposition/RGroupGa.h
+index 3870271c7..a7287c4a2 100644
+--- a/Code/GraphMol/RGroupDecomposition/RGroupGa.h
++++ b/Code/GraphMol/RGroupDecomposition/RGroupGa.h
+@@ -79,7 +79,7 @@ class RGroupDecompositionChromosome : public IntegerStringChromosome {
+       delete;
+   RGroupDecompositionChromosome &operator=(
+       const RGroupDecompositionChromosome &other) = delete;
+-  double fitness;
++  double fitness{0.0};
+   FingerprintVarianceScoreData fingerprintVarianceScoreData;
+   OperationName operationName = Create;
+   vector<size_t> permutation;

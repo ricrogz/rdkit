@@ -1,0 +1,12 @@
+diff --git a/Code/GraphMol/SynthonSpaceSearch/Synthon.cpp b/Code/GraphMol/SynthonSpaceSearch/Synthon.cpp
+index a7a3b5f2f..2b38e4980 100644
+--- a/Code/GraphMol/SynthonSpaceSearch/Synthon.cpp
++++ b/Code/GraphMol/SynthonSpaceSearch/Synthon.cpp
+@@ -13,7 +13,6 @@
+ #include <GraphMol/Descriptors/MolDescriptors.h>
+ #include <GraphMol/MolOps.h>
+ #include <GraphMol/MolPickler.h>
+-#include <GraphMol/Descriptors/MolDescriptors.h>
+ #include <GraphMol/FileParsers/FileWriters.h>
+ #include <GraphMol/Fingerprints/Fingerprints.h>
+ #include <GraphMol/SynthonSpaceSearch/Synthon.h>

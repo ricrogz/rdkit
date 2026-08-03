@@ -1,0 +1,12 @@
+diff --git a/Code/GraphMol/MolChemicalFeatures/FeatureParser.cpp b/Code/GraphMol/MolChemicalFeatures/FeatureParser.cpp
+index 9e834e686..0c3aa6908 100644
+--- a/Code/GraphMol/MolChemicalFeatures/FeatureParser.cpp
++++ b/Code/GraphMol/MolChemicalFeatures/FeatureParser.cpp
+@@ -17,7 +17,6 @@
+ #include <boost/tokenizer.hpp>
+ #include <boost/algorithm/string.hpp>
+ #include <boost/lexical_cast.hpp>
+-#include <boost/tokenizer.hpp>
+ typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
+ 
+ #include <fstream>

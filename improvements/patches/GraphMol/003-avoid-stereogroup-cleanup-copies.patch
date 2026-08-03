@@ -1,0 +1,16 @@
+diff --git a/Code/GraphMol/Atropisomers.cpp b/Code/GraphMol/Atropisomers.cpp
+--- a/Code/GraphMol/Atropisomers.cpp
++++ b/Code/GraphMol/Atropisomers.cpp
+@@ -485,3 +485,3 @@ void cleanupAtropisomerStereoGroups(ROMol &mol) {
+   std::vector<StereoGroup> newsgs;
+-  for (auto sg : mol.getStereoGroups()) {
++  for (const auto &sg : mol.getStereoGroups()) {
+     std::vector<Atom *> okatoms;
+diff --git a/Code/GraphMol/Chirality.cpp b/Code/GraphMol/Chirality.cpp
+--- a/Code/GraphMol/Chirality.cpp
++++ b/Code/GraphMol/Chirality.cpp
+@@ -2163,3 +2163,3 @@ void cleanupStereoGroups(ROMol &mol) {
+   std::vector<StereoGroup> newsgs;
+-  for (auto sg : mol.getStereoGroups()) {
++  for (const auto &sg : mol.getStereoGroups()) {
+     std::vector<Atom *> okatoms;

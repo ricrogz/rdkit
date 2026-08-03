@@ -1,0 +1,9 @@
+diff --git a/Code/GraphMol/Depictor/EmbeddedFrag.h b/Code/GraphMol/Depictor/EmbeddedFrag.h
+--- a/Code/GraphMol/Depictor/EmbeddedFrag.h
++++ b/Code/GraphMol/Depictor/EmbeddedFrag.h
+@@ -57,4 +57,5 @@ struct EmbeddedAtom {
+       return *this;
+     }
+ 
++    aid = other.aid;
+     loc = other.loc;

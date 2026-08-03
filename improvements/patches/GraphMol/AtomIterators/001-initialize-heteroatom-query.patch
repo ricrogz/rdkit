@@ -1,0 +1,11 @@
+diff --git a/Code/GraphMol/AtomIterators.h b/Code/GraphMol/AtomIterators.h
+--- a/Code/GraphMol/AtomIterators.h
++++ b/Code/GraphMol/AtomIterators.h
+@@ -100,6 +100,6 @@ class RDKIT_GRAPHMOL_EXPORT HeteroatomIterator_ {
+   // FIX: somehow changing the following to a pointer make the regression test
+   // pass
+   // QueryAtom _qA;
+-  QueryAtom *_qA;
++  QueryAtom *_qA{nullptr};
+ 
+   int _findNext(int from);

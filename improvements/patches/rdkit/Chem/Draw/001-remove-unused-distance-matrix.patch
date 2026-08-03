@@ -1,0 +1,10 @@
+diff --git a/rdkit/Chem/Draw/SimilarityMaps.py b/rdkit/Chem/Draw/SimilarityMaps.py
+--- a/rdkit/Chem/Draw/SimilarityMaps.py
++++ b/rdkit/Chem/Draw/SimilarityMaps.py
+@@ -254,6 +254,4 @@ def GetAtomicWeightsForFingerprint(refMol, probeMol, fpType, metric=DataStructs.
+ 
+   baseSimilarity = metric(refFP, probeFP)
+ 
+-  dmat = Chem.GetDistanceMatrix(probeMol)
+-  
+   atomsPerBit = probeAo.GetAtomsPerBit()

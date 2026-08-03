@@ -1,0 +1,19 @@
+diff --git a/Code/GraphMol/MarvinParse/MarvinDefs.cpp b/Code/GraphMol/MarvinParse/MarvinDefs.cpp
+--- a/Code/GraphMol/MarvinParse/MarvinDefs.cpp
++++ b/Code/GraphMol/MarvinParse/MarvinDefs.cpp
+@@ -763,3 +763,4 @@ MarvinAtom::MarvinAtom()
+       y3(DBL_MAX),
+       z3(DBL_MAX),
++      isotope(0),
+       formalCharge(0),
+@@ -1443,3 +1444,4 @@ bool MarvinSruCoModSgroup::hasAtomBondBlocks() const { return false; }
+-MarvinDataSgroup::MarvinDataSgroup(MarvinMolBase *parentInit) {
++MarvinDataSgroup::MarvinDataSgroup(MarvinMolBase *parentInit)
++    : x(0.0), y(0.0) {
+   parent = parentInit;
+ }
+@@ -1744,2 +1746,3 @@ ptree MarvinMultipleSgroup::toPtree() const {
+-MarvinMulticenterSgroup::MarvinMulticenterSgroup(MarvinMolBase *parentInit) {
++MarvinMulticenterSgroup::MarvinMulticenterSgroup(MarvinMolBase *parentInit)
++    : center(nullptr) {
+   PRECONDITION(parentInit != nullptr, "parentInit cannot be null");

@@ -1,0 +1,12 @@
+diff --git a/Code/GraphMol/Wrap/MolOps.cpp b/Code/GraphMol/Wrap/MolOps.cpp
+index b1ac553f0..cdd1d7547 100644
+--- a/Code/GraphMol/Wrap/MolOps.cpp
++++ b/Code/GraphMol/Wrap/MolOps.cpp
+@@ -35,7 +35,6 @@
+ #include <RDBoost/PySequenceHolder.h>
+ #include <RDBoost/Wrap.h>
+ #include <RDBoost/python_streambuf.h>
+-#include <GraphMol/Chirality.h>
+ #include <GraphMol/SmilesParse/CanonicalizeStereoGroups.h>
+ 
+ #include <sstream>

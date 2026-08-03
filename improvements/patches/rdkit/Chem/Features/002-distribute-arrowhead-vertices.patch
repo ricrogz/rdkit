@@ -1,0 +1,11 @@
+diff --git a/rdkit/Chem/Features/ShowFeats.py b/rdkit/Chem/Features/ShowFeats.py
+--- a/rdkit/Chem/Features/ShowFeats.py
++++ b/rdkit/Chem/Features/ShowFeats.py
+@@ -63,5 +63,6 @@ def _buildCanonArrowhead(headFrac, nSteps, aspect):
+ 
+   twopi = 2 * math.pi
+   for i in range(1, nSteps):
+-    v = RDGeometry.Point3D(scale * math.cos(i * twopi), scale * math.sin(i * twopi), 0)
++    angle = i * twopi / nSteps
++    v = RDGeometry.Point3D(scale * math.cos(angle), scale * math.sin(angle), 0)
+     _canonArrowhead.append(v)

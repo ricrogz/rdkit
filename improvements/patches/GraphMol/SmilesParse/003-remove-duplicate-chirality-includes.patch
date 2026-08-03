@@ -1,0 +1,24 @@
+diff --git a/Code/GraphMol/SmilesParse/CXSmilesOps.cpp b/Code/GraphMol/SmilesParse/CXSmilesOps.cpp
+index 67ead4830..0a8dda668 100644
+--- a/Code/GraphMol/SmilesParse/CXSmilesOps.cpp
++++ b/Code/GraphMol/SmilesParse/CXSmilesOps.cpp
+@@ -21,7 +21,6 @@
+ #include "SmilesParse.h"
+ #include "SmilesParseOps.h"
+ #include <GraphMol/MolEnumerator/LinkNode.h>
+-#include <GraphMol/Chirality.h>
+ 
+ #include <algorithm>
+ #include <array>
+diff --git a/Code/GraphMol/SmilesParse/SmilesParse.cpp b/Code/GraphMol/SmilesParse/SmilesParse.cpp
+index 1276e9acd..d166c979c 100644
+--- a/Code/GraphMol/SmilesParse/SmilesParse.cpp
++++ b/Code/GraphMol/SmilesParse/SmilesParse.cpp
+@@ -34,7 +34,6 @@
+ #include <GraphMol/Atropisomers.h>
+ #include <GraphMol/FileParsers/MolFileStereochem.h>
+ #include <GraphMol/CIPLabeler/CIPLabeler.h>
+-#include <GraphMol/Chirality.h>
+ 
+ #include "SmilesParseOps.h"
+ #include <RDGeneral/RDLog.h>

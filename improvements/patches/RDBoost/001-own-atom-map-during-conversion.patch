@@ -1,0 +1,25 @@
+diff --git a/Code/RDBoost/Wrap.cpp b/Code/RDBoost/Wrap.cpp
+--- a/Code/RDBoost/Wrap.cpp
++++ b/Code/RDBoost/Wrap.cpp
+@@ -94,18 +94,15 @@ std::vector<std::pair<int, int>> *translateAtomMap(
+-  std::vector<std::pair<int, int>> *res;
+-  res = nullptr;
++  std::unique_ptr<std::vector<std::pair<int, int>>> res;
+   unsigned int i;
+   unsigned int n = pyAtomMap.size();
+   if (n > 0) {
+-    res = new std::vector<std::pair<int, int>>;
++    res = std::make_unique<std::vector<std::pair<int, int>>>();
+     for (i = 0; i < n; ++i) {
+       PySequenceHolder<int> item(pyAtomMap[i]);
+       if (item.size() != 2) {
+-        delete res;
+-        res = nullptr;
+         throw_value_error("Incorrect format for an atomMap");
+       }
+       res->push_back(std::pair<int, int>(item[0], item[1]));
+     }
+   }
+-  return res;
++  return res.release();
+ }

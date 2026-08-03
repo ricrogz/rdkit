@@ -1,0 +1,14 @@
+diff --git a/Code/GraphMol/Substruct/SubstructUtils.cpp b/Code/GraphMol/Substruct/SubstructUtils.cpp
+--- a/Code/GraphMol/Substruct/SubstructUtils.cpp
++++ b/Code/GraphMol/Substruct/SubstructUtils.cpp
+@@ -40,7 +40,9 @@ class ScoreMatchesByDegreeOfCoreSubstitution {
+         d_isSorted(false) {
+     PRECONDITION(!matches.empty(), "matches must not be empty");
+     auto na = d_mol.getNumAtoms();
+-    d_sumIndices = static_cast<double>(na * (na + 1) / 2);
++    d_sumIndices =
++        std::max(1.0, static_cast<double>(na) *
++                          static_cast<double>(na + 1) / 2.0);
+     unsigned int i = 0;
+     d_matchIdxVsScore.reserve(d_matches.size());
+     for (const auto &match : d_matches) {

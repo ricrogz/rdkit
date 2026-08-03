@@ -1,0 +1,9 @@
+diff --git a/Code/RDGeneral/utils.h b/Code/RDGeneral/utils.h
+--- a/Code/RDGeneral/utils.h
++++ b/Code/RDGeneral/utils.h
+@@ -69,4 +69,4 @@ unsigned int countSwapsToInterconvert(const T &ref, T probe) {
+       bool foundIt = false;
+       probeIt2 = probeIt;
+-      while ((*probeIt2) != (*refIt) && probeIt2 != probe.end()) {
++      while (probeIt2 != probe.end() && (*probeIt2) != (*refIt)) {
+         ++probeIt2;

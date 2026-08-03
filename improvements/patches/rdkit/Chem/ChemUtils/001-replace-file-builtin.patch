@@ -1,0 +1,22 @@
+diff --git a/rdkit/Chem/ChemUtils/TemplateExpand.py b/rdkit/Chem/ChemUtils/TemplateExpand.py
+index 24ec99522..8214218b1 100644
+--- a/rdkit/Chem/ChemUtils/TemplateExpand.py
++++ b/rdkit/Chem/ChemUtils/TemplateExpand.py
+@@ -413,7 +413,7 @@ if __name__ == '__main__':
+         logger.error('could not construct supplier from SD file: %s' % dat, exc_info=True)
+         suppl = []
+     else:
+-      tmpF = file(dat, 'r')
++      tmpF = open(dat, 'r')
+       inL = tmpF.readline()
+       if len(inL.split(' ')) < 2:
+         nmCol = -1
+@@ -446,7 +446,7 @@ if __name__ == '__main__':
+ 
+   if outF and outF != "-":
+     try:
+-      outF = file(outF, 'w+')
++      outF = open(outF, 'w+')
+     except IOError:
+       logger.error('could not open file %s for writing' % (outF), exc_info=True)
+   else:

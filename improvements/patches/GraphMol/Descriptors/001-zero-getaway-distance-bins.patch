@@ -1,0 +1,19 @@
+diff --git a/Code/GraphMol/Descriptors/GETAWAY.cpp b/Code/GraphMol/Descriptors/GETAWAY.cpp
+index 51f6f0e2a..7440e9eca 100644
+--- a/Code/GraphMol/Descriptors/GETAWAY.cpp
++++ b/Code/GraphMol/Descriptors/GETAWAY.cpp
+@@ -347,10 +347,10 @@ void getGETAWAYDescCustom(MatrixXd H, MatrixXd R, MatrixXd Adj, int numAtoms,
+   MatrixXd Bi;
+   MatrixXd RBw;
+   double HATSc, HATSct, H0ct, R0ct, H0c, R0c, Rkmaxc, tmpc;
+-  double HATSk[9];
+-  double Hk[9];
+-  double Rk[8];
+-  double Rp[8];
++  double HATSk[9]{};
++  double Hk[9]{};
++  double Rk[8]{};
++  double Rp[8]{};
+ 
+   double *dist =
+       MolOps::getDistanceMat(mol, false);  // need to be be set to false to have

@@ -1,0 +1,10 @@
+diff --git a/rdkit/Chem/Fingerprints/FingerprintMols.py b/rdkit/Chem/Fingerprints/FingerprintMols.py
+--- a/rdkit/Chem/Fingerprints/FingerprintMols.py
++++ b/rdkit/Chem/Fingerprints/FingerprintMols.py
+@@ -190,5 +190,5 @@ def FingerprintFromDetails(details, reportFreq=10):
+     else:
+       while 1:
+         try:
+-          m = s.next()
++          m = next(s)
+         except StopIteration:

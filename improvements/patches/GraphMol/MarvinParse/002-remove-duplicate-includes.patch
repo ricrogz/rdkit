@@ -1,0 +1,24 @@
+diff --git a/Code/GraphMol/MarvinParse/MarvinParser.cpp b/Code/GraphMol/MarvinParse/MarvinParser.cpp
+index 19c3882ae..2aeddf221 100644
+--- a/Code/GraphMol/MarvinParse/MarvinParser.cpp
++++ b/Code/GraphMol/MarvinParse/MarvinParser.cpp
+@@ -32,7 +32,6 @@
+ #include <GraphMol/StereoGroup.h>
+ #include <GraphMol/SubstanceGroup.h>
+ 
+-#include "MarvinParser.h"
+ 
+ #include <RDGeneral/StreamOps.h>
+ #include <RDGeneral/FileParseException.h>
+diff --git a/Code/GraphMol/MarvinParse/MarvinWriter.cpp b/Code/GraphMol/MarvinParse/MarvinWriter.cpp
+index b06a4f905..1d3f42b4b 100644
+--- a/Code/GraphMol/MarvinParse/MarvinWriter.cpp
++++ b/Code/GraphMol/MarvinParse/MarvinWriter.cpp
+@@ -37,7 +37,6 @@
+ #include <RDGeneral/StreamOps.h>
+ #include <RDGeneral/FileParseException.h>
+ #include <RDGeneral/BadFileException.h>
+-#include <RDGeneral/LocaleSwitcher.h>
+ 
+ #include <RDGeneral/BoostStartInclude.h>
+ #include <boost/algorithm/string.hpp>

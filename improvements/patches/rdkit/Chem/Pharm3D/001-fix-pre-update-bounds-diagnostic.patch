@@ -1,0 +1,10 @@
+diff --git a/rdkit/Chem/Pharm3D/EmbedLib.py b/rdkit/Chem/Pharm3D/EmbedLib.py
+--- a/rdkit/Chem/Pharm3D/EmbedLib.py
++++ b/rdkit/Chem/Pharm3D/EmbedLib.py
+@@ -1180,5 +1180,5 @@ def GetAllPharmacophoreMatches(matches, bounds, pcophore, useDownsampling=0,
+ 
+       if verbose:
+         print('pre update:')
+-        for row in bm:
++        for row in bounds:
+           print(' ', ' '.join(['% 4.2f' % x for x in row]))

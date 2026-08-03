@@ -1,0 +1,13 @@
+diff --git a/rdkit/sping/PDF/pdfmetrics.py b/rdkit/sping/PDF/pdfmetrics.py
+index 8b0949899..8cb156d64 100644
+--- a/rdkit/sping/PDF/pdfmetrics.py
++++ b/rdkit/sping/PDF/pdfmetrics.py
+@@ -288,7 +288,7 @@ def parseAFMfile(filename):
+   # by default, any empties should get the width of a space
+   for i in range(len(widths)):
+     if widths[i] == 0:
+-      widths[i] == widths[32]
++      widths[i] = widths[32]
+ 
+   return widths
+ 

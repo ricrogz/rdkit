@@ -1,0 +1,22 @@
+diff --git a/rdkit/VLib/NodeLib/DbPickleSupplier.py b/rdkit/VLib/NodeLib/DbPickleSupplier.py
+index abc209c3a..d58112eea 100644
+--- a/rdkit/VLib/NodeLib/DbPickleSupplier.py
++++ b/rdkit/VLib/NodeLib/DbPickleSupplier.py
+@@ -112,7 +112,7 @@ if RDConfig.usePgSQL:
+       self.rowCount = self.res.ntuples + 1
+       self.idx = 0
+       if self.res.nfields < 2:
+-        raise ValueError('bad query result' % str(res))
++        raise ValueError('bad query result: %s' % self.res)
+ 
+       return self
+ 
+@@ -137,7 +137,7 @@ if RDConfig.usePgSQL:
+         self.rowCount = self.res.ntuples + 1
+         self.idx = 0
+         if self.res.nfields < 2:
+-          raise ValueError('bad query result' % str(res))
++          raise ValueError('bad query result: %s' % self.res)
+ 
+       if idx < 0:
+         idx = self.rowCount + idx

@@ -1,0 +1,9 @@
+diff --git a/rdkit/Chem/Suppliers/DbMolSupplier.py b/rdkit/Chem/Suppliers/DbMolSupplier.py
+--- a/rdkit/Chem/Suppliers/DbMolSupplier.py
++++ b/rdkit/Chem/Suppliers/DbMolSupplier.py
+@@ -127,4 +127,4 @@ class ForwardDbMolSupplier(DbMolSupplier):
+     """
+     try:
+-      d = self._dataIter.next()
++      d = next(self._dataIter)
+     except StopIteration:

@@ -1,0 +1,35 @@
+diff --git a/rdkit/ML/Cluster/ClusterUtils.py b/rdkit/ML/Cluster/ClusterUtils.py
+index d9bd15dca..9e263a1a6 100644
+--- a/rdkit/ML/Cluster/ClusterUtils.py
++++ b/rdkit/ML/Cluster/ClusterUtils.py
+@@ -89,7 +89,7 @@ def FindClusterCentroidFromDists(cluster, dists):
+           row, col = pt, other
+         else:
+           row, col = other, pt
+-        dAccum += dists[col * (col - 1) / 2 + row]
++        dAccum += dists[col * (col - 1) // 2 + row]
+         if dAccum >= best:
+           # minor efficiency hack
+           break
+@@ -103,7 +103,7 @@ def FindClusterCentroidFromDists(cluster, dists):
+         row, col = bestIdx, pt
+       else:
+         row, col = pt, bestIdx
+-      children[i]._distToCenter = dists[col * (col - 1) / 2 + row]
++      children[i]._distToCenter = dists[col * (col - 1) // 2 + row]
+     else:
+       children[i]._distToCenter = 0.0
+     children[i]._clustCenter = bestIdx
+diff --git a/rdkit/ML/Cluster/Resemblance.py b/rdkit/ML/Cluster/Resemblance.py
+index b49fcd8f5..1876b4683 100755
+--- a/rdkit/ML/Cluster/Resemblance.py
++++ b/rdkit/ML/Cluster/Resemblance.py
+@@ -128,7 +128,7 @@ def ShowMetricMat(metricMat, nObjs):
+       if col <= row:
+         print('   ---    ', end='')
+       else:
+-        print('%10.6f' % metricMat[(col * (col - 1)) / 2 + row], end='')
++        print('%10.6f' % metricMat[(col * (col - 1)) // 2 + row], end='')
+     print()
+ 
+ 

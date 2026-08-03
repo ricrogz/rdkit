@@ -1,0 +1,13 @@
+diff --git a/Code/GraphMol/Depictor/RDDepictor.cpp b/Code/GraphMol/Depictor/RDDepictor.cpp
+index 95dee7f9d..e2a10fcd8 100644
+--- a/Code/GraphMol/Depictor/RDDepictor.cpp
++++ b/Code/GraphMol/Depictor/RDDepictor.cpp
+@@ -28,8 +28,6 @@
+ #include <GraphMol/MolAlign/AlignMolecules.h>
+ #include <GraphMol/MolTransforms/MolTransforms.h>
+ #include <GraphMol/Substruct/SubstructUtils.h>
+-#include <GraphMol/Chirality.h>
+-#include "EmbeddedFrag.h"
+ #include "DepictUtils.h"
+ #include <boost/dynamic_bitset.hpp>
+ #include <algorithm>

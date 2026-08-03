@@ -1,0 +1,10 @@
+diff --git a/Code/GraphMol/RWMol.cpp b/Code/GraphMol/RWMol.cpp
+--- a/Code/GraphMol/RWMol.cpp
++++ b/Code/GraphMol/RWMol.cpp
+@@ -154,5 +154,5 @@ void RWMol::insertMol(const ROMol &other) {
+       for (auto &val : nAtoms) {
+         if (val < 0) {
+-          val = -1 * (-val + origNumAtoms);
++          val -= rdcast<int>(origNumAtoms);
+         } else {
+           val += origNumAtoms;

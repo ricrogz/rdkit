@@ -1,0 +1,14 @@
+diff --git a/Code/GraphMol/ChemTransforms/MolZip.cpp b/Code/GraphMol/ChemTransforms/MolZip.cpp
+--- a/Code/GraphMol/ChemTransforms/MolZip.cpp
++++ b/Code/GraphMol/ChemTransforms/MolZip.cpp
+@@ -128,8 +128,8 @@ struct ZipBond {
+     mark(b, b_dummy, a);
+   }
+ 
+-  // bond a<->b for now only use single bonds
+-  //  XXX FIX ME take the highest bond order.
++  // Bond a<->b, preserving the first non-single bond type found on either
++  // attachment and otherwise using a single bond.
+   // RETURNS true if a new bond was made
+   bool bond(RWMol &newmol, const MolzipParams &params) const {
+     if (!a || !b || !a_dummy || !b_dummy) {

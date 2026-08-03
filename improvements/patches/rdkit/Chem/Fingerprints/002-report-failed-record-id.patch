@@ -1,0 +1,13 @@
+diff --git a/rdkit/Chem/Fingerprints/FingerprintMols.py b/rdkit/Chem/Fingerprints/FingerprintMols.py
+index 58bf44325..95d8b779a 100755
+--- a/rdkit/Chem/Fingerprints/FingerprintMols.py
++++ b/rdkit/Chem/Fingerprints/FingerprintMols.py
+@@ -91,7 +91,7 @@ def FingerprintsFromSmiles(dataSource, idCol, smiCol, fingerprinter=Chem.RDKFing
+       if maxMols > 0 and nDone >= maxMols:
+         break
+     else:
+-      error(f'Problems parsing SMILES: {smi}\n')
++      error(f'Problems parsing molecule record: {ID}\n')
+   return res
+ 
+ 

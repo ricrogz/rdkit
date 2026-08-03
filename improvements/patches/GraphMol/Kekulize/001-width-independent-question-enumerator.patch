@@ -1,0 +1,47 @@
+diff --git a/Code/GraphMol/Kekulize.cpp b/Code/GraphMol/Kekulize.cpp
+--- a/Code/GraphMol/Kekulize.cpp
++++ b/Code/GraphMol/Kekulize.cpp
+@@ -456,21 +456,36 @@ class QuestionEnumerator {
+  public:
+   QuestionEnumerator(INT_VECT questions)
+-      : d_questions(std::move(questions)), d_pos(1){};
++      : d_questions(std::move(questions)), d_state(d_questions.size()) {
++    if (!d_state.empty()) {
++      // Start at one because the empty subset has already been attempted.
++      d_state.set(0);
++    }
++  }
+   INT_VECT next() {
+     INT_VECT res;
+-    if (d_pos >= (0x1u << d_questions.size())) {
++    if (d_done) {
+       return res;
+     }
+-    for (unsigned int i = 0; i < d_questions.size(); ++i) {
+-      if (d_pos & (0x1u << i)) {
++    for (size_t i = 0; i < d_questions.size(); ++i) {
++      if (d_state.test(i)) {
+         res.push_back(d_questions[i]);
+       }
+     }
+-    ++d_pos;
++
++    size_t pos = 0;
++    while (pos < d_state.size() && d_state.test(pos)) {
++      d_state.reset(pos++);
++    }
++    if (pos == d_state.size()) {
++      d_done = true;
++    } else {
++      d_state.set(pos);
++    }
+     return res;
+-  };
++  }
+ 
+  private:
+   INT_VECT d_questions;
+-  unsigned int d_pos;
++  boost::dynamic_bitset<> d_state;
++  bool d_done = false;
+ };
