@@ -40,28 +40,10 @@ MultithreadedSDMolSupplier::MultithreadedSDMolSupplier() {
 void MultithreadedSDMolSupplier::initFromSettings(
     bool takeOwnership, const Parameters &params,
     const MolFileParserParams &parseParams) {
-  df_owner = takeOwnership;
-  d_params = params;
+  MultithreadedMolSupplier::initFromSettings(takeOwnership, params);
   d_parseParams = parseParams;
-  d_params.numWriterThreads = getNumThreadsToUse(params.numWriterThreads);
-  d_inputQueue.reset(
-      new ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>(
-          d_params.sizeInputQueue));
-  d_outputQueue.reset(
-      new ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>(
-          d_params.sizeOutputQueue));
-
-  d_line = 0;
   df_processPropertyLists = true;
-}
-
-void MultithreadedSDMolSupplier::closeStreams() {
-  if (df_owner && dp_inStream) {
-    delete dp_inStream;
-    df_owner = false;
-    dp_inStream = nullptr;
-  }
-  df_started = false;  // this is in the base constructor
+  d_line = 0;
 }
 
 bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
@@ -75,15 +57,19 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
     return false;
   }
 
-  std::string currentStr, prevStr;
-  bool readAnyLine = false;
-  record = "";
+  std::string currentStr;
+  std::string prevStr;
+  record.clear();
   lineNum = d_line;
+  bool readAnyLine = false;
+
+  // keep reading while we can, and the current line is not a record separator,
+  // and the previous one is a valid end of a mol block (blank line or M  END)
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
          ((prevStr.find_first_not_of(" \t\r\n") != std::string::npos &&
            prevStr.find("M  END") != 0) ||
-          currentStr[0] != '$' || currentStr.substr(0, 4) != "$$$$")) {
-    prevStr = currentStr;
+          !currentStr.starts_with("$$$$"))) {
+    std::swap(prevStr, currentStr);
     if (std::getline(*dp_inStream, currentStr)) {
       readAnyLine = true;
     }

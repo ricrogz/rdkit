@@ -32,8 +32,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
 
   ~MultithreadedSmilesMolSupplier() override { close(); }
 
-  bool getEOFHitOnRead() const { return df_eofHitOnRead.load(); }
-
   //! reads and processes the title line
   void processTitleLine();
 
@@ -45,17 +43,12 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
   std::unique_ptr<RWMol> processMoleculeRecord(const std::string &record,
                                                unsigned int lineNum) override;
 
- protected:
-  void closeStreams() override;
-
  private:
   void initFromSettings(
       bool takeOwnership, const Parameters &params,
       const SmilesMolSupplierParams &parseParams = SmilesMolSupplierParams());
 
-  int d_line = 0;    //!< line number we are currently on
   STR_VECT d_props;  //!< vector of property names
-  std::atomic<bool> df_eofHitOnRead = false;
   SmilesMolSupplierParams d_parseParams;
 };
 }  // namespace FileParsers
@@ -110,7 +103,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
         inStream, takeOwnership, params, parseParams));
   }
 
-  //! included for the interface, always returns false
   bool getEOFHitOnRead() const {
     if (dp_supplier) {
       return static_cast<ContainedType *>(dp_supplier.get())->getEOFHitOnRead();

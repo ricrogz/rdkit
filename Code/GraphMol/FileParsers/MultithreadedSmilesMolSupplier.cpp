@@ -11,6 +11,13 @@
 #include "MultithreadedSmilesMolSupplier.h"
 
 namespace RDKit {
+namespace {
+inline bool lineIsEmptyOrComment(const std::string &line) {
+  return line.empty() || line[0] == '#' ||
+         line.find_first_not_of(" \t\r\n") == std::string::npos;
+}
+}  // namespace
+
 namespace v2 {
 namespace FileParsers {
 MultithreadedSmilesMolSupplier::MultithreadedSmilesMolSupplier(
@@ -39,28 +46,11 @@ MultithreadedSmilesMolSupplier::MultithreadedSmilesMolSupplier() {
   initFromSettings(true, d_params, d_parseParams);
 }
 
-void MultithreadedSmilesMolSupplier::closeStreams() {
-  if (df_owner && dp_inStream) {
-    delete dp_inStream;
-    df_owner = false;
-    dp_inStream = nullptr;
-  }
-  df_started = false;  // this is in the base constructor
-}
-
 void MultithreadedSmilesMolSupplier::initFromSettings(
     bool takeOwnership, const Parameters &params,
     const SmilesMolSupplierParams &parseParams) {
-  df_owner = takeOwnership;
-  d_params = params;
+  MultithreadedMolSupplier::initFromSettings(takeOwnership, params);
   d_parseParams = parseParams;
-  d_params.numWriterThreads = getNumThreadsToUse(d_params.numWriterThreads);
-  d_inputQueue.reset(
-      new ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>(
-          d_params.sizeInputQueue));
-  d_outputQueue.reset(
-      new ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>(
-          d_params.sizeOutputQueue));
   d_line = -1;
 }
 
@@ -70,21 +60,22 @@ void MultithreadedSmilesMolSupplier::initFromSettings(
 //
 void MultithreadedSmilesMolSupplier::processTitleLine() {
   PRECONDITION(dp_inStream, "bad stream");
-  std::string tempStr = getLine(dp_inStream);
-  ++d_line;
+
   // loop until we get a valid line
+  std::string tempStr;
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
-         ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
+         lineIsEmptyOrComment(tempStr)) {
     tempStr = getLine(dp_inStream);
     ++d_line;
   }
+
   boost::char_separator<char> sep(d_parseParams.delimiter.c_str(), "",
                                   boost::keep_empty_tokens);
-  tokenizer tokens(tempStr, sep);
-  for (tokenizer::iterator tokIter = tokens.begin(); tokIter != tokens.end();
-       ++tokIter) {
-    std::string pname = strip(*tokIter);
-    d_props.push_back(pname);
+
+  auto tokens = tokenizer(tempStr, sep);
+  d_props.assign(tokens.begin(), tokens.end());
+  for (auto &pname : d_props) {
+    boost::trim_if(pname, boost::is_any_of(" \t\r\n"));
   }
 }
 
@@ -111,18 +102,18 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
       }
     }
   }
-  std::string tempStr = getLine(dp_inStream);
-  ++d_line;
-  record = "";
+
+  record.clear();
+  std::string tempStr;
   while (!dp_inStream->eof() && !dp_inStream->fail() &&
-         ((tempStr[0] == '#') || (strip(tempStr).size() == 0))) {
+         lineIsEmptyOrComment(tempStr)) {
     tempStr = getLine(dp_inStream);
     ++d_line;
   }
 
   // SmilesMolSupplier skips comments and blank lines and does not expose an
   // extra null record when none remain.
-  if ((tempStr.empty() || tempStr[0] == '#' || strip(tempStr).empty()) &&
+  if (lineIsEmptyOrComment(tempStr) &&
       (dp_inStream->eof() || dp_inStream->fail())) {
     if (d_lastReadRecordId == 0) {
       df_eofHitOnRead = true;
@@ -144,17 +135,18 @@ std::unique_ptr<RWMol> MultithreadedSmilesMolSupplier::processMoleculeRecord(
   // -----------
   boost::char_separator<char> sep(d_parseParams.delimiter.c_str(), "",
                                   boost::keep_empty_tokens);
-  tokenizer tokens(record, sep);
-  STR_VECT recs;
-  for (tokenizer::iterator tokIter = tokens.begin(); tokIter != tokens.end();
-       ++tokIter) {
-    std::string rec = strip(*tokIter);
-    recs.push_back(rec);
-  }
+
+  auto tokens = tokenizer(record, sep);
+  std::vector<std::string> recs(tokens.begin(), tokens.end());
+
   if (recs.size() <= static_cast<unsigned int>(d_parseParams.smilesColumn)) {
     std::ostringstream errout;
     errout << "ERROR: line #" << lineNum << "does not contain enough tokens\n";
     throw FileParseException(errout.str());
+  }
+
+  for (auto &rec : recs) {
+    boost::trim_if(rec, boost::is_any_of(" \t\r\n"));
   }
 
   // -----------
@@ -174,10 +166,7 @@ std::unique_ptr<RWMol> MultithreadedSmilesMolSupplier::processMoleculeRecord(
   // -----------
   if (d_parseParams.nameColumn == -1) {
     // if no name defaults it to the line number we read it from string
-    std::ostringstream tstr;
-    tstr << lineNum;
-    std::string mname = tstr.str();
-    res->setProp(common_properties::_Name, mname);
+    res->setProp(common_properties::_Name, std::to_string(lineNum));
   } else {
     if (d_parseParams.nameColumn >= static_cast<int>(recs.size())) {
       BOOST_LOG(rdWarningLog)
@@ -195,17 +184,13 @@ std::unique_ptr<RWMol> MultithreadedSmilesMolSupplier::processMoleculeRecord(
         static_cast<int>(col) == d_parseParams.nameColumn) {
       continue;
     }
-    std::string pname, pval;
-    if (d_props.size() > col) {
-      pname = d_props[col];
-    }
-    if (pname.empty()) {
-      pname = "Column_";
+    if (d_props.size() > col && !d_props[col].empty()) {
+      res->setProp(d_props[col], recs[col]);
+    } else {
+      std::string pname = "Column_";
       pname += std::to_string(col);
+      res->setProp(pname, recs[col]);
     }
-
-    pval = recs[col];
-    res->setProp(pname, pval);
   }
   return res;
 }

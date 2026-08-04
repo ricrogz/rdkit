@@ -470,9 +470,9 @@ void testThrowSmiles() {
 void testEmptySuppliers() {
   {
     std::istringstream forwardStrm("");
+    std::istringstream multiStrm("");
     ForwardSDMolSupplier forwardSup(&forwardStrm, false);
-    auto *strm = new std::istringstream("");
-    MultithreadedSDMolSupplier sup(strm, true);
+    MultithreadedSDMolSupplier sup(&multiStrm, false);
     TEST_ASSERT(!forwardSup.atEnd());
     TEST_ASSERT(!sup.atEnd());
     std::unique_ptr<ROMol> forwardMol{forwardSup.next()};
@@ -486,9 +486,9 @@ void testEmptySuppliers() {
   }
   {
     std::istringstream forwardStrm("\n");
-    auto *strm = new std::istringstream("\n");
+    std::istringstream multiStrm("\n");
     ForwardSDMolSupplier forwardSup(&forwardStrm, false);
-    MultithreadedSDMolSupplier sup(strm, true);
+    MultithreadedSDMolSupplier sup(&multiStrm, false);
     std::unique_ptr<ROMol> forwardMol{forwardSup.next()};
     std::unique_ptr<ROMol> mol{sup.next()};
     TEST_ASSERT(!forwardMol);
@@ -499,16 +499,26 @@ void testEmptySuppliers() {
     TEST_ASSERT(!sup.getEOFHitOnRead());
   }
   {
-    std::istringstream singleStrm("");
-    SmilesMolSupplier singleSup(&singleStrm, false, " ", 0, -1, false);
-    auto *strm = new std::istringstream("");
-    MultithreadedSmilesMolSupplier sup(strm, true, " ", 0, -1, false);
-    TEST_ASSERT(singleSup.atEnd());
+    std::istringstream smiStrm("");
+    std::istringstream multiStrm("");
+    SmilesMolSupplier smiSup(&smiStrm, false, " ", 0, -1, false);
+    MultithreadedSmilesMolSupplier sup(&multiStrm, false, " ", 0, -1, false);
+    TEST_ASSERT(smiSup.atEnd());
     TEST_ASSERT(!sup.atEnd());
     std::unique_ptr<ROMol> mol{sup.next()};
     TEST_ASSERT(!mol);
     TEST_ASSERT(sup.atEnd());
-    TEST_ASSERT(sup.getEOFHitOnRead());
+  }
+  {
+    std::istringstream smiStrm("\n");
+    std::istringstream multiStrm("\n");
+    SmilesMolSupplier smiSup(&smiStrm, false, " ", 0, -1, false);
+    MultithreadedSmilesMolSupplier sup(&multiStrm, false, " ", 0, -1, false);
+    TEST_ASSERT(smiSup.atEnd());
+    TEST_ASSERT(!sup.atEnd());
+    std::unique_ptr<ROMol> mol{sup.next()};
+    TEST_ASSERT(!mol);
+    TEST_ASSERT(sup.atEnd());
   }
 }
 
@@ -518,18 +528,18 @@ void testSmilesSupplierConsistency() {
       "SMILES,name,\n"
       "C,carbon,value\n";
   std::istringstream singleStrm(text);
-  auto *multiStrm = new std::istringstream(text);
+  std::istringstream multiStrm(text);
   SmilesMolSupplier singleSup(&singleStrm, false, ",", 0, -1, true);
-  MultithreadedSmilesMolSupplier multiSup(multiStrm, true, ",", 0, -1,
-                                          true);
+  MultithreadedSmilesMolSupplier multiSup(&multiStrm, false, ",", 0, -1, true);
   std::unique_ptr<ROMol> singleMol{singleSup.next()};
   std::unique_ptr<ROMol> multiMol{multiSup.next()};
   TEST_ASSERT(singleMol);
   TEST_ASSERT(multiMol);
+
   TEST_ASSERT(singleMol->getProp<std::string>(common_properties::_Name) ==
               multiMol->getProp<std::string>(common_properties::_Name));
-  TEST_ASSERT(singleMol->getProp<std::string>(common_properties::_Name) ==
-              "2");
+  TEST_ASSERT(singleMol->getProp<std::string>(common_properties::_Name) == "2");
+
   TEST_ASSERT(singleMol->getProp<std::string>("name") ==
               multiMol->getProp<std::string>("name"));
   TEST_ASSERT(singleMol->getProp<std::string>("Column_2") ==

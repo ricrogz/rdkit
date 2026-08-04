@@ -37,8 +37,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
 
   bool getProcessPropertyLists() const { return df_processPropertyLists; }
 
-  bool getEOFHitOnRead() const { return df_eofHitOnRead.load(); }
-
   //! reads next record and returns whether or not EOF was hit
   bool extractNextRecord(std::string &record, unsigned int &lineNum,
                          unsigned int &index) override;
@@ -49,16 +47,11 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier
   std::unique_ptr<RWMol> processMoleculeRecord(const std::string &record,
                                                unsigned int lineNum) override;
 
- protected:
-  void closeStreams() override;
-
  private:
   void initFromSettings(bool takeOwnership, const Parameters &params,
                         const MolFileParserParams &parseParams);
 
-  int d_line = 0;  //!< line number we are currently on
   bool df_processPropertyLists = true;
-  std::atomic<bool> df_eofHitOnRead = false;
   MolFileParserParams d_parseParams;
 };
 }  // namespace FileParsers
@@ -106,7 +99,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSDMolSupplier : public MolSupplier {
         inStream, takeOwnership, params, parseParams));
   }
 
-  //! included for the interface, always returns false
   bool getEOFHitOnRead() const {
     if (dp_supplier) {
       return static_cast<ContainedType *>(dp_supplier.get())->getEOFHitOnRead();

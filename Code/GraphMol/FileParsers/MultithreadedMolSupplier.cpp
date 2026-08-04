@@ -17,6 +17,15 @@ namespace RDKit {
 namespace v2 {
 namespace FileParsers {
 
+void MultithreadedMolSupplier::initFromSettings(bool takeOwnership,
+                                                const Parameters &params) {
+  df_owner = takeOwnership;
+  d_params = params;
+  d_params.numWriterThreads = getNumThreadsToUse(params.numWriterThreads);
+  d_inputQueue.reset(new inputQueue_t(d_params.sizeInputQueue));
+  d_outputQueue.reset(new outputQueue_t(d_params.sizeOutputQueue));
+}
+
 void MultithreadedMolSupplier::close() {
   df_forceStop = true;
   if (d_outputQueue) {
@@ -74,6 +83,15 @@ void MultithreadedMolSupplier::close() {
   df_started = false;
 }
 
+void MultithreadedMolSupplier::closeStreams() {
+  if (df_owner && dp_inStream) {
+    delete dp_inStream;
+    df_owner = false;
+    dp_inStream = nullptr;
+  }
+  df_started = false;
+}
+
 void MultithreadedMolSupplier::reader() {
   std::string record;
   unsigned int lineNum, index;
@@ -127,9 +145,9 @@ void MultithreadedMolSupplier::writer() {
     d_threadCounterMutex.unlock();
   } else {
     // Here we need to unlock the threadCounterMutex before we setDone on the
-    //  outputQueue.  This causes a notification to the queue which may actually
-    //  have elements in it.  This notification may unblock the queue which
-    //  allows waiting threads to get their last attempt at adding to it
+    //  outputQueue.  This causes a notification to the queue which may
+    //  actually have elements in it.  This notification may unblock the queue
+    //  which allows waiting threads to get their last attempt at adding to it
     //  which will end up here and deadlock.
     d_threadCounterMutex.unlock();
     d_outputQueue->setDone();
@@ -186,13 +204,19 @@ void MultithreadedMolSupplier::startThreads() {
 }
 
 bool MultithreadedMolSupplier::atEnd() {
-  // Check reader completion first. Its set to 'done' happens after all updates
-  // to d_lastReadRecordId and all input-queue pushes, so a true value
-  // guarantees that the record count below is final.
+  // Check reader completion first. Its set to 'done' happens after all
+  // updates to d_lastReadRecordId and all input-queue pushes, so a true
+  // value guarantees that the record count below is final.
   if (!df_readerDone) {
     return false;
   }
   return d_returnedCount == d_lastReadRecordId;
+}
+
+bool MultithreadedMolSupplier::getEOFHitOnRead() {
+  // Do not return true until the output queue is empty,
+  // otherwise the Python wrapper will drop the queued mols.
+  return df_eofHitOnRead.load() && atEnd();
 }
 
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {

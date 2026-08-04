@@ -35,6 +35,18 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   //! this is an abstract base class to concurrently supply molecules one at a
   //! time
  public:
+  using readCallBackFn_t =
+      std::function<std::string(const std::string &, unsigned int)>;
+  using nextCallBackFn_t =
+      std::function<void(RWMol &, const MultithreadedMolSupplier &)>;
+  using writeCallBackFn_t =
+      std::function<void(RWMol &, const std::string &, unsigned int)>;
+
+  using inputQueue_t =
+      ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>;
+  using outputQueue_t =
+      ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>;
+
   struct Parameters {
     unsigned int numWriterThreads = 1;
     size_t sizeInputQueue = 5;
@@ -48,16 +60,15 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   virtual ~MultithreadedMolSupplier() { close(); }
 
   //! shut down the supplier
-  virtual void close() override;
+  virtual void close() final;
 
   //! pop elements from the output queue
-  std::unique_ptr<RWMol> next() override;
+  virtual std::unique_ptr<RWMol> next() final;
 
   //! returns true when all records have been read from the supplier
-  bool atEnd() override;
+  bool atEnd() final;
 
-  //! included for the interface, always returns false
-  bool getEOFHitOnRead() const { return false; }
+  bool getEOFHitOnRead();
 
   //! returns the record id of the last extracted item
   //! Note: d_lastReturnedRecordId = 0 initially, therefore the value 0 is
@@ -68,6 +79,14 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   //! returns the text block for the last extracted item
   std::string getLastItemText() const;
 
+  //! sets the callback to be applied to input text records before they are
+  ///! added to the input queue
+  /*!
+    \param cb: a function that takes a const reference to the string record and
+    an unsigned int record id and returns the modified string record
+  */
+  void setReadCallback(readCallBackFn_t cb) { readCallback = cb; }
+
   //! sets the callback to be applied to molecules before they are returned by
   ///! the next() function
   /*!
@@ -76,10 +95,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
     place
 
    */
-  template <typename T>
-  void setNextCallback(T cb) {
-    nextCallback = cb;
-  }
+  void setNextCallback(nextCallBackFn_t cb) { nextCallback = cb; }
 
   //! sets the callback to be applied to molecules after they are processed, but
   ///! before they are written to the output queue
@@ -88,33 +104,34 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
     to the string record, and an unsigned int record id. This can modify the
     molecule in place
   */
-  template <typename T>
-  void setWriteCallback(T cb) {
-    writeCallback = cb;
-  }
-
-  //! sets the callback to be applied to input text records before they are
-  ///! added to the input queue
-  /*!
-    \param cb: a function that takes a const reference to the string record and
-    an unsigned int record id and returns the modified string record
-  */
-  template <typename T>
-  void setReadCallback(T cb) {
-    readCallback = cb;
-  }
+  void setWriteCallback(writeCallBackFn_t cb) { writeCallback = cb; }
 
  protected:
-  //! Close down any external streams
-  virtual void closeStreams() {}
+  void initFromSettings(bool takeOwnership, const Parameters &params);
 
+  //!< concurrent input queue
+  std::unique_ptr<inputQueue_t> d_inputQueue;
+
+  //!< concurrent output queue
+  std::unique_ptr<outputQueue_t> d_outputQueue;
+
+  int d_line = 0;  //!< line number we are currently on
+  std::atomic<bool> df_eofHitOnRead = false;
+  std::atomic<unsigned int> d_lastReadRecordId = 0;
+  unsigned int d_lastReturnedRecordId = 0;  //!< stores last extracted record id
+
+  Parameters d_params;
+
+ private:
   //! starts reader and writer threads
   void startThreads();
 
   //! finalizes the reader and writer threads
   void endThreads();
 
- private:
+  //! Close down any input/output streams
+  void closeStreams();
+
   //! reads lines from input stream to populate the input queue
   void reader();
 
@@ -131,8 +148,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
       delete;
 
   //! not yet implemented
-  void reset() override;
-  void init() override {}
+  virtual void reset() final;
+  virtual void init() final {}
 
   //! extracts next record from the input file or stream
   virtual bool extractNextRecord(std::string &record, unsigned int &lineNum,
@@ -147,70 +164,19 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::vector<std::thread> d_writerThreads;  //!< writer threads vector
   std::thread d_readerThread;                //!< reader thread (only one)
 
- protected:
   std::atomic<bool> df_readerDone = false;
   std::atomic<bool> df_started = false;
   std::atomic<bool> df_forceStop = false;
 
-  std::atomic<unsigned int> d_lastReadRecordId = 0;
-  unsigned int d_lastReturnedRecordId = 0;  //!< stores last extracted record id
   std::string d_lastItemText;  //!< stores last extracted record text
   unsigned int d_returnedCount = 0;
 
-  //!< concurrent input queue
-  std::unique_ptr<
-      ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>>
-      d_inputQueue;
-
-  //!< concurrent output queue
-  std::unique_ptr<
-      ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>>
-      d_outputQueue;
-
-  Parameters d_params;
-
-  std::function<void(RWMol &, const MultithreadedMolSupplier &)> nextCallback =
-      nullptr;
-  std::function<void(RWMol &, const std::string &, unsigned int)>
-      writeCallback = nullptr;
-  std::function<std::string(const std::string &, unsigned int)> readCallback =
-      nullptr;
+  readCallBackFn_t readCallback = nullptr;
+  nextCallBackFn_t nextCallback = nullptr;
+  writeCallBackFn_t writeCallback = nullptr;
 };
 }  // namespace FileParsers
 }  // namespace v2
-
-inline namespace v1 {
-class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
-  //! this is an abstract base class to concurrently supply molecules one at a
-  //! time
- public:
-  using ContainedType = v2::FileParsers::MultithreadedMolSupplier;
-  MultithreadedMolSupplier() {}
-
-  //! included for the interface, always returns false
-  bool getEOFHitOnRead() const {
-    if (dp_supplier) {
-      return static_cast<ContainedType *>(dp_supplier.get())->getEOFHitOnRead();
-    }
-    return false;
-  }
-
-  //! returns the record id of the last extracted item
-  //! Note: d_lastReturnedRecordId = 0 initially, therefore the value 0 is
-  //! returned if and only if the function is called before extracting the first
-  //! record
-  unsigned int getLastRecordId() const {
-    PRECONDITION(dp_supplier, "no supplier");
-    return static_cast<ContainedType *>(dp_supplier.get())->getLastRecordId();
-  }
-
-  //! returns the text block for the last extracted item
-  std::string getLastItemText() const {
-    PRECONDITION(dp_supplier, "no supplier");
-    return static_cast<ContainedType *>(dp_supplier.get())->getLastItemText();
-  }
-};
-}  // namespace v1
 }  // namespace RDKit
 #endif
 #endif
