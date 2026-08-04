@@ -221,6 +221,12 @@ bool MultithreadedMolSupplier::atEnd() {
   return d_returnedCount == d_lastReadRecordId;
 }
 
+bool MultithreadedMolSupplier::getEOFHitOnRead() {
+  // Do not return true until the output queue is empty,
+  // otherwise the Python wrapper will drop the queued mols.
+  return df_eofHitOnRead.load() && atEnd();
+}
+
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {
   return d_lastReturnedRecordId;
 }
