@@ -55,9 +55,6 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
                                                    unsigned int &index) {
   PRECONDITION(dp_inStream, "no stream");
   if (dp_inStream->eof()) {
-    if (d_lastReadRecordId == 0) {
-      df_eofHitOnRead = true;
-    }
     return false;
   }
 
