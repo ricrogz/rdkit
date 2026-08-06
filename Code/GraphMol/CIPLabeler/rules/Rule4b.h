@@ -10,6 +10,7 @@
 //
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "SequenceRule.h"
@@ -30,11 +31,21 @@ class Rule4b : public SequenceRule {
 
   int compare(const Edge *a, const Edge *b) const override;
 
+  void setSorter(const Sort *sorter) override;
+
  protected:
   bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
 
  private:
+  struct ReferenceRuleTag {};
+
+  Rule4b(Descriptor ref, ReferenceRuleTag);
+
   const Descriptor d_ref = Descriptor::NONE;
+  std::unique_ptr<Rule4b> dp_referenceR;
+  std::unique_ptr<Rule4b> dp_referenceS;
+  std::unique_ptr<const Sort> dp_referenceSorterR;
+  std::unique_ptr<const Sort> dp_referenceSorterS;
 
   std::vector<Descriptor> getReferenceDescriptors(const Node *node) const;
 
@@ -56,7 +67,9 @@ class Rule4b : public SequenceRule {
   int comparePairs(const Node *a, const Node *b, Descriptor refA,
                    Descriptor refB) const;
 
-  Sort getRefSorter(const SequenceRule *replacement_rule) const;
+  const Sort &getRefSorter(Descriptor ref) const;
+  std::unique_ptr<const Sort> makeRefSorter(
+      const SequenceRule *replacementRule) const;
 };
 
 }  // namespace CIPLabeler

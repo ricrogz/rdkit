@@ -22,9 +22,25 @@
 namespace RDKit {
 namespace CIPLabeler {
 
-Rule4b::Rule4b() = default;
+Rule4b::Rule4b() : Rule4b(Descriptor::NONE) {}
 
-Rule4b::Rule4b(Descriptor ref) : d_ref{ref} {}
+Rule4b::Rule4b(Descriptor ref)
+    : d_ref{ref},
+      dp_referenceR{new Rule4b(Descriptor::R, ReferenceRuleTag{})},
+      dp_referenceS{new Rule4b(Descriptor::S, ReferenceRuleTag{})} {
+  dp_referenceSorterR = makeRefSorter(dp_referenceR.get());
+  dp_referenceSorterS = makeRefSorter(dp_referenceS.get());
+}
+
+Rule4b::Rule4b(Descriptor ref, ReferenceRuleTag) : d_ref{ref} {}
+
+void Rule4b::setSorter(const Sort *sorter) {
+  SequenceRule::setSorter(sorter);
+  if (dp_referenceR != nullptr) {
+    dp_referenceSorterR = makeRefSorter(dp_referenceR.get());
+    dp_referenceSorterS = makeRefSorter(dp_referenceS.get());
+  }
+}
 
 std::vector<Descriptor> Rule4b::getReferenceDescriptors(
     const Node *node) const {
@@ -211,8 +227,7 @@ std::vector<PairList> Rule4b::newPairLists(
 void Rule4b::fillPairs(const Node *beg, PairList &plist,
                        std::vector<const Node *> &queue,
                        std::vector<Edge *> &edges) const {
-  const Rule4b replacement_rule(plist.getRefDescriptor());
-  const auto &sorter = getRefSorter(&replacement_rule);
+  const auto &sorter = getRefSorter(plist.getRefDescriptor());
   queue.clear();
   queue.push_back(beg);
 
@@ -234,10 +249,8 @@ void Rule4b::fillPairs(const Node *beg, PairList &plist,
 
 int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
                          Descriptor refB) const {
-  const Rule4b replacementA(refA);
-  const Rule4b replacementB(refB);
-  const auto &aSorter = getRefSorter(&replacementA);
-  const auto &bSorter = getRefSorter(&replacementB);
+  const auto &aSorter = getRefSorter(refA);
+  const auto &bSorter = getRefSorter(refB);
   std::vector<std::pair<const Node *, const Node *>> queue{{a, b}};
   std::vector<Edge *> aEdges;
   std::vector<Edge *> bEdges;
@@ -297,7 +310,20 @@ bool Rule4b::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
                                                            AUX_DESCRIPTOR_PAIR);
 }
 
-Sort Rule4b::getRefSorter(const SequenceRule *replacement_rule) const {
+const Sort &Rule4b::getRefSorter(Descriptor ref) const {
+  if (ref == Descriptor::R) {
+    PRECONDITION(dp_referenceSorterR, "Rule 4b R sorter is not initialized")
+    return *dp_referenceSorterR;
+  }
+  if (ref == Descriptor::S) {
+    PRECONDITION(dp_referenceSorterS, "Rule 4b S sorter is not initialized")
+    return *dp_referenceSorterS;
+  }
+  throw std::logic_error("Invalid Rule 4b reference descriptor");
+}
+
+std::unique_ptr<const Sort> Rule4b::makeRefSorter(
+    const SequenceRule *replacementRule) const {
   const auto &rules = getSorter()->getRules();
 
   CHECK_INVARIANT(std::find(rules.begin(), rules.end(), this) != rules.end(),
@@ -310,8 +336,8 @@ Sort Rule4b::getRefSorter(const SequenceRule *replacement_rule) const {
       new_rules.push_back(rule);
     }
   }
-  new_rules.push_back(replacement_rule);
-  return {new_rules};
+  new_rules.push_back(replacementRule);
+  return std::make_unique<const Sort>(std::move(new_rules));
 }
 
 }  // namespace CIPLabeler

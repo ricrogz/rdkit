@@ -12,6 +12,7 @@
 #include "Sort.h"
 #include "rules/SequenceRule.h"
 
+#include <algorithm>
 #include <atomic>
 
 #include <RDGeneral/ControlCHandler.h>
@@ -27,10 +28,16 @@ std::uint64_t nextSortCacheId() {
 }  // namespace
 
 Sort::Sort(const SequenceRule *comparator)
-    : d_cacheId{nextSortCacheId()}, d_rules{comparator} {}
+    : d_cacheId{nextSortCacheId()},
+      d_auxiliaryIndependent{comparator->isAuxiliaryIndependent()},
+      d_rules{comparator} {}
 
 Sort::Sort(std::vector<const SequenceRule *> comparators)
-    : d_cacheId{nextSortCacheId()}, d_rules{std::move(comparators)} {}
+    : d_cacheId{nextSortCacheId()},
+      d_auxiliaryIndependent{std::ranges::all_of(
+          comparators,
+          [](const auto rule) { return rule->isAuxiliaryIndependent(); })},
+      d_rules{std::move(comparators)} {}
 
 const std::vector<const SequenceRule *> &Sort::getRules() const {
   return d_rules;
@@ -41,7 +48,8 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
   const SequenceRule::ComparisonSession comparisonSession;
   bool cachedUnique = false;
   bool cachedPseudoAsymmetric = false;
-  if (SequenceRule::getCachedSort(d_cacheId, node, deep, edges, cachedUnique,
+  if (SequenceRule::getCachedSort(d_cacheId, node, deep, d_auxiliaryIndependent,
+                                  edges, cachedUnique,
                                   cachedPseudoAsymmetric)) {
     if (ControlCHandler::getGotSignal()) {
       throw ControlCCaught();
@@ -73,7 +81,8 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
   }
 
   const Priority result{unique, numPseudoAsym == 1};
-  SequenceRule::cacheSort(d_cacheId, node, deep, input, edges, result);
+  SequenceRule::cacheSort(d_cacheId, node, deep, d_auxiliaryIndependent, input,
+                          edges, result);
   return result;
 }
 
