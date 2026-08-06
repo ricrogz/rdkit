@@ -73,8 +73,17 @@ bool Digraph::seenAtom(Atom *atom) const {
 void Digraph::addEdge(Node *beg, Bond *bond, Node *end) {
   d_edges.emplace_back(beg, end, bond);
   auto &e = d_edges.back();
+  if (end->dp_parent == beg) {
+    end->dp_parent_edge = &e;
+    end->d_attached_to_origin = beg->d_attached_to_origin;
+  }
   beg->add(&e);
-  end->add(&e);
+  // Duplicate and hydrogen leaves use dp_parent_edge as inline storage for
+  // their sole incoming edge. Node::getEdges() materializes the vector only
+  // for an uncommon caller that explicitly inspects such a terminal.
+  if (!end->isTerminal()) {
+    end->add(&e);
+  }
 }
 
 Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
@@ -89,6 +98,7 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
   auto atomic_num = atom->getAtomicNum();
 
   dp_root = &addNode(std::move(visit), atom, atomic_num, dist, flags);
+  dp_root->d_attached_to_origin = true;
   dp_origin = dp_root;
   d_atropisomerMode = atropisomerMode;
 }
@@ -138,6 +148,8 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
   std::vector<unsigned int> reachabilityQueue;
   reachabilityQueue.reserve(d_mol.getNumAtoms());
   std::vector<unsigned int> seen(d_mol.getNumAtoms());
+  std::vector<Node *> candidateChildren;
+  candidateChildren.reserve(4u);
   unsigned int generation = 0;
 
   for (std::size_t pos = 0; pos < nodes.size(); ++pos) {
@@ -148,6 +160,7 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
       result[atom->getIdx()].push_back(node);
     }
 
+    candidateChildren.clear();
     for (const auto edge : node->getEdges()) {
       if (!edge->isBeg(node) || isAcyclicBranchWithoutConfiguration(edge)) {
         continue;
@@ -157,10 +170,30 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
           child->getAtom() == nullptr) {
         continue;
       }
+      candidateChildren.push_back(child);
+    }
+
+    if (candidateChildren.size() == 1u) {
+      const auto child = candidateChildren.front();
       if (targets.test(child->getAtom()->getIdx()) ||
           canReachUnvisitedTarget(child, targets, reachabilityQueue, seen,
                                   generation)) {
         nodes.push_back(child);
+      }
+    } else if (!candidateChildren.empty()) {
+      // Every child asks the same residual-connectivity question after the
+      // parent's immutable path has been removed. Mark all residual components
+      // containing a target once, instead of repeating a near-identical
+      // molecular BFS for each outgoing child.
+      markAtomsReachingUnvisitedTargets(
+          node, targets,
+          std::span<Node *const>{candidateChildren.data(),
+                                 candidateChildren.size()},
+          reachabilityQueue, seen, generation);
+      for (const auto child : candidateChildren) {
+        if (seen[child->getAtom()->getIdx()] == generation) {
+          nodes.push_back(child);
+        }
       }
     }
   }
@@ -203,6 +236,51 @@ bool Digraph::canReachUnvisitedTarget(const Node *node,
     }
   }
   return false;
+}
+
+void Digraph::markAtomsReachingUnvisitedTargets(
+    const Node *parent, const boost::dynamic_bitset<> &targets,
+    std::span<Node *const> candidateChildren, std::vector<unsigned int> &queue,
+    std::vector<unsigned int> &seen, unsigned int &generation) const {
+  if (++generation == 0u) {
+    std::fill(seen.begin(), seen.end(), 0u);
+    generation = 1u;
+  }
+
+  queue.clear();
+  std::size_t unreachedChildren = candidateChildren.size();
+  const auto noteReachedChild = [&](unsigned int atomIdx) {
+    for (const auto child : candidateChildren) {
+      if (child->getAtom()->getIdx() == atomIdx) {
+        --unreachedChildren;
+        break;
+      }
+    }
+  };
+  for (auto atomIdx = targets.find_first();
+       atomIdx != boost::dynamic_bitset<>::npos;
+       atomIdx = targets.find_next(atomIdx)) {
+    const auto targetIdx = static_cast<unsigned int>(atomIdx);
+    if (!parent->isVisited(targetIdx)) {
+      seen[targetIdx] = generation;
+      queue.push_back(targetIdx);
+      noteReachedChild(targetIdx);
+    }
+  }
+
+  for (std::size_t pos = 0; pos < queue.size() && unreachedChildren != 0u;
+       ++pos) {
+    const auto current = d_mol.getAtom(queue[pos]);
+    for (const auto bond : d_mol.getBonds(current)) {
+      const auto neighborIdx = bond->getOtherAtomIdx(current->getIdx());
+      if (seen[neighborIdx] == generation || parent->isVisited(neighborIdx)) {
+        continue;
+      }
+      seen[neighborIdx] = generation;
+      queue.push_back(neighborIdx);
+      noteReachedChild(neighborIdx);
+    }
+  }
 }
 
 std::vector<Node *> Digraph::collectNodes(
@@ -261,10 +339,30 @@ bool Digraph::hasAuxDescriptorOnSide(const Edge *edge, unsigned mask) const {
 
 void Digraph::noteConstitutionalRootEquivalence() {
   d_usedConstitutionalRootEquivalence = true;
+  d_constitutional_equivalence_moved_atoms.resize(d_mol.getNumAtoms());
+  d_constitutional_equivalence_moved_atoms.set();
+}
+
+void Digraph::noteConstitutionalRootEquivalence(
+    std::span<const unsigned int> movedAtoms) {
+  d_usedConstitutionalRootEquivalence = true;
+  if (d_constitutional_equivalence_moved_atoms.empty()) {
+    d_constitutional_equivalence_moved_atoms.resize(d_mol.getNumAtoms());
+  }
+  for (const auto atomIdx : movedAtoms) {
+    if (atomIdx < d_constitutional_equivalence_moved_atoms.size()) {
+      d_constitutional_equivalence_moved_atoms.set(atomIdx);
+    }
+  }
 }
 
 bool Digraph::usedConstitutionalRootEquivalence() const {
   return d_usedConstitutionalRootEquivalence;
+}
+
+const boost::dynamic_bitset<> &Digraph::getConstitutionalEquivalenceMovedAtoms()
+    const {
+  return d_constitutional_equivalence_moved_atoms;
 }
 
 /**
@@ -285,19 +383,34 @@ void Digraph::setRule6Ref(Atom *ref) { dp_rule6Ref = ref; }
  * @param newroot the new root
  */
 void Digraph::changeRoot(Node *newroot) {
-  std::vector<Edge *> toflip;
-  std::vector<Node *> queue{newroot};
-  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
-    const auto node = queue[pos];
-    for (const auto &e : node->getEdges()) {
-      if (e->isEnd(node)) {
-        toflip.push_back(e);
-        queue.push_back(e->getBeg());
-      }
-    }
+  PRECONDITION(newroot, "cannot reroot a digraph on a nullptr")
+  PRECONDITION(newroot->getDigraph() == this,
+               "cannot reroot a digraph on a foreign node")
+  PRECONDITION(newroot->d_attached_to_origin,
+               "cannot reroot a digraph on an unattached node")
+  if (newroot == dp_root) {
+    return;
   }
-  for (auto &e : toflip) {
-    e->flip();
+
+  // The unfolded occurrence graph is a tree and every node retains its
+  // immutable original parent. Changing the root therefore flips exactly the
+  // edges on the path between the old and new roots. Ascending both paths to
+  // their LCA avoids scanning incident edges or allocating temporary queues.
+  auto oldPath = static_cast<const Node *>(dp_root);
+  auto newPath = static_cast<const Node *>(newroot);
+  const auto flipToParent = [](const Node *&node) {
+    node->dp_parent_edge->flip();
+    node = node->dp_parent;
+  };
+  while (oldPath->d_tree_depth > newPath->d_tree_depth) {
+    flipToParent(oldPath);
+  }
+  while (newPath->d_tree_depth > oldPath->d_tree_depth) {
+    flipToParent(newPath);
+  }
+  while (oldPath != newPath) {
+    flipToParent(oldPath);
+    flipToParent(newPath);
   }
   dp_root = newroot;
 }

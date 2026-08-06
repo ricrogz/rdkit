@@ -139,14 +139,53 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
   }
   std::vector<std::vector<Node_Cfg_Pair>> auxByDistance;
 
-  // Ordinarily retain the existing reached-focus optimization. If an exact
+  // Ordinarily retain the existing reached-focus optimization. When an exact
   // constitutional automorphism ended a comparison without expanding its
-  // remote paths, also include unseen configurations in this center's
-  // connected component: those descriptors may be precisely what Rules 3-6
-  // need to break the constitutional symmetry. Unrelated components cannot
-  // contribute to this center's ligand priorities.
-  const bool includeUnseen = digraph.usedConstitutionalRootEquivalence();
+  // remote paths, its concrete support tells us whether an unseen stereo
+  // annotation could break the equality. If so, include all unseen
+  // configurations in this center's component conservatively. Unrelated
+  // components cannot contribute to this center's ligand priorities.
+  const bool usedConstitutionalEquivalence =
+      digraph.usedConstitutionalRootEquivalence();
+  const auto &movedByEquivalence =
+      digraph.getConstitutionalEquivalenceMovedAtoms();
   const auto rootAtom = digraph.getOriginalRoot()->getAtom();
+  const auto atomWasMoved = [&](const Atom *atom) {
+    return atom != nullptr && atom->getIdx() < movedByEquivalence.size() &&
+           movedByEquivalence.test(atom->getIdx());
+  };
+  const auto configurationWasMoved = [&](const ConfigEntry &entry) {
+    if (entry.config.get() == center.config.get()) {
+      // The configuration being labelled is not an auxiliary property of its
+      // own ligands, so its local parity need not be preserved by the witness.
+      return false;
+    }
+    if (std::ranges::any_of(entry.config->getFoci(), atomWasMoved) ||
+        std::ranges::any_of(entry.config->getCarriers(), atomWasMoved)) {
+      return true;
+    }
+    // Include the complete local neighborhood, not only the selected stereo
+    // carriers, so unusual but valid bond/axis configurations remain
+    // conservative.
+    for (const auto focus : entry.config->getFoci()) {
+      if (focus != nullptr) {
+        for (const auto neighbor : digraph.getMol().getNeighbors(focus)) {
+          if (atomWasMoved(neighbor)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+  // If every other local stereo annotation is fixed pointwise, the concrete
+  // constitutional witnesses are also symmetries of the auxiliary-decorated
+  // molecule. No unseen configuration can then break the proven ligand
+  // equalities. If even one annotation is moved, retain the original
+  // conservative behavior and seed the entire connected component.
+  const bool includeUnseen =
+      usedConstitutionalEquivalence &&
+      std::ranges::any_of(configs, configurationWasMoved);
   std::vector<unsigned char> eligible(configs.size());
   boost::dynamic_bitset<> targetFoci(digraph.getMol().getNumAtoms());
   for (std::size_t i = 0; i < configs.size(); ++i) {

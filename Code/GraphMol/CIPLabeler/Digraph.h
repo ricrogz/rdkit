@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <span>
 #include <vector>
 
 #include <RDGeneral/BoostStartInclude.h>
@@ -96,7 +97,10 @@ class Digraph {
   bool hasAuxDescriptorOnSide(const Edge *edge, unsigned mask) const;
 
   void noteConstitutionalRootEquivalence();
+  void noteConstitutionalRootEquivalence(
+      std::span<const unsigned int> movedAtoms);
   bool usedConstitutionalRootEquivalence() const;
+  const boost::dynamic_bitset<> &getConstitutionalEquivalenceMovedAtoms() const;
 
   /**
    * Access the reference atom for Rule 6 (if one is set).
@@ -113,8 +117,8 @@ class Digraph {
    * Sets the root node of this digraph by flipping the directions
    * of edges as required.
    *
-   * This is more efficient than building a new Digraph, but is
-   * only valid for neighboring Nodes.
+   * This is more efficient than building a new Digraph. The unique path
+   * between the old and new occurrence-tree roots is flipped in place.
    *
    * @param newroot the new root
    */
@@ -147,6 +151,7 @@ class Digraph {
   Atom *dp_rule6Ref = nullptr;
 
   bool d_usedConstitutionalRootEquivalence = false;
+  boost::dynamic_bitset<> d_constitutional_equivalence_moved_atoms;
 
   // Insertion at either end of a deque preserves element references, which
   // the graph stores extensively, while avoiding one allocation per element.
@@ -161,6 +166,11 @@ class Digraph {
                                std::vector<unsigned int> &queue,
                                std::vector<unsigned int> &seen,
                                unsigned int &generation) const;
+  void markAtomsReachingUnvisitedTargets(
+      const Node *parent, const boost::dynamic_bitset<> &targets,
+      std::span<Node *const> candidateChildren,
+      std::vector<unsigned int> &queue, std::vector<unsigned int> &seen,
+      unsigned int &generation) const;
 };
 
 }  // namespace CIPLabeler
