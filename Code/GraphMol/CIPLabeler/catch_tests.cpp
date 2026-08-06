@@ -16,6 +16,7 @@
 #include <strstream>
 
 #ifdef RDK_TEST_MULTITHREADED
+#include <atomic>
 #include <csignal>
 #include <thread>
 #include <chrono>
@@ -42,11 +43,41 @@
 #include "rules/Pairlist.h"
 #include "rules/Rule1a.h"
 #include "rules/Rule2.h"
+#include "rules/Rules.h"
 
 #include "CIPMol.h"
 
 using namespace RDKit;
 using namespace RDKit::CIPLabeler;
+
+TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
+  const Rules rules({new Rule1a});
+
+#ifdef RDK_TEST_MULTITHREADED
+  std::atomic<bool> start{false};
+  std::vector<const Sort *> sorters(8);
+  std::vector<std::thread> threads;
+  threads.reserve(sorters.size());
+  for (auto i = 0u; i < sorters.size(); ++i) {
+    threads.emplace_back([&, i]() {
+      while (!start.load(std::memory_order_acquire)) {
+      }
+      sorters[i] = rules.getSorter();
+    });
+  }
+  start.store(true, std::memory_order_release);
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  for (const auto sorter : sorters) {
+    CHECK(sorter == rules.getSorter());
+  }
+#endif
+
+  REQUIRE(rules.getSorter());
+  CHECK(rules.getSorter()->getRules() ==
+        std::vector<const SequenceRule *>{&rules});
+}
 
 std::string toBinaryString(PairList::pairing_t value) {
   return std::bitset<PairList::numPairingBits>(value).to_string();
