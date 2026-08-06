@@ -106,8 +106,8 @@ class SequenceRule {
 
   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
   bool hasEquivalentAcyclicContinuation(const Edge *a, const Edge *b) const;
-  bool hasEquivalentConstitutionalRootContinuation(const Edge *a,
-                                                   const Edge *b) const;
+  bool hasEquivalentConstitutionalSiblingContinuation(const Edge *a,
+                                                      const Edge *b) const;
   int recursiveCompareEqual(const Edge *a, const Edge *b) const;
 
   static bool getCachedSort(std::uint64_t sortId, const Node *node, bool deep,

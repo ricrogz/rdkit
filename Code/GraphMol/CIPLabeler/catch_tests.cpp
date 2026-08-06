@@ -429,7 +429,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
     Digraph graph(cipmol, cipmol.getAtom(0));
     CHECK_FALSE(graph.seenAtom(nullptr));
 
-    constexpr auto max_node_count = 100000;
+    constexpr auto max_node_count = 1000000;
     for (auto i = 1; i < max_node_count; ++i) {
       graph.addNode({}, nullptr, boost::rational<int>(1), 1,
                     Node::IMPL_HYDROGEN);
@@ -570,6 +570,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
     CHECK(rule.compare(edges[1], edges[0]) > 0);
 
     CHECK(rule.getSorter()->prioritize(origin, edges).isUnique());
+  }
+
+  SECTION("Exact ring symmetry below the digraph root") {
+    auto mol = "CC1CCCCC1"_smiles;
+    REQUIRE(mol);
+    CIPLabeler::CIPMol cipmol(*mol);
+    Digraph graph(cipmol, cipmol.getAtom(0));
+
+    const auto outgoingEdgeTo = [](Node *node, unsigned int atomIdx) {
+      for (const auto edge : node->getEdges()) {
+        if (edge->isBeg(node) && !edge->getEnd()->isDuplicateOrH() &&
+            edge->getEnd()->getAtomIdx() == atomIdx) {
+          return edge;
+        }
+      }
+      return static_cast<Edge *>(nullptr);
+    };
+
+    const auto ringRootEdge =
+        outgoingEdgeTo(graph.getOriginalRoot(), 1u);
+    REQUIRE(ringRootEdge != nullptr);
+    const auto ringRoot = ringRootEdge->getEnd();
+    const auto firstDirection = outgoingEdgeTo(ringRoot, 2u);
+    const auto secondDirection = outgoingEdgeTo(ringRoot, 6u);
+    REQUIRE(firstDirection != nullptr);
+    REQUIRE(secondDirection != nullptr);
+    REQUIRE_FALSE(firstDirection->getEnd()->isExpanded());
+    REQUIRE_FALSE(secondDirection->getEnd()->isExpanded());
+
+    const auto nodeCount = graph.getNumNodes();
+    Rule1a rule;
+    CHECK(rule.recursiveCompare(firstDirection, secondDirection) == 0);
+    CHECK(graph.getNumNodes() == nodeCount);
+    CHECK_FALSE(firstDirection->getEnd()->isExpanded());
+    CHECK_FALSE(secondDirection->getEnd()->isExpanded());
+  }
+
+  SECTION("Configuration-preserving root symmetry remains an exact tie") {
+    auto mol = "CC1CCCCC1"_smiles;
+    REQUIRE(mol);
+    CIPLabeler::CIPMol cipmol(*mol);
+    boost::dynamic_bitset<> configurationFoci(mol->getNumAtoms());
+    configurationFoci.set(1u);
+    CIPLabeler::CIPMol::ConfigurationAtomSet configurationAtoms{
+        {1u}, {0u, 1u, 2u, 6u}};
+    cipmol.setConfigurationData(std::move(configurationFoci),
+                                {std::move(configurationAtoms)});
+    Digraph graph(cipmol, cipmol.getAtom(1));
+
+    const auto outgoingEdgeTo = [](Node *node, unsigned int atomIdx) {
+      for (const auto edge : node->getEdges()) {
+        if (edge->isBeg(node) && !edge->getEnd()->isDuplicateOrH() &&
+            edge->getEnd()->getAtomIdx() == atomIdx) {
+          return edge;
+        }
+      }
+      return static_cast<Edge *>(nullptr);
+    };
+    const auto firstDirection =
+        outgoingEdgeTo(graph.getOriginalRoot(), 2u);
+    const auto secondDirection =
+        outgoingEdgeTo(graph.getOriginalRoot(), 6u);
+    REQUIRE(firstDirection != nullptr);
+    REQUIRE(secondDirection != nullptr);
+
+    Rule1a rule;
+    CHECK(rule.recursiveCompare(firstDirection, secondDirection) == 0);
+    CHECK(graph.hasAuxiliaryInvariantRootTie());
   }
 }
 
@@ -2283,4 +2351,227 @@ $$$$
   REQUIRE(substitutedCenter != nullptr);
   CHECK(substitutedCenter->getProp<std::string>(common_properties::_CIPCode) ==
         "S");
+}
+
+TEST_CASE("Long long running calculation") {
+  constexpr const char *molBlock = R"(V157894
+     RDKit          2D
+
+  0  0  0  0  0  0  0  0  0  0999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 92 106 0 0 1
+M  V30 BEGIN ATOM
+M  V30 1 C -1.112920 9.912050 0.000000 0
+M  V30 2 C -0.188520 9.530850 0.000000 0
+M  V30 3 O 0.603880 10.141050 0.000000 0
+M  V30 4 N -0.055919 8.540650 0.000000 0
+M  V30 5 C 0.866881 8.159050 0.000000 0
+M  V30 6 C 1.000281 7.167050 0.000000 0
+M  V30 7 C 0.206680 6.556250 0.000000 0
+M  V30 8 C -0.716520 6.933850 0.000000 0
+M  V30 9 C -0.847120 7.927050 0.000000 0
+M  V30 10 C -1.371920 6.161050 0.000000 0
+M  V30 11 N -3.666920 6.727250 0.000000 0
+M  V30 12 C -2.816120 7.288450 0.000000 0
+M  V30 13 C -1.949720 6.853850 0.000000 0
+M  V30 14 C -1.936720 5.710050 0.000000 0
+M  V30 15 C -2.783720 5.215050 0.000000 0
+M  V30 16 C -2.784920 4.220650 0.000000 0
+M  V30 17 C -3.649520 3.722850 0.000000 0
+M  V30 18 N -3.644920 2.748050 0.000000 0
+M  V30 19 C -2.821720 2.181450 0.000000 0
+M  V30 20 C -3.099320 1.220650 0.000000 0
+M  V30 21 C -2.119120 1.009850 0.000000 0
+M  V30 22 N -2.334720 0.033050 0.000000 0
+M  V30 23 C -1.676720 -0.724150 0.000000 0
+M  V30 24 C -1.197920 -3.250150 0.000000 0
+M  V30 25 C -0.307720 -3.764150 0.000000 0
+M  V30 26 O 0.563280 -3.267750 0.000000 0
+M  V30 27 N -0.315919 -4.749950 0.000000 0
+M  V30 28 C -1.086520 -5.384750 0.000000 0
+M  V30 29 C -0.722719 -6.312350 0.000000 0
+M  V30 30 O -1.265320 -7.154950 0.000000 0
+M  V30 31 C 0.277880 -6.255550 0.000000 0
+M  V30 32 C 0.526881 -5.288150 0.000000 0
+M  V30 33 C 1.442080 -4.742750 0.000000 0
+M  V30 34 O 1.436881 -3.748950 0.000000 0
+M  V30 35 N 2.270881 -5.216950 0.000000 0
+M  V30 36 C 3.263280 -4.868550 0.000000 0
+M  V30 37 C 3.378080 -6.343750 0.000000 0
+M  V30 38 C 4.291280 -6.744150 0.000000 0
+M  V30 39 C 4.398680 -7.737750 0.000000 0
+M  V30 40 C 3.596280 -8.332350 0.000000 0
+M  V30 41 C 3.779880 -9.314950 0.000000 0
+M  V30 42 C 4.671280 -9.776550 0.000000 0
+M  V30 43 F 5.564681 -9.328750 0.000000 0
+M  V30 44 C 4.505680 -10.759950 0.000000 0
+M  V30 45 N 3.516880 -10.912151 0.000000 0
+M  V30 46 N 3.070881 -10.017750 0.000000 0
+M  V30 47 C 2.680680 -7.929750 0.000000 0
+M  V30 48 C 2.569081 -6.934750 0.000000 0
+M  V30 49 C 4.191681 -5.241150 0.000000 0
+M  V30 50 C -2.065520 -3.741950 0.000000 0
+M  V30 51 C -2.927120 -3.238150 0.000000 0
+M  V30 52 C -2.069920 -4.742750 0.000000 0
+M  V30 53 C -4.104120 1.193650 0.000000 0
+M  V30 54 C -4.438320 2.138650 0.000000 0
+M  V30 55 C -5.418520 2.325650 0.000000 0
+M  V30 56 N -6.071520 1.564250 0.000000 0
+M  V30 57 C -5.737120 0.623450 0.000000 0
+M  V30 58 C -6.388119 -0.136950 0.000000 0
+M  V30 59 C -4.753920 0.437250 0.000000 0
+M  V30 60 C -4.513920 4.226450 0.000000 0
+M  V30 61 C -5.527920 3.891850 0.000000 0
+M  V30 62 F -6.224920 4.608650 0.000000 0
+M  V30 63 F -5.850720 2.993850 0.000000 0
+M  V30 64 C -4.513920 5.218650 0.000000 0
+M  V30 65 C -3.646720 5.715050 0.000000 0
+M  V30 66 N -0.842719 5.313050 0.000000 0
+M  V30 67 N 0.133681 5.555450 0.000000 0
+M  V30 68 C 0.882481 4.933850 0.000000 0
+M  V30 69 C 0.626080 3.968850 0.000000 0
+M  V30 70 C 1.336280 3.264850 0.000000 0
+M  V30 71 C 2.303880 3.522050 0.000000 0
+M  V30 72 C 2.559681 4.489050 0.000000 0
+M  V30 73 C 1.849880 5.198250 0.000000 0
+M  V30 74 N -0.677320 -0.721550 0.000000 0
+M  V30 75 C -3.311720 0.245850 0.000000 0
+M  V30 76 C -1.980320 -1.677350 0.000000 0
+M  V30 77 C -1.167920 -2.261550 0.000000 0
+M  V30 78 O -0.362120 -1.668750 0.000000 0
+M  V30 79 C 3.403880 -1.572150 0.000000 0
+M  V30 80 C 3.090680 -2.532950 0.000000 0
+M  V30 81 C 3.758481 -3.283150 0.000000 0
+M  V30 82 C 4.742881 -3.075750 0.000000 0
+M  V30 83 C 5.055281 -2.114350 0.000000 0
+M  V30 84 N 4.388481 -1.363350 0.000000 0
+M  V30 85 C 5.079280 0.989450 0.000000 0
+M  V30 86 O 6.827680 1.787450 0.000000 0
+M  V30 87 C 4.024280 3.283050 0.000000 0
+M  V30 88 C 2.960481 1.917850 0.000000 0
+M  V30 89 C 3.231280 3.902650 0.000000 0
+M  V30 90 C 2.169681 2.531850 0.000000 0
+M  V30 91 C 3.886280 2.287250 0.000000 0
+M  V30 92 C 2.083080 -9.854749 0.000000 0
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 1 1 1 2
+M  V30 2 2 2 3
+M  V30 3 1 2 4
+M  V30 4 1 4 5
+M  V30 5 1 4 9
+M  V30 6 1 5 6
+M  V30 7 1 6 7
+M  V30 8 2 7 8
+M  V30 9 1 7 67
+M  V30 10 1 8 9
+M  V30 11 1 8 10
+M  V30 12 1 10 11
+M  V30 13 2 10 66
+M  V30 14 1 11 12
+M  V30 15 1 11 65
+M  V30 16 1 12 13
+M  V30 17 1 13 14
+M  V30 18 1 14 15
+M  V30 19 1 15 16
+M  V30 20 2 15 65
+M  V30 21 2 16 17
+M  V30 22 1 17 18
+M  V30 23 1 17 60
+M  V30 24 1 18 19
+M  V30 25 1 18 54
+M  V30 26 1 19 20
+M  V30 27 1 20 21
+M  V30 28 1 20 53 CFG=1
+M  V30 29 1 20 75
+M  V30 30 1 21 22
+M  V30 31 1 22 23
+M  V30 32 1 22 75
+M  V30 33 2 23 74
+M  V30 34 1 23 76
+M  V30 35 1 24 25
+M  V30 36 1 24 50 CFG=3
+M  V30 37 1 24 77
+M  V30 38 2 25 26
+M  V30 39 1 25 27
+M  V30 40 1 27 28
+M  V30 41 1 27 32
+M  V30 42 1 28 29
+M  V30 43 1 29 30 CFG=1
+M  V30 44 1 29 31
+M  V30 45 1 32 31 CFG=3
+M  V30 46 1 32 33
+M  V30 47 2 33 34
+M  V30 48 1 33 35
+M  V30 49 1 35 36
+M  V30 50 1 36 37
+M  V30 51 1 36 49 CFG=1
+M  V30 52 1 36 81
+M  V30 53 2 37 38
+M  V30 54 1 37 48
+M  V30 55 1 38 39
+M  V30 56 2 39 40
+M  V30 57 1 40 41
+M  V30 58 1 40 47
+M  V30 59 2 41 42
+M  V30 60 1 41 46
+M  V30 61 1 42 43
+M  V30 62 1 42 44
+M  V30 63 2 44 45
+M  V30 64 1 45 46
+M  V30 65 1 46 92
+M  V30 66 2 47 48
+M  V30 67 1 50 51
+M  V30 68 1 50 52
+M  V30 69 2 53 54
+M  V30 70 1 53 59
+M  V30 71 1 54 55
+M  V30 72 2 55 56
+M  V30 73 1 56 57
+M  V30 74 1 57 58
+M  V30 75 2 57 59
+M  V30 76 1 60 61
+M  V30 77 2 60 64
+M  V30 78 1 61 62
+M  V30 79 1 61 63
+M  V30 80 1 64 65
+M  V30 81 1 66 67
+M  V30 82 1 67 68
+M  V30 83 1 68 69
+M  V30 84 1 68 73 CFG=1
+M  V30 85 1 69 70
+M  V30 86 1 70 71
+M  V30 87 1 71 72 CFG=3
+M  V30 88 1 71 90
+M  V30 89 1 71 89
+M  V30 90 1 72 73
+M  V30 91 1 74 78
+M  V30 92 2 76 77
+M  V30 93 1 77 78
+M  V30 94 1 79 80
+M  V30 95 1 79 84
+M  V30 96 1 80 81
+M  V30 97 1 81 82 CFG=3
+M  V30 98 1 82 83
+M  V30 99 1 83 84
+M  V30 100 1 84 85
+M  V30 101 2 85 86
+M  V30 102 1 85 91
+M  V30 103 1 87 89
+M  V30 104 1 91 87 CFG=3
+M  V30 105 1 88 90
+M  V30 106 1 88 91
+M  V30 END BOND
+M  V30 BEGIN COLLECTION
+M  V30 MDLV30/STEABS ATOMS=(9 20 24 29 32 36 68 71 81 91)
+M  V30 END COLLECTION
+M  V30 END CTAB
+M  END)";
+
+  // This is the same example as in the test from RDKit #8582,
+  // "Resolve easy CIP labels first" from above
+  auto mol = v2::FileParsers::MolFromMolBlock(molBlock);
+
+  REQUIRE(mol);
+  CIPLabeler::assignCIPLabels(*mol);
 }
