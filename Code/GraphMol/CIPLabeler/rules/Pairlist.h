@@ -10,8 +10,10 @@
 //
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -32,7 +34,7 @@ namespace CIPLabeler {
 class PairList {
  public:
   using pairing_t = std::uint64_t;
-  static constexpr int numPairingBits = sizeof(pairing_t) * 8;
+  static constexpr std::size_t numPairingBits = sizeof(pairing_t) * 8;
 
   static Descriptor ref(Descriptor descriptor) {
     switch (descriptor) {
@@ -68,7 +70,12 @@ class PairList {
     addAll(tail.d_descriptors);
   }
 
-  Descriptor getRefDescriptor() const { return ref(d_descriptors[0]); }
+  Descriptor getRefDescriptor() const {
+    if (d_descriptors.empty()) {
+      throw std::runtime_error("Cannot get a reference from an empty PairList");
+    }
+    return ref(d_descriptors[0]);
+  }
 
   /**
    * Adds a descriptor to the descriptor list. If the provided descriptor is
@@ -120,6 +127,9 @@ class PairList {
     if (d_descriptors.size() != that.d_descriptors.size()) {
       throw std::runtime_error("Descriptor lists should be the same length!");
     }
+    if (d_descriptors.empty()) {
+      return 0;
+    }
     Descriptor thisRef = d_descriptors[0];
     Descriptor thatRef = that.d_descriptors[0];
     for (auto i = 1u; i < d_descriptors.size(); ++i) {
@@ -169,10 +179,11 @@ class PairList {
    */
   void addAndPair(Descriptor descriptor) {
     // if this isn't the first descriptor - check the pairing
-    if (!d_descriptors.empty() && d_descriptors[0] == descriptor) {
+    if (!d_descriptors.empty() && d_descriptors[0] == ref(descriptor) &&
+        d_descriptors.size() < numPairingBits) {
       // set the bit to indicate a pair
-      d_pairing |= static_cast<pairing_t>(1)
-                   << (numPairingBits - 1 - d_descriptors.size());
+      const auto shift = numPairingBits - 1 - d_descriptors.size();
+      d_pairing |= pairing_t{1} << shift;
     }
     d_descriptors.push_back(ref(descriptor));
   }
