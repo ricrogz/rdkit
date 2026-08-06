@@ -9,6 +9,8 @@
 //  of the RDKit source tree.
 //
 
+#include <algorithm>
+
 #include <GraphMol/MolOps.h>
 
 #include "CIPMol.h"
@@ -67,21 +69,32 @@ bool CIPMol::isInRing(Bond *bond) const {
 int CIPMol::getBondOrder(Bond *bond) const {
   PRECONDITION(bond, "bad bond")
   if (d_kekulized_bonds.empty()) {
-    RWMol tmp{d_mol};
-    const ROMol *bond_source = &tmp;
-    try {
-      MolOps::Kekulize(tmp);
-    } catch (const MolSanitizeException &) {
-      // Kekulize() may have changed some bonds before discovering that no
-      // valid assignment exists. Fall back to the untouched input instead of
-      // caching that partial assignment.
-      bond_source = &d_mol;
-    }
-    auto &bonds = const_cast<std::vector<RDKit::Bond::BondType> &>(
-        d_kekulized_bonds);
+    auto &bonds =
+        const_cast<std::vector<RDKit::Bond::BondType> &>(d_kekulized_bonds);
     bonds.reserve(d_mol.getNumBonds());
-    for (const auto &b : bond_source->bonds()) {
-      bonds.push_back(b->getBondType());
+
+    const bool hasAromaticBond =
+        std::ranges::any_of(d_bonds, [](const Bond *candidate) {
+          return candidate->getBondType() == Bond::AROMATIC;
+        });
+    if (hasAromaticBond) {
+      RWMol tmp{d_mol};
+      const ROMol *bond_source = &tmp;
+      try {
+        MolOps::Kekulize(tmp);
+      } catch (const MolSanitizeException &) {
+        // Kekulize() may have changed some bonds before discovering that no
+        // valid assignment exists. Fall back to the untouched input instead
+        // of caching that partial assignment.
+        bond_source = &d_mol;
+      }
+      for (const auto candidate : bond_source->bonds()) {
+        bonds.push_back(candidate->getBondType());
+      }
+    } else {
+      for (const auto candidate : d_bonds) {
+        bonds.push_back(candidate->getBondType());
+      }
     }
   }
 
