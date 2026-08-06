@@ -17,7 +17,6 @@
 /// are always resolved in the same way
 ///
 
-#include <list>
 #include <vector>
 
 #include "Mancude.h"
@@ -100,7 +99,8 @@ bool SeedTypes(std::vector<Type> &types, const CIPMol &mol) {
 // but cannot be part of a mancude system (more than one
 // typed neighbor is required for resonance to be possible)
 void RelaxTypes(std::vector<Type> &types, const CIPMol &mol) {
-  std::list<Atom *> queue;
+  std::vector<Atom *> queue;
+  queue.reserve(mol.getNumAtoms());
   auto counts = std::vector<int>(mol.getNumAtoms());
   for (auto atom : mol.atoms()) {
     const auto aidx = atom->getIdx();
@@ -122,9 +122,8 @@ void RelaxTypes(std::vector<Type> &types, const CIPMol &mol) {
     }
   }
 
-  while (!queue.empty()) {
-    const auto atom = queue.front();
-    queue.pop_front();
+  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+    const auto atom = queue[pos];
     const auto aidx = atom->getIdx();
     if (types[aidx] != Type::Other) {
       types[aidx] = Type::Other;

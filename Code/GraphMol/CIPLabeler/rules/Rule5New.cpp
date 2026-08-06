@@ -8,8 +8,6 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
-#include <list>
-
 #include <RDGeneral/Invariant.h>
 
 #include "Rule5New.h"
@@ -73,9 +71,10 @@ int Rule5New::compare(const Edge *a, const Edge *b) const {
 void Rule5New::fillPairs(const Node *beg, PairList &plist) const {
   const Rule5New replacement_rule(plist.getRefDescriptor());
   const auto &sorter = getRefSorter(&replacement_rule);
-  auto queue = std::list<const Node *>({beg});
+  std::vector<const Node *> queue{beg};
 
-  for (const auto &node : queue) {
+  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+    const auto node = queue[pos];
     plist.add(node->getAux());
     auto edges = node->getEdges();
     sorter.prioritize(node, edges);
