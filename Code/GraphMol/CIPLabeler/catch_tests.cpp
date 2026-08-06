@@ -417,7 +417,8 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
 
     CHECK(graph.getNumNodes() == chain_length);
     CHECK(graph.seenAtom(cipmol.getAtom(chain_length - 1)));
-    const auto terminal_nodes = graph.getNodes(cipmol.getAtom(chain_length - 1));
+    const auto terminal_nodes =
+        graph.getNodes(cipmol.getAtom(chain_length - 1));
     REQUIRE(terminal_nodes.size() == 1);
     CHECK(terminal_nodes.front()->getDistance() == chain_length);
   }
@@ -499,8 +500,7 @@ TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {
     int bond_duplicates = 0;
     for (const auto edge : negative_node->getEdges()) {
       const auto end = edge->getEnd();
-      if (edge->isBeg(negative_node) &&
-          end->isSet(Node::BOND_DUPLICATE)) {
+      if (edge->isBeg(negative_node) && end->isSet(Node::BOND_DUPLICATE)) {
         ++bond_duplicates;
         CHECK(end->getAtomicNumFraction() == boost::rational<int>(4, 1));
       }
@@ -836,8 +836,7 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
     mol->clearProp(common_properties::_CIPComputed);
     boost::dynamic_bitset<> shortAtoms(2);
     shortAtoms.set(1);
-    CHECK_NOTHROW(
-        CIPLabeler::assignCIPLabels(*mol, shortAtoms, noBonds));
+    CHECK_NOTHROW(CIPLabeler::assignCIPLabels(*mol, shortAtoms, noBonds));
     CHECK(center->hasProp(common_properties::_CIPCode));
     CHECK(!mol->hasProp(common_properties::_CIPComputed));
 
@@ -849,8 +848,7 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
     for (size_t i = 0; i < mol->getNumBonds(); ++i) {
       paddedBonds.set(i);
     }
-    CHECK_NOTHROW(
-        CIPLabeler::assignCIPLabels(*mol, paddedAtoms, paddedBonds));
+    CHECK_NOTHROW(CIPLabeler::assignCIPLabels(*mol, paddedAtoms, paddedBonds));
     CHECK(mol->hasProp(common_properties::_CIPComputed));
   }
 }
@@ -2123,5 +2121,21 @@ $$$$
     REQUIRE(b->getPropIfPresent(common_properties::_CIPNeighborOrder,
                                 ranked_anchors) == true);
     CHECK(ranked_anchors == std::vector<unsigned int>{0, Atom::NOATOM});
+  }
+}
+
+TEST_CASE("Long running calculation") {
+  SECTION("chirality") {
+    // This (or something similar) is posted in SHARED-11140
+    auto mol =
+        R"(C[C@@H]1C[C@@H](C1)C1CC(C1)C1CC(C1)C1CC(C1)C1CC(C1)C1CC(C1)C1CC(C1)C1CC(C1))"_smiles;
+    REQUIRE(mol);
+
+    for (auto i : {1, 3}) {
+      auto a = mol->getAtomWithIdx(i);
+      REQUIRE(a->getChiralTag() != Atom::CHI_UNSPECIFIED);
+    }
+
+    CIPLabeler::assignCIPLabels(*mol);
   }
 }
