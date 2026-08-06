@@ -27,11 +27,8 @@ class Rules : public SequenceRule {
     for (auto &rule : rules) {
       add(rule);
     }
-    // Rules instances are shared globally by the labeler, so their sorter must
-    // be fully initialized before construction of a const Rules object ends.
-    // The Sort stores this composite comparator and will therefore continue to
-    // see rules added later through add().
-    setSorter(new Sort(this));
+    // SequenceRule's eagerly constructed sorter stores this composite
+    // comparator and will therefore continue to see rules added through add().
   }
 
   ~Rules() override {
