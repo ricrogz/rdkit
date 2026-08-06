@@ -10,6 +10,8 @@
 //
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -68,8 +70,7 @@ class Node {
   Node &operator=(const Node &) = delete;
 
   Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
-       boost::rational<int> &&frac, int dist, int flags,
-       const Node *parent);
+       boost::rational<int> &&frac, int dist, int flags, const Node *parent);
 
   Digraph *getDigraph() const;
 
@@ -117,6 +118,15 @@ class Node {
 
   void setAux(Descriptor desc);
 
+  // Number of effective auxiliary descriptors in this node's immutable
+  // original-forward occurrence subtree. The mask is a combination of the
+  // AUX_DESCRIPTOR_* constants from Descriptor.h.
+  std::size_t getAuxDescriptorCount(unsigned mask) const;
+
+  // Adjust descriptor counts for this node and each of its original
+  // ancestors. Used by Node and Edge descriptor assignment.
+  void adjustAuxDescriptorCount(unsigned descriptorClass, int delta);
+
   const std::vector<Edge *> &getEdges() const;
 
   std::vector<Edge *> getEdges(Atom *end) const;
@@ -131,6 +141,7 @@ class Node {
   boost::rational<int> d_atomic_num;
   double d_atomic_mass;
   Descriptor d_aux = Descriptor::NONE;
+  std::array<std::size_t, 3> d_aux_descriptor_counts{};
   int d_flags = 0x0;
 
   std::vector<Edge *> d_edges;

@@ -10,7 +10,9 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include <GraphMol/RDKitBase.h>
@@ -102,6 +104,11 @@ class CIPMol {
   // endAtom side contains no registered configuration focus.
   bool isAcyclicBranchWithoutConfiguration(Bond *bond, Atom *endAtom) const;
 
+  // Exact equality proof for two constitutional ligands at a fixed molecular
+  // root. This is only an equality shortcut; automorphism indices are never
+  // used as CIP priorities.
+  bool hasConstitutionalAutomorphism(Atom *root, Atom *from, Atom *to) const;
+
   // Integer bond order of a kekulized molecule
   // Dative bonds get bond order 0.
   int getBondOrder(Bond *bond) const;
@@ -118,6 +125,8 @@ class CIPMol {
   boost::dynamic_bitset<> d_configuration_foci;
   // Two directed sides per bond: 0=unknown, 1=contains a focus, 2=no focus.
   mutable std::vector<unsigned char> d_configuration_branch_cache;
+  mutable std::unordered_map<std::uint64_t, bool>
+      d_constitutional_automorphism_cache;
 };
 
 }  // namespace CIPLabeler

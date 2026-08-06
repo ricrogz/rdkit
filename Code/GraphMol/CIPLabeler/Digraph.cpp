@@ -9,6 +9,7 @@
 //  of the RDKit source tree.
 //
 
+#include <algorithm>
 #include <sstream>
 
 #include "Digraph.h"
@@ -48,8 +49,7 @@ Node &Digraph::addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
     d_seen_null = true;
   } else {
     const auto atom_idx = atom->getIdx();
-    if (atom_idx < d_seen_atoms.size() &&
-        d_mol.getAtom(atom_idx) == atom) {
+    if (atom_idx < d_seen_atoms.size() && d_mol.getAtom(atom_idx) == atom) {
       d_seen_atoms[atom_idx] = true;
     }
   }
@@ -81,10 +81,8 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
     : d_mol{mol}, d_seen_atoms(mol.getNumAtoms()) {
   PRECONDITION(atom, "cannot init digraph on a nullptr")
 
-  auto visit =
-      std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
-  visit[atom->getIdx() / 64u] |=
-      std::uint64_t{1} << (atom->getIdx() % 64u);
+  auto visit = std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
+  visit[atom->getIdx() / 64u] |= std::uint64_t{1} << (atom->getIdx() % 64u);
 
   auto dist = 1;
   auto flags = 0x0;
@@ -108,7 +106,103 @@ std::vector<Node *> Digraph::getNodes(Atom *atom) const {
 }
 
 std::vector<Node *> Digraph::getNodesForAuxiliaryLabeling(Atom *atom) const {
-  return collectNodes(atom, true);
+  if (atom == nullptr || getCurrentRoot() != getOriginalRoot()) {
+    return collectNodes(atom, true);
+  }
+  boost::dynamic_bitset<> targets(d_mol.getNumAtoms());
+  targets.set(atom->getIdx());
+  return getNodesForAuxiliaryLabeling(targets)[atom->getIdx()];
+}
+
+std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
+    const boost::dynamic_bitset<> &targets) const {
+  PRECONDITION(targets.size() == d_mol.getNumAtoms(),
+               "auxiliary target bitset has the wrong size")
+
+  std::vector<std::vector<Node *>> result(d_mol.getNumAtoms());
+  if (targets.none()) {
+    return result;
+  }
+
+  // Visit bits and original-parent links describe paths from the original
+  // root. Fall back conservatively if a caller asks during a temporary reroot.
+  if (getCurrentRoot() != getOriginalRoot()) {
+    for (auto idx = targets.find_first(); idx != boost::dynamic_bitset<>::npos;
+         idx = targets.find_next(idx)) {
+      result[idx] = collectNodes(d_mol.getAtom(idx), true);
+    }
+    return result;
+  }
+
+  std::vector<Node *> nodes{getOriginalRoot()};
+  std::vector<unsigned int> reachabilityQueue;
+  reachabilityQueue.reserve(d_mol.getNumAtoms());
+  std::vector<unsigned int> seen(d_mol.getNumAtoms());
+  unsigned int generation = 0;
+
+  for (std::size_t pos = 0; pos < nodes.size(); ++pos) {
+    auto node = nodes[pos];
+    const auto atom = node->getAtom();
+    if (atom != nullptr && !node->isDuplicate() &&
+        targets.test(atom->getIdx())) {
+      result[atom->getIdx()].push_back(node);
+    }
+
+    for (const auto edge : node->getEdges()) {
+      if (!edge->isBeg(node) || isAcyclicBranchWithoutConfiguration(edge)) {
+        continue;
+      }
+      auto child = edge->getEnd();
+      if (!child->isOriginalChildOf(node) || child->isDuplicateOrH() ||
+          child->getAtom() == nullptr) {
+        continue;
+      }
+      if (targets.test(child->getAtom()->getIdx()) ||
+          canReachUnvisitedTarget(child, targets, reachabilityQueue, seen,
+                                  generation)) {
+        nodes.push_back(child);
+      }
+    }
+  }
+  return result;
+}
+
+bool Digraph::canReachUnvisitedTarget(const Node *node,
+                                      const boost::dynamic_bitset<> &targets,
+                                      std::vector<unsigned int> &queue,
+                                      std::vector<unsigned int> &seen,
+                                      unsigned int &generation) const {
+  const auto atom = node->getAtom();
+  if (atom == nullptr || node->isDuplicateOrH()) {
+    return false;
+  }
+
+  // Use generation marks so each small molecular reachability search only
+  // clears the entries it actually visits.
+  if (++generation == 0u) {
+    std::fill(seen.begin(), seen.end(), 0u);
+    generation = 1u;
+  }
+  queue.clear();
+  queue.push_back(atom->getIdx());
+  seen[atom->getIdx()] = generation;
+
+  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+    auto current = d_mol.getAtom(queue[pos]);
+    for (auto bond : d_mol.getBonds(current)) {
+      auto neighbor = bond->getOtherAtom(current);
+      const auto neighborIdx = neighbor->getIdx();
+      if (seen[neighborIdx] == generation || node->isVisited(neighborIdx)) {
+        continue;
+      }
+      if (targets.test(neighborIdx)) {
+        return true;
+      }
+      seen[neighborIdx] = generation;
+      queue.push_back(neighborIdx);
+    }
+  }
+  return false;
 }
 
 std::vector<Node *> Digraph::collectNodes(
@@ -148,15 +242,29 @@ bool Digraph::isAcyclicBranchWithoutConfiguration(const Edge *edge) const {
                                                    end->getAtom());
 }
 
-bool Digraph::hasEffectiveAuxDescriptors() const {
-  return d_hasEffectiveAuxDescriptors;
+bool Digraph::hasAuxDescriptorOnSide(const Edge *edge, unsigned mask) const {
+  if (edge == nullptr || dp_origin == nullptr || mask == 0u) {
+    return false;
+  }
+  const auto beg = edge->getBeg();
+  const auto end = edge->getEnd();
+  if (end->isOriginalChildOf(beg)) {
+    return end->getAuxDescriptorCount(mask) != 0u;
+  }
+  if (beg->isOriginalChildOf(end)) {
+    const auto total = dp_origin->getAuxDescriptorCount(mask);
+    const auto excluded = beg->getAuxDescriptorCount(mask);
+    return total > excluded;
+  }
+  return false;
 }
 
-void Digraph::noteAuxDescriptor(Descriptor descriptor) {
-  if (descriptor != Descriptor::NONE && descriptor != Descriptor::UNKNOWN &&
-      descriptor != Descriptor::ns) {
-    d_hasEffectiveAuxDescriptors = true;
-  }
+void Digraph::noteConstitutionalRootEquivalence() {
+  d_usedConstitutionalRootEquivalence = true;
+}
+
+bool Digraph::usedConstitutionalRootEquivalence() const {
+  return d_usedConstitutionalRootEquivalence;
 }
 
 /**

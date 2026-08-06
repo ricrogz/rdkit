@@ -11,9 +11,11 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 
 #include <GraphMol/MolOps.h>
+#include <GraphMol/Substruct/SubstructMatch.h>
 
 #include "CIPMol.h"
 
@@ -124,6 +126,75 @@ bool CIPMol::isAcyclicBranchWithoutConfiguration(Bond *bond,
 
   d_configuration_branch_cache[cacheIdx] = containsFocus ? 1u : 2u;
   return !containsFocus;
+}
+
+bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
+                                           Atom *to) const {
+  if (root == nullptr || from == nullptr || to == nullptr) {
+    return false;
+  }
+  if (from == to) {
+    return true;
+  }
+
+  // Exact self-isomorphism is intended as a shortcut for compact, highly
+  // cyclic stereochemical units. Avoid introducing potentially expensive VF2
+  // work on large molecules; a false result only disables the optimization.
+  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
+  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
+  if (numAtoms == 0u || numAtoms > MAX_AUTOMORPHISM_ATOMS) {
+    return false;
+  }
+  if (std::ranges::any_of(d_bonds, [](const Bond *bond) {
+        return bond->getBondType() == Bond::AROMATIC;
+      })) {
+    return false;
+  }
+
+  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
+  auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
+  auto toIdx = static_cast<std::uint64_t>(to->getIdx());
+  if (fromIdx > toIdx) {
+    std::swap(fromIdx, toIdx);
+  }
+  const auto cacheKey = (rootIdx * numAtoms + fromIdx) * numAtoms + toIdx;
+  const auto cached = d_constitutional_automorphism_cache.find(cacheKey);
+  if (cached != d_constitutional_automorphism_cache.end()) {
+    return cached->second;
+  }
+
+  SubstructMatchParameters params;
+  params.recursionPossible = false;
+  params.uniquify = false;
+  params.maxMatches = 1;
+  params.numThreads = 1;
+  params.useChirality = false;
+  params.extraAtomCheckOverridesDefaultCheck = true;
+  params.extraAtomCheck = [this, rootIdx, fromIdx, toIdx](const Atom &queryAtom,
+                                                          const Atom &molAtom) {
+    const auto queryIdx = static_cast<std::uint64_t>(queryAtom.getIdx());
+    const auto molIdx = static_cast<std::uint64_t>(molAtom.getIdx());
+    if ((queryIdx == rootIdx) != (molIdx == rootIdx) ||
+        (queryIdx == fromIdx) != (molIdx == toIdx)) {
+      return false;
+    }
+
+    return queryAtom.getAtomicNum() == molAtom.getAtomicNum() &&
+           queryAtom.getIsotope() == molAtom.getIsotope() &&
+           queryAtom.getFormalCharge() == molAtom.getFormalCharge() &&
+           queryAtom.getNumRadicalElectrons() ==
+               molAtom.getNumRadicalElectrons() &&
+           queryAtom.getTotalNumHs() == molAtom.getTotalNumHs();
+  };
+  params.extraBondCheckOverridesDefaultCheck = true;
+  params.extraBondCheck = [](const Bond &queryBond, const Bond &molBond) {
+    return queryBond.getBondType() == molBond.getBondType() &&
+           queryBond.getIsAromatic() == molBond.getIsAromatic();
+  };
+
+  const bool equivalent = !SubstructMatch(d_mol, d_mol, params).empty();
+  d_constitutional_automorphism_cache.emplace(cacheKey, equivalent);
+  return equivalent;
 }
 
 int CIPMol::getBondOrder(Bond *bond) const {

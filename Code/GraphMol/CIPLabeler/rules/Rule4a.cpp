@@ -11,6 +11,8 @@
 
 #include "Rule4a.h"
 
+#include "../Digraph.h"
+
 namespace RDKit {
 namespace CIPLabeler {
 
@@ -53,6 +55,13 @@ int Rule4a::compare(const Edge *a, const Edge *b) const {
   aOrdinal = ord(a->getEnd()->getAux());
   bOrdinal = ord(b->getEnd()->getAux());
   return three_way_comparison(aOrdinal, bOrdinal);
+}
+
+bool Rule4a::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
+  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
+             a, AUX_DESCRIPTOR_ANY) ||
+         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b,
+                                                           AUX_DESCRIPTOR_ANY);
 }
 
 }  // namespace CIPLabeler

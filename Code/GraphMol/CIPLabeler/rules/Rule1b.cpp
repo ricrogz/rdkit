@@ -14,7 +14,7 @@
 namespace RDKit {
 namespace CIPLabeler {
 
-Rule1b::Rule1b() = default;
+Rule1b::Rule1b() : SequenceRule(true) {}
 
 int Rule1b::compare(const Edge *a, const Edge *b) const {
   if (IUPAC_2013) {

@@ -34,5 +34,12 @@ int Rule6::compare(const Edge *a, const Edge *b) const {
   return 0;
 }
 
+bool Rule6::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
+  (void)b;
+  // compare() uses the first edge's digraph reference. With no reference it
+  // is identically zero at every depth, so walking the ligand tree is wasted.
+  return a->getBeg()->getDigraph()->getRule6Ref() != nullptr;
+}
+
 }  // namespace CIPLabeler
 }  // namespace RDKit

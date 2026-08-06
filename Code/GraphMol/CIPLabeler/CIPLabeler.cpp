@@ -135,7 +135,19 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
   std::vector<Node_Cfg_Pair> aux;
 
   auto &digraph = center.config->getDigraph();
-  for (const auto &entry : configs) {
+  if (digraph.getCurrentRoot() != digraph.getOriginalRoot()) {
+    digraph.changeRoot(digraph.getOriginalRoot());
+  }
+
+  // Ordinarily retain the existing reached-focus optimization. If an exact
+  // constitutional automorphism ended a comparison without expanding its
+  // remote paths, include every configuration: those unseen descriptors may
+  // be precisely what Rules 3-6 need to break the constitutional symmetry.
+  const bool includeUnseen = digraph.usedConstitutionalRootEquivalence();
+  std::vector<unsigned char> eligible(configs.size());
+  boost::dynamic_bitset<> targetFoci(digraph.getMol().getNumAtoms());
+  for (std::size_t i = 0; i < configs.size(); ++i) {
+    const auto &entry = configs[i];
     if (entry.config.get() == center.config.get()) {
       continue;
     }
@@ -143,12 +155,26 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
     // FIXME: specific to each descriptor
     const auto &foci = config->getFoci();
 
-    // Skip if none of the foci atoms were reached during expansion
-    if (std::ranges::none_of(foci,
-                             [&](auto f) { return digraph.seenAtom(f); })) {
+    if (!includeUnseen && std::ranges::none_of(foci, [&](auto focus) {
+          return digraph.seenAtom(focus);
+        })) {
       continue;
     }
-    for (const auto &node : digraph.getNodesForAuxiliaryLabeling(foci[0])) {
+    eligible[i] = 1u;
+    targetFoci.set(foci[0]->getIdx());
+  }
+
+  // Collect every eligible focus in one target-guided traversal. A separate
+  // getNodes() walk per configuration repeatedly scanned the same dense cage
+  // occurrence tree.
+  const auto occurrences = digraph.getNodesForAuxiliaryLabeling(targetFoci);
+  for (std::size_t i = 0; i < configs.size(); ++i) {
+    if (!eligible[i]) {
+      continue;
+    }
+    const auto &config = configs[i].config;
+    const auto &foci = config->getFoci();
+    for (const auto &node : occurrences[foci[0]->getIdx()]) {
       if (node->isDuplicate()) {
         continue;
       }
@@ -177,26 +203,33 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
   // Using a boost::unordered_map because it is more performant
   // than the STL version.
   boost::unordered_map<Node *, Descriptor> queue;
-  int prev = std::numeric_limits<int>::max();
-  for (const auto &e : aux) {
-    const auto &node = e.first;
-
-    if (node->getDistance() < prev) {
-      for (const auto &e2 : queue) {
-        e2.first->setAux(e2.second);
-      }
-      queue.clear();
-      prev = node->getDistance();
+  for (std::size_t begin = 0; begin < aux.size();) {
+    std::size_t end = begin + 1;
+    while (end < aux.size() &&
+           aux[end].first->getDistance() == aux[begin].first->getDistance()) {
+      ++end;
     }
-    const auto &config = e.second;
-    auto label = config->label(node, digraph, rules);
-    // Match Java HashMap.put(): a later configuration at this distance wins if
-    // multiple configurations map to the same digraph node.
-    queue[node] = label;
-  }
 
-  for (const auto &e : queue) {
-    e.first->setAux(e.second);
+    // Descriptors are immutable within one distance sphere. Keep exact
+    // comparison and sort results across all occurrence labels in that sphere,
+    // then clear the session before committing labels for the next sphere.
+    {
+      const SequenceRule::ComparisonSession comparisonSession;
+      for (auto pos = begin; pos < end; ++pos) {
+        const auto &node = aux[pos].first;
+        const auto &config = aux[pos].second;
+        auto label = config->label(node, digraph, rules);
+        // Match Java HashMap.put(): a later configuration at this distance wins
+        // if multiple configurations map to the same digraph node.
+        queue[node] = label;
+      }
+    }
+
+    for (const auto &entry : queue) {
+      entry.first->setAux(entry.second);
+    }
+    queue.clear();
+    begin = end;
   }
 
   return true;
@@ -330,9 +363,9 @@ void validateSelection(const boost::dynamic_bitset<> &selection,
        index = selection.find_next(index)) {
     if (index >= expectedSize) {
       std::ostringstream msg;
-      msg << "CIP " << kind
-          << " selection contains out-of-range index " << index
-          << "; molecule has " << expectedSize << ' ' << kind << " entries";
+      msg << "CIP " << kind << " selection contains out-of-range index "
+          << index << "; molecule has " << expectedSize << ' ' << kind
+          << " entries";
       throw ValueErrorException(msg.str());
     }
   }
