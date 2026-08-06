@@ -422,6 +422,22 @@ TEST_CASE("Github #880: order disconnected query components",
   CHECK(SubstructMatch(*mol, *query).empty());
 }
 
+TEST_CASE("optimized VF2 precheck preserves match order", "[substruct]") {
+  auto mol = "Fc1ccc2ccc(Br)nc2n1"_smiles;
+  auto query =
+      "[#6]1:[!#1]:[#6]2:[#6](:[!#1]:[#6]:1):[!#1]:[!#1]:[#6]:[#7]:2"_smarts;
+  REQUIRE(mol);
+  REQUIRE(query);
+
+  SubstructMatchParameters params;
+  params.uniquify = false;
+  const auto matches = SubstructMatch(*mol, *query, params);
+  REQUIRE(matches.size() == 2);
+  const MatchVectType expected{{0, 1}, {1, 11}, {2, 10}, {3, 4}, {4, 3},
+                               {5, 2}, {6, 5},  {7, 6},  {8, 7}, {9, 9}};
+  CHECK(matches.front() == expected);
+}
+
 TEST_CASE(
     "Github #888: GetSubstructMatches uniquify and maxMatches don't work well together ") {
   SECTION("Basics") {

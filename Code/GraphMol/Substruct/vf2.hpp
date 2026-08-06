@@ -394,10 +394,12 @@ class VF2SubState {
 
         assert(bestTargetNbr != NULL_NODE);
 
-        // With multiple mapped query neighbors, enumerate candidates from the
-        // target neighborhood containing the fewest currently unmapped atoms.
-        // Every valid candidate must occur in all of those neighborhoods.
-        if (mappedNbrCount > 1) {
+        // With multiple mapped query neighbors, optimized searches enumerate
+        // candidates from the target neighborhood containing the fewest
+        // currently unmapped atoms. Every valid candidate must occur in all of
+        // those neighborhoods. Legacy searches retain their original neighbor
+        // choice because changing it can change the order of returned matches.
+        if (order != nullptr && mappedNbrCount > 1) {
           bestTargetNbr = NULL_NODE;
           unsigned int fewestCandidates = 0;
           boost::tie(n1iter_beg, n1iter_end) =
@@ -645,7 +647,7 @@ class VF2SubState {
     }
 
     Pair<Graph> pair;
-    while (NextPair(pair)) {
+    while (NextPair(pair) && !RDKit::ControlCHandler::getGotSignal()) {
       if (IsFeasiblePair(pair.n1, pair.n2)) {
         AddPair(pair.n1, pair.n2);
         if (Match(c1, c2)) {  // recurse
@@ -726,6 +728,27 @@ bool match(node_id c1[], node_id c2[], SubState &s,
   s.MatchAll(c1, c2, res, max_results);
   return !res.empty();
 }
+
+struct AcceptAllFinalChecker {
+  bool operator()(const node_id[], const node_id[]) const { return true; }
+};
+
+// Run the optimized, label-compatible traversal without invoking the final
+// match checker, whose uniqueness state must not be changed by the precheck. A
+// negative result proves that the full search cannot match; a positive result
+// is followed by the legacy traversal to preserve ordering.
+template <class Graph, class VertexLabeling, class EdgeLabeling>
+bool hasPotentialMatch(const Graph &g1, const Graph &g2,
+                       VertexLabeling &vertex_labeling,
+                       EdgeLabeling &edge_labeling) {
+  AcceptAllFinalChecker matchChecker;
+  VF2SubState<const Graph, VertexLabeling, EdgeLabeling, AcceptAllFinalChecker>
+      state(&g1, &g2, vertex_labeling, edge_labeling, matchChecker, true);
+  auto ni1 = std::make_unique<node_id[]>(num_vertices(g1));
+  auto ni2 = std::make_unique<node_id[]>(num_vertices(g2));
+  int n = 0;
+  return match(&n, ni1.get(), ni2.get(), state);
+}
 };  // end of namespace detail
 
 template <
@@ -747,18 +770,22 @@ bool vf2(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
     return false;
   }
 
-  detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
-      s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, true);
-  auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
-  auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
-  int n = 0;
-
   RDKit::ControlCHandler hdlr;
-  if (match(&n, ni1.get(), ni2.get(), s0)) {
-    auto sz = num_vertices(g1);
-    F.reserve(sz);
-    for (unsigned int i = 0; i < sz; ++i) {
-      F.emplace_back(ni1[i], ni2[i]);
+
+  // Use the optimized query order to reject impossible matches without
+  // changing the order in which successful matches are returned.
+  if (detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling)) {
+    detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
+        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false);
+    auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
+    auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
+    int n = 0;
+    if (match(&n, ni1.get(), ni2.get(), s0)) {
+      auto sz = num_vertices(g1);
+      F.reserve(sz);
+      for (unsigned int i = 0; i < sz; ++i) {
+        F.emplace_back(ni1[i], ni2[i]);
+      }
     }
   }
 
@@ -787,14 +814,17 @@ bool vf2_all(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
     return false;
   }
 
-  detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
-      s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, true);
-  auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
-  auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
-
   RDKit::ControlCHandler hdlr;
 
-  match(ni1.get(), ni2.get(), s0, F, max_results);
+  // Use the optimized query order to reject impossible matches without
+  // changing the order in which successful matches are returned.
+  if (detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling)) {
+    detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
+        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false);
+    auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
+    auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
+    match(ni1.get(), ni2.get(), s0, F, max_results);
+  }
 
   if (hdlr.getGotSignal()) {
     BOOST_LOG(rdWarningLog)
