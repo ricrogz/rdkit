@@ -136,21 +136,47 @@ enum class NeighborhoodMatchResult {
   Incomplete
 };
 
-template <class Graph, class EdgeCompatible>
-NeighborhoodMatchResult HasCompatibleNeighborhood(
-    const Graph &g1, const Graph &g2, node_id query, node_id target,
-    const CandidateMatrix &candidateMatrix, EdgeCompatible &edgeCompatible,
-    std::size_t &work, std::size_t maxWork) {
+template <class Edge>
+struct IncidentEdge {
+  node_id neighbor;
+  Edge edge;
+};
+
+struct NeighborhoodWorkspace {
+  std::vector<unsigned char> compatible;
+  std::vector<unsigned int> queryOrder;
+  std::vector<unsigned int> compatibleCounts;
+  std::vector<int> targetMatches;
+  std::vector<unsigned char> seen;
+};
+
+template <class Graph>
+std::vector<std::vector<IncidentEdge<typename Graph::edge_descriptor>>>
+BuildIncidentEdgeCache(const Graph &graph) {
   using Edge = typename Graph::edge_descriptor;
-  std::vector<Edge> queryEdges;
-  std::vector<Edge> targetEdges;
+  const auto graphSize = boost::num_vertices(graph);
+  std::vector<std::vector<IncidentEdge<Edge>>> result(graphSize);
+  for (node_id vertex = 0; vertex < graphSize; ++vertex) {
+    auto &incidentEdges = result[vertex];
+    incidentEdges.reserve(boost::out_degree(vertex, graph));
+    typename Graph::out_edge_iterator edgeBeg, edgeEnd;
+    boost::tie(edgeBeg, edgeEnd) = boost::out_edges(vertex, graph);
+    while (edgeBeg != edgeEnd) {
+      incidentEdges.push_back(
+          {static_cast<node_id>(getOtherIdx(graph, *edgeBeg, vertex)),
+           *edgeBeg});
+      ++edgeBeg;
+    }
+  }
+  return result;
+}
 
-  typename Graph::out_edge_iterator edgeBeg, edgeEnd;
-  boost::tie(edgeBeg, edgeEnd) = boost::out_edges(query, g1);
-  queryEdges.assign(edgeBeg, edgeEnd);
-  boost::tie(edgeBeg, edgeEnd) = boost::out_edges(target, g2);
-  targetEdges.assign(edgeBeg, edgeEnd);
-
+template <class Edge, class EdgeCompatible>
+NeighborhoodMatchResult HasCompatibleNeighborhood(
+    const std::vector<IncidentEdge<Edge>> &queryEdges,
+    const std::vector<IncidentEdge<Edge>> &targetEdges,
+    const CandidateMatrix &candidateMatrix, EdgeCompatible &edgeCompatible,
+    std::size_t &work, std::size_t maxWork, NeighborhoodWorkspace &workspace) {
   if (queryEdges.size() > targetEdges.size()) {
     return NeighborhoodMatchResult::NoMatch;
   }
@@ -165,20 +191,22 @@ NeighborhoodMatchResult HasCompatibleNeighborhood(
   const auto relationSize = queryEdges.size() * numTargetEdges;
   work += relationSize;
 
-  std::vector<unsigned char> compatible(relationSize, 0);
-  std::vector<unsigned int> queryOrder(queryEdges.size());
-  std::vector<unsigned int> compatibleCounts(queryEdges.size(), 0);
+  workspace.compatible.assign(relationSize, 0);
+  workspace.queryOrder.resize(queryEdges.size());
+  workspace.compatibleCounts.assign(queryEdges.size(), 0);
+  auto &compatible = workspace.compatible;
+  auto &queryOrder = workspace.queryOrder;
+  auto &compatibleCounts = workspace.compatibleCounts;
   for (unsigned int queryEdgeIdx = 0; queryEdgeIdx < queryEdges.size();
        ++queryEdgeIdx) {
     queryOrder[queryEdgeIdx] = queryEdgeIdx;
-    const auto queryNbr = getOtherIdx(g1, queryEdges[queryEdgeIdx], query);
+    const auto queryNbr = queryEdges[queryEdgeIdx].neighbor;
     for (unsigned int targetEdgeIdx = 0; targetEdgeIdx < targetEdges.size();
          ++targetEdgeIdx) {
-      const auto targetNbr =
-          getOtherIdx(g2, targetEdges[targetEdgeIdx], target);
+      const auto targetNbr = targetEdges[targetEdgeIdx].neighbor;
       if (candidateMatrix.get(queryNbr, targetNbr) &&
-          edgeCompatible(queryEdges[queryEdgeIdx],
-                         targetEdges[targetEdgeIdx])) {
+          edgeCompatible(queryEdges[queryEdgeIdx].edge,
+                         targetEdges[targetEdgeIdx].edge)) {
         compatible[static_cast<std::size_t>(queryEdgeIdx) * numTargetEdges +
                    targetEdgeIdx] = 1;
         ++compatibleCounts[queryEdgeIdx];
@@ -194,7 +222,8 @@ NeighborhoodMatchResult HasCompatibleNeighborhood(
               return compatibleCounts[lhs] < compatibleCounts[rhs];
             });
 
-  std::vector<int> targetMatches(numTargetEdges, -1);
+  workspace.targetMatches.assign(numTargetEdges, -1);
+  auto &targetMatches = workspace.targetMatches;
   auto augment = [&](auto &self, unsigned int queryEdgeIdx,
                      std::vector<unsigned char> &seen) -> bool {
     for (unsigned int targetEdgeIdx = 0; targetEdgeIdx < numTargetEdges;
@@ -216,7 +245,8 @@ NeighborhoodMatchResult HasCompatibleNeighborhood(
     return false;
   };
 
-  std::vector<unsigned char> seen(numTargetEdges, 0);
+  workspace.seen.resize(numTargetEdges);
+  auto &seen = workspace.seen;
   for (const auto queryEdgeIdx : queryOrder) {
     std::fill(seen.begin(), seen.end(), 0);
     if (!augment(augment, queryEdgeIdx, seen)) {
@@ -234,6 +264,7 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
   constexpr std::size_t minQuerySize = 32;
   constexpr std::size_t maxCandidateCells = 1U << 20;
   constexpr std::size_t absoluteMaxRefinementWork = 8U << 20;
+  constexpr std::size_t maxCachedEdges = 1U << 18;
   constexpr unsigned int maxRefinementPasses = 32;
   constexpr unsigned int maxUnrefinedRootCandidates = 8;
 
@@ -287,6 +318,13 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
 
   const auto maxRefinementWork = std::min(
       absoluteMaxRefinementWork, result.values.size() * std::size_t{64});
+  if (boost::num_edges(g1) > maxCachedEdges ||
+      boost::num_edges(g2) > maxCachedEdges) {
+    return result;
+  }
+  const auto queryIncidentEdges = BuildIncidentEdgeCache(g1);
+  const auto targetIncidentEdges = BuildIncidentEdgeCache(g2);
+  NeighborhoodWorkspace workspace;
   std::size_t work = 0;
   for (unsigned int pass = 0; pass < maxRefinementPasses; ++pass) {
     bool changed = false;
@@ -295,9 +333,9 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
         if (!result.get(query, target)) {
           continue;
         }
-        const auto matchResult =
-            HasCompatibleNeighborhood(g1, g2, query, target, result,
-                                      edgeCompatible, work, maxRefinementWork);
+        const auto matchResult = HasCompatibleNeighborhood(
+            queryIncidentEdges[query], targetIncidentEdges[target], result,
+            edgeCompatible, work, maxRefinementWork, workspace);
         if (matchResult == NeighborhoodMatchResult::Incomplete ||
             RDKit::ControlCHandler::getGotSignal()) {
           return result;
