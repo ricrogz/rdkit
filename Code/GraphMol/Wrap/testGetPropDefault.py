@@ -164,4 +164,4 @@ def test_typed_getter_default_wrong_type_raises_value_error():
 
 if __name__ == '__main__':
     import sys
-    sys.exit(pytest.main([__file__]))
+    sys.exit(pytest.main([__file__, "-p", "no:pytest_schrodinger"]))

@@ -265,7 +265,7 @@ endmacro(add_pytest)
 
 function(add_jupytertest testname workingdir notebook)
   if(RDK_BUILD_PYTHON_WRAPPERS AND RDK_NBVAL_AVAILABLE)
-    add_test(NAME ${testname}  COMMAND ${Python3_EXECUTABLE} -m pytest --nbval ${notebook}
+    add_test(NAME ${testname}  COMMAND ${Python3_EXECUTABLE} -m pytest -p no:pytest_schrodinger --nbval ${notebook}
        WORKING_DIRECTORY ${workingdir} )
     SET(RDKIT_JUPYTERTEST_CACHE "${testname};${RDKIT_JUPYTERTEST_CACHE}" CACHE INTERNAL "Global list of jupyter tests")
   endif()
@@ -273,7 +273,7 @@ endfunction(add_jupytertest)
 
 function(add_pythonpytest testname workingdir)
   if(RDK_BUILD_PYTHON_WRAPPERS)
-    add_test(NAME ${testname}  COMMAND ${Python3_EXECUTABLE} -m pytest 
+    add_test(NAME ${testname}  COMMAND ${Python3_EXECUTABLE} -m pytest -p no:pytest_schrodinger
        WORKING_DIRECTORY ${workingdir} )
     SET(RDKIT_PYTHONTEST_CACHE "${testname};${RDKIT_PYTHONTEST_CACHE}" CACHE INTERNAL "Global list of pytest tests")
   endif()
