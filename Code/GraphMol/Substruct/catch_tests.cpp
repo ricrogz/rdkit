@@ -1,5 +1,5 @@
 //
-//  Copyright (C) 2019-2025 Greg Landrum and other RDKit contributors
+//  Copyright (C) 2019-2026 Greg Landrum and other RDKit contributors
 //
 //   @@ All Rights Reserved @@
 //  This file is part of the RDKit.
@@ -408,6 +408,18 @@ TEST_CASE("Github #4558: GetSubstructMatches() loops at 43690 iterations",
 
   auto matches = SubstructMatch(*mol, *qry, ps);
   CHECK(matches.size() == num_mols * 2);
+}
+
+TEST_CASE("Github #880: order disconnected query components",
+          "[substruct][bug]") {
+  auto mol =
+      "O[C@H]1[C@H](O)[C@@H](O)[C@@H](O)[C@H](O[C@H]2[C@@H](O)"
+      "[C@H](O)[C@@H](O)[C@@H](O)[C@@H]2O)[C@H]1O"_smiles;
+  auto query = "O.O.O.O.O.O.O.OS(O)(=O)=O"_smarts;
+  REQUIRE(mol);
+  REQUIRE(query);
+
+  CHECK(SubstructMatch(*mol, *query).empty());
 }
 
 TEST_CASE(

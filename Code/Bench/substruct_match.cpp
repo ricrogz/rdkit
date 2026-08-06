@@ -74,6 +74,19 @@ TEST_CASE("ROMol::GetSubstructMatch", "[substruct_match]") {
   };
 }
 
+TEST_CASE("ROMol::GetSubstructMatch disconnected query", "[substruct_match]") {
+  auto mol = v2::SmilesParse::MolFromSmiles(
+      "O[C@H]1[C@H](O)[C@@H](O)[C@@H](O)[C@H](O[C@H]2[C@@H](O)"
+      "[C@H](O)[C@@H](O)[C@@H](O)[C@@H]2O)[C@H]1O");
+  auto query = v2::SmilesParse::MolFromSmarts("O.O.O.O.O.O.O.OS(O)(=O)=O");
+  REQUIRE(mol);
+  REQUIRE(query);
+
+  BENCHMARK("ROMol::GetSubstructMatch disconnected query") {
+    return SubstructMatch(*mol, *query).size();
+  };
+}
+
 TEST_CASE("ROMol::GetSubstructMatch RLewis", "[substruct_match]") {
   auto mols = bench_common::load_samples();
   auto queries = bench_substruct_match::load_smarts_queries(

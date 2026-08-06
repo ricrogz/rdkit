@@ -13,9 +13,13 @@
 #include <RDGeneral/ControlCHandler.h>
 
 #include <boost/graph/adjacency_list.hpp>
-#include <vector>
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <memory>
+#include <queue>
+#include <vector>
 
 #ifndef __BGL_VF2_SUB_STATE_H__
 #define __BGL_VF2_SUB_STATE_H__
@@ -57,33 +61,33 @@ static bool nodeInfoComp1(const NodeInfo &a, const NodeInfo &b) {
   if (a.in > b.in) {
     return false;
   }
-  return false;
+  return a.id < b.id;
 }
 
 /**
  * The ordering by frequency/valence.
  * The frequency is in the out field, the valence in `in'.
  */
-static int nodeInfoComp2(const NodeInfo &a, const NodeInfo &b) {
+static bool nodeInfoComp2(const NodeInfo &a, const NodeInfo &b) {
   if (!a.in && b.in) {
-    return 1;
+    return false;
   }
   if (a.in && !b.in) {
-    return -1;
+    return true;
   }
   if (a.out < b.out) {
-    return -1;
+    return true;
   }
   if (a.out > b.out) {
-    return 1;
+    return false;
   }
   if (a.in < b.in) {
-    return -1;
+    return true;
   }
   if (a.in > b.in) {
-    return 1;
+    return false;
   }
-  return 0;
+  return a.id < b.id;
 }
 
 template <class Graph, class VertexDescr, class EdgeDescr>
@@ -104,9 +108,10 @@ VertexDescr getOtherIdx(const Graph &g, const EdgeDescr &edge,
  *    1 - The number of nodes with the same in/out
  *        degree.
  *    2 - The valence of the nodes.
+ *    3 - The number of already ordered neighbors.
  * The nodes at the beginning of the vector are
- * the most singular, from which the matching should
- * start.
+ * the most singular, from which the matching should start. Components are
+ * kept contiguous and ring closures are prioritized.
  *--------------------------------------------------*/
 template <class Graph>
 node_id *SortNodesByFrequency(const Graph *g) {
@@ -117,8 +122,8 @@ node_id *SortNodesByFrequency(const Graph *g) {
   while (bNode != eNode) {
     NodeInfo t;
     t.id = vect.size();
-    t.in = boost::out_degree(*bNode, *g);  // <- assuming undirected graph
-    t.out = boost::out_degree(*bNode, *g);
+    t.in = t.out =
+        boost::out_degree(*bNode, *g);  // <- assuming undirected graph
     vect.push_back(t);
     ++bNode;
   }
@@ -138,12 +143,79 @@ node_id *SortNodesByFrequency(const Graph *g) {
   }
   std::sort(vect.begin(), vect.end(), nodeInfoComp2);
 
-  auto nodes = new node_id[vect.size()];
-  for (unsigned int i = 0; i < vect.size(); ++i) {
-    nodes[i] = vect[i].id;
+  struct Candidate {
+    node_id id;
+    unsigned int selectedNbrs;
+    unsigned int rank;
+  };
+  auto candidateComp = [](const Candidate &a, const Candidate &b) {
+    if (a.selectedNbrs != b.selectedNbrs) {
+      return a.selectedNbrs < b.selectedNbrs;
+    }
+    return a.rank > b.rank;
+  };
+
+  // A linear scan has lower overhead for normal-sized queries, while the
+  // lazy heap prevents ordering itself from becoming quadratic for very
+  // large queries. Both paths produce the same deterministic order.
+  constexpr unsigned int heapThreshold = 128;
+  const bool useHeap = vect.size() >= heapThreshold;
+  std::priority_queue<Candidate, std::vector<Candidate>,
+                      decltype(candidateComp)>
+      candidates(candidateComp);
+  std::vector<unsigned int> ranks;
+  std::vector<unsigned char> selected(vect.size(), false);
+  std::vector<unsigned int> selectedNbrs(vect.size(), 0);
+  auto nodes = std::make_unique<node_id[]>(vect.size());
+
+  if (useHeap) {
+    ranks.resize(vect.size());
+    for (unsigned int rank = 0; rank < vect.size(); ++rank) {
+      const auto id = vect[rank].id;
+      ranks[id] = rank;
+      candidates.push({id, 0, rank});
+    }
   }
 
-  return nodes;
+  for (unsigned int i = 0; i < vect.size(); ++i) {
+    node_id best = NULL_NODE;
+    if (useHeap) {
+      while (selected[candidates.top().id] ||
+             candidates.top().selectedNbrs !=
+                 selectedNbrs[candidates.top().id]) {
+        candidates.pop();
+      }
+      best = candidates.top().id;
+      candidates.pop();
+    } else {
+      unsigned int mostSelectedNbrs = 0;
+      for (const auto &node : vect) {
+        if (!selected[node.id] &&
+            (best == NULL_NODE || selectedNbrs[node.id] > mostSelectedNbrs)) {
+          best = node.id;
+          mostSelectedNbrs = selectedNbrs[node.id];
+        }
+      }
+    }
+    assert(best != NULL_NODE);
+    nodes[i] = best;
+    selected[best] = true;
+
+    typename Graph::adjacency_iterator nbrBeg, nbrEnd;
+    boost::tie(nbrBeg, nbrEnd) = boost::adjacent_vertices(best, *g);
+    while (nbrBeg != nbrEnd) {
+      if (!selected[*nbrBeg]) {
+        ++selectedNbrs[*nbrBeg];
+        if (useHeap) {
+          candidates.push({static_cast<node_id>(*nbrBeg), selectedNbrs[*nbrBeg],
+                           ranks[*nbrBeg]});
+        }
+      }
+      ++nbrBeg;
+    }
+  }
+
+  return nodes.release();
 }
 
 /*----------------------------------------------------------
@@ -183,21 +255,22 @@ class VF2SubState {
         mc(amc),
         n1(num_vertices(*ag1)),
         n2(num_vertices(*ag2)) {
+    std::unique_ptr<node_id[]> newOrder;
     if (sortNodes) {
-      order = SortNodesByFrequency(ag1);
-    } else {
-      order = nullptr;
+      newOrder.reset(SortNodesByFrequency(ag1));
     }
 
     core_len = 0;
     t1_len = 0;
     t2_len = 0;
 
-    core_1 = new node_id[n1];
-    core_2 = new node_id[n2];
-    term_1 = new node_id[n1];
-    term_2 = new node_id[n2];
-    share_count = new long;
+    auto stateData =
+        std::make_unique<node_id[]>(2 * (static_cast<std::size_t>(n1) + n2));
+    auto newShareCount = std::make_unique<long>(1);
+    core_1 = stateData.get();
+    term_1 = core_1 + n1;
+    core_2 = term_1 + n1;
+    term_2 = core_2 + n2;
 
     for (unsigned int i = 0; i < n1; i++) {
       core_1[i] = NULL_NODE;
@@ -212,7 +285,9 @@ class VF2SubState {
     // memset((void *)vs_compared,0,n1*n2*sizeof(int));
 
     // es_compared = new std::map<unsigned int,bool>();
-    *share_count = 1;
+    order = newOrder.release();
+    share_count = newShareCount.release();
+    stateData.release();
   }
 
   VF2SubState(const VF2SubState &state)
@@ -243,9 +318,6 @@ class VF2SubState {
   ~VF2SubState() {
     if (--*share_count == 0) {
       delete[] core_1;
-      delete[] core_2;
-      delete[] term_1;
-      delete[] term_2;
       delete share_count;
       delete[] order;
       // delete [] vs_compared;
@@ -264,7 +336,7 @@ class VF2SubState {
 
   bool NextPair(Pair<Graph> &pair) {
     if (pair.n1 == NULL_NODE) {
-      pair.n1 = 0;
+      pair.n1 = order == nullptr ? 0 : order[core_len];
     }
     if (pair.n2 == NULL_NODE) {
       pair.n2 = 0;
@@ -286,10 +358,14 @@ class VF2SubState {
     std::cerr<<std::endl;
 #endif
     if (t1_len > core_len && t2_len > core_len) {
-      while (pair.n1 < n1 &&
-             (core_1[pair.n1] != NULL_NODE || term_1[pair.n1] == 0)) {
-        pair.n1++;
-        pair.n2 = 0;
+      if (order == nullptr) {
+        while (pair.n1 < n1 &&
+               (core_1[pair.n1] != NULL_NODE || term_1[pair.n1] == 0)) {
+          pair.n1++;
+          pair.n2 = 0;
+        }
+      } else {
+        assert(core_1[pair.n1] == NULL_NODE && term_1[pair.n1] != 0);
       }
 
       /* Initialize VF2 Plus neighbor iterator.
@@ -304,33 +380,67 @@ class VF2SubState {
         boost::tie(n1iter_beg, n1iter_end) =
             boost::adjacent_vertices(pair.n1, *g1);
 
-        while (n1iter_beg != n1iter_end && core_1[*n1iter_beg] == NULL_NODE) {
+        node_id bestTargetNbr = NULL_NODE;
+        unsigned int mappedNbrCount = 0;
+        while (n1iter_beg != n1iter_end) {
+          if (core_1[*n1iter_beg] != NULL_NODE) {
+            if (bestTargetNbr == NULL_NODE) {
+              bestTargetNbr = core_1[*n1iter_beg];
+            }
+            ++mappedNbrCount;
+          }
           ++n1iter_beg;
         }
 
-        assert(n1iter_beg != n1iter_end);
+        assert(bestTargetNbr != NULL_NODE);
+
+        // With multiple mapped query neighbors, enumerate candidates from the
+        // target neighborhood containing the fewest currently unmapped atoms.
+        // Every valid candidate must occur in all of those neighborhoods.
+        if (mappedNbrCount > 1) {
+          bestTargetNbr = NULL_NODE;
+          unsigned int fewestCandidates = 0;
+          boost::tie(n1iter_beg, n1iter_end) =
+              boost::adjacent_vertices(pair.n1, *g1);
+          while (n1iter_beg != n1iter_end) {
+            if (core_1[*n1iter_beg] != NULL_NODE) {
+              const auto targetNbr = core_1[*n1iter_beg];
+              RDK_ADJ_ITER targetNbrBeg, targetNbrEnd;
+              boost::tie(targetNbrBeg, targetNbrEnd) =
+                  boost::adjacent_vertices(targetNbr, *g2);
+              unsigned int candidateCount = 0;
+              while (targetNbrBeg != targetNbrEnd &&
+                     (bestTargetNbr == NULL_NODE ||
+                      candidateCount < fewestCandidates)) {
+                if (core_2[*targetNbrBeg] == NULL_NODE) {
+                  ++candidateCount;
+                }
+                ++targetNbrBeg;
+              }
+              if (bestTargetNbr == NULL_NODE ||
+                  candidateCount < fewestCandidates) {
+                bestTargetNbr = targetNbr;
+                fewestCandidates = candidateCount;
+                if (!fewestCandidates) {
+                  break;
+                }
+              }
+            }
+            ++n1iter_beg;
+          }
+        }
 
         boost::tie(pair.nbrbeg, pair.nbrend) =
-            boost::adjacent_vertices(core_1[*n1iter_beg], *g2);
+            boost::adjacent_vertices(bestTargetNbr, *g2);
         pair.hasiter = true;
       }
-    } else if (pair.n1 == 0 && order != nullptr) {
-      // Optimisation: if the order vector is laid out in a DFS/BFS then this
-      // loop can be replaced with:
-      //   pair.n1=order[core_len];
-      // :)
-      unsigned int i = 0;
-      while (i < n1 && core_1[pair.n1 = order[i]] != NULL_NODE) {
-        i++;
-      }
-      if (i == n1) {
-        pair.n1 = n1;
-      }
-    } else {
+    } else if (order == nullptr) {
       while (pair.n1 < n1 && core_1[pair.n1] != NULL_NODE) {
         pair.n1++;
         pair.n2 = 0;
       }
+    } else {
+      assert(core_1[pair.n1] == NULL_NODE);
     }
 
     /* VF2 Plus iterator available? */
@@ -479,13 +589,9 @@ class VF2SubState {
     }
   }
   void GetCoreSet(node_id c1[], node_id c2[]) {
-    unsigned int i, j;
-    for (i = 0, j = 0; i < n1; ++i) {
-      if (core_1[i] != NULL_NODE) {
-        c1[j] = i;
-        c2[j] = core_1[i];
-        ++j;
-      }
+    for (unsigned int i = 0; i < n1; ++i) {
+      c1[i] = i;
+      c2[i] = core_1[i];
     }
   }
   VF2SubState *Clone() { return new VF2SubState(*this); }
@@ -531,6 +637,7 @@ class VF2SubState {
       if (MatchChecks(c1, c2)) {
         return true;
       }
+      return false;
     }
 
     if (IsDead()) {
@@ -564,6 +671,7 @@ class VF2SubState {
         res.push_back(newSeq);
         return lim && res.size() >= lim;
       }
+      return false;
     }
 
     if (IsDead()) {
@@ -634,15 +742,19 @@ template <
 bool vf2(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
          EdgeLabeling &edge_labeling, MatchChecking &match_checking,
          BackInsertionSequence &F) {
+  F.clear();
+  if (num_vertices(g1) > num_vertices(g2) || num_edges(g1) > num_edges(g2)) {
+    return false;
+  }
+
   detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
-      s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false);
-  auto *ni1 = new detail::node_id[num_vertices(g1)];
-  auto *ni2 = new detail::node_id[num_vertices(g2)];
+      s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, true);
+  auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
+  auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
   int n = 0;
 
-  F.clear();
   RDKit::ControlCHandler hdlr;
-  if (match(&n, ni1, ni2, s0)) {
+  if (match(&n, ni1.get(), ni2.get(), s0)) {
     auto sz = num_vertices(g1);
     F.reserve(sz);
     for (unsigned int i = 0; i < sz; ++i) {
@@ -655,9 +767,6 @@ bool vf2(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
         << "Substructure search was interrupted, result may not include all matches"
         << std::endl;
   }
-
-  delete[] ni1;
-  delete[] ni2;
 
   return !F.empty();
 };
@@ -673,12 +782,15 @@ template <class Graph, class VertexLabeling  // binary predicate
 bool vf2_all(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
              EdgeLabeling &edge_labeling, MatchChecking &match_checking,
              DoubleBackInsertionSequence &F, unsigned int max_results = 1000) {
-  detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
-      s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false);
-  std::unique_ptr<detail::node_id[]> ni1(new detail::node_id[num_vertices(g1)]);
-  std::unique_ptr<detail::node_id[]> ni2(new detail::node_id[num_vertices(g2)]);
-
   F.clear();
+  if (num_vertices(g1) > num_vertices(g2) || num_edges(g1) > num_edges(g2)) {
+    return false;
+  }
+
+  detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
+      s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, true);
+  auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
+  auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
 
   RDKit::ControlCHandler hdlr;
 
