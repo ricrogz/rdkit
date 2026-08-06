@@ -26,7 +26,7 @@ namespace {
  * Upper limit on the size of the digraph, stops out of memory error with a
  * more graceful failure. 0=Infinite
  */
-constexpr std::size_t MAX_NODE_COUNT = 100000;
+constexpr std::size_t MAX_NODE_COUNT = 1000000;
 
 /**
  * Used for debugging only, 0=Infinite
