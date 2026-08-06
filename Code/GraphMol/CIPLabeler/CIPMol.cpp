@@ -19,6 +19,8 @@ namespace CIPLabeler {
 CIPMol::CIPMol(ROMol &mol) : d_mol{mol} {
   d_bonds.reserve(mol.getNumBonds());
   std::ranges::copy(mol.bonds(), std::back_inserter(d_bonds));
+  d_atomic_masses.resize(mol.getNumAtoms());
+  d_atomic_mass_cached.resize(mol.getNumAtoms());
 }
 
 const FractionalAtomicNum &CIPMol::getFractionalAtomicNum(Atom *atom) const {
@@ -115,6 +117,16 @@ int CIPMol::getBondOrder(Bond *bond) const {
       throw std::runtime_error("Non integer-order bonds are not allowed.");
   }
 };
+
+double CIPMol::getAtomicMass(Atom *atom) const {
+  PRECONDITION(atom, "bad atom")
+  const auto index = atom->getIdx();
+  if (!d_atomic_mass_cached.at(index)) {
+    d_atomic_masses[index] = atom->getMass();
+    d_atomic_mass_cached[index] = true;
+  }
+  return d_atomic_masses[index];
+}
 
 }  // namespace CIPLabeler
 }  // namespace RDKit

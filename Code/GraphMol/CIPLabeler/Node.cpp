@@ -46,18 +46,11 @@ Node::Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
   if (d_flags & DUPLICATE) {
     d_edges.reserve(4);
     d_atomic_mass = 0.;
+  } else if (dp_atom != nullptr) {
+    d_atomic_mass = dp_g->getMol().getAtomicMass(dp_atom);
   } else {
     const auto &table = RDKit::PeriodicTable::getTable();
-    auto atomic_number = getAtomicNum();
-    auto isotope = getMassNum();
-    if (isotope == 0u) {
-      d_atomic_mass = table->getAtomicWeight(atomic_number);
-    } else {
-      d_atomic_mass = table->getMassForIsotope(atomic_number, isotope);
-      if (atomic_number != 0 && d_atomic_mass == 0.0) {
-        d_atomic_mass = isotope;
-      }
-    }
+    d_atomic_mass = table->getAtomicWeight(1);
   }
   if (d_visit.empty() || d_flags & DUPLICATE) {
     d_flags |= EXPANDED;
