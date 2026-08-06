@@ -1,6 +1,6 @@
 # CIPLabeler performance patch series
 
-This directory contains twelve ordered `git format-patch` files implementing
+This directory contains thirteen ordered `git format-patch` files implementing
 the low-risk performance improvements identified during the Java/C++
 comparison. The changes preserve the corrected behavior established by the
 bug series.
@@ -9,9 +9,9 @@ bug series.
 
 - Required parent tree: complete bug series,
   `105c21fb52168d1fd276623cc3d057b7991f5e74`
-- Expected tree after this series: `d143e6355e9d9eb86702937572db39be3c25dccb`
+- Expected tree after this series: `50fcf284fa05b053f49a3172cf1d75297ff4099e`
 - Reference endpoint used to generate the files:
-  `bfbfac46967b120b659853df4167dc6d55ef5ed6`
+  `1fe9e6e560bf8f21c6fff68e38d147a30d6d0128`
 - Apply the files in the order recorded in [`series`](series).
 
 After applying `../cip_labeler_bug_patches`:
@@ -39,13 +39,14 @@ committer metadata; the resulting tree should match the tree ID above.
 | `0010` | Accelerates the highly cyclic stereocage regression by batching target-guided auxiliary occurrence discovery, proving symmetric cyclic constitutional ligands equal through constrained molecular self-isomorphism, pruning descriptor-free Rule 3-6 branches with reroot-aware counts, and retaining bounded exact comparison and sort results across each immutable auxiliary-label distance sphere. |
 | `0011` | Reuses direction-local comparisons and sorts across auxiliary reroots, keeps Rule 1a/1b/2 results across distance spheres, memoizes exact path-constrained automorphism queries, keeps Rule 4b/5 reference sorters stable, stores the common one-word visit path inline, and replaces the stable auxiliary sort with distance buckets. |
 | `0012` | Generalizes the symmetry acceleration to arbitrary component sizes and ring topologies: persistent large-path visit state, component-local exact self-isomorphism, bounded explicit-field color refinement, exact linear-time distance-signature filtering, sparse dominance evidence, cumulative per-key/component search limits, logarithmically bounded prefilter use, and O(1) directed cyclic-core eligibility after one linear pass. It removes the earlier size, aromaticity, and bounded-automorphism-sample gates without adding molecule- or atom-number-specific cases. |
+| `0013` | Accelerates auxiliary labeling in large symmetric polycyclic graphs by retaining the support of each exact constitutional-automorphism witness and avoiding unseen auxiliary configurations only when every other stereo annotation is fixed pointwise. It also batches residual target reachability, reroots the occurrence tree along its parent/LCA paths, stores terminal-leaf edges inline, stops comparisons at tied terminal nodes, and proves identical constitutional continuations across molecular bridges. These gates depend only on graph topology and CIP invariants, not fixture identities or atom numbering. |
 
 The following larger or workload-dependent opportunities from the comparison
 are intentionally not included: canonicalizing equivalent directed occurrence
-states, full reroot dynamic programming, hybrid dense/sparse automorphism
-witnesses, arena allocation for large visit-state records, and a broader
-lazy-digraph rewrite. Those need dedicated benchmarking and a larger design
-review.
+states, subtree-result dynamic programming beyond path-only rerooting, hybrid
+dense/sparse automorphism witnesses, arena allocation for large visit-state
+records, and a broader lazy-digraph rewrite. Those need dedicated benchmarking
+and a larger design review.
 
 ## Verification status
 
@@ -64,6 +65,6 @@ ctest --test-dir <build-dir> -R '^testCIPLabeler$' --output-on-failure
 Performance should be measured separately on representative ordinary,
 aromatic, highly symmetric, and deep/ring-rich molecules. The refreshed patch
 files were checked for whitespace errors, replayed onto a clean worktree, and
-compared with the applied source tree (the two local slow regression fixtures
-are intentionally outside this patch series). No build, test, or benchmark
-command was run while refreshing them.
+compared with the applied source tree (the local slow regression fixtures and
+the user's node-cap adjustment are intentionally outside this patch series).
+No build, test, or benchmark command was run while refreshing them.

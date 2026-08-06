@@ -10,3 +10,4 @@
 0010-Accelerate-CIP-labeling-in-highly-cyclic-stereocages.patch
 0011-Reuse-CIP-work-across-auxiliary-reroots.patch
 0012-Generalize-CIP-acceleration-for-symmetric-ring-syste.patch
+0013-Accelerate-auxiliary-CIP-labeling-in-polycyclic-grap.patch
