@@ -240,6 +240,19 @@ struct IterationBudget {
 
 thread_local IterationBudget iterationBudget;
 
+class ScopedIterationBudget {
+ public:
+  explicit ScopedIterationBudget(unsigned int maxRecursiveIterations)
+      : d_previous{iterationBudget} {
+    iterationBudget.reset(maxRecursiveIterations);
+  }
+
+  ~ScopedIterationBudget() { iterationBudget = d_previous; }
+
+ private:
+  IterationBudget d_previous;
+};
+
 class ScopedPreliminaryBudget {
  public:
   ScopedPreliminaryBudget() { iterationBudget.beginPreliminaryPass(); }
@@ -247,7 +260,7 @@ class ScopedPreliminaryBudget {
 };
 
 void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
-  iterationBudget.reset(maxRecursiveIterations);
+  const ScopedIterationBudget callBudget(maxRecursiveIterations);
 
   // First, if the specified number of iterations allows it, run all centers
   // through a fast pass with the constitutional rules allow easy stuff to be
