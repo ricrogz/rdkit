@@ -62,6 +62,7 @@ class SequenceRule {
 
  private:
   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
+  int recursiveCompareEqual(const Edge *a, const Edge *b) const;
 };
 
 }  // namespace CIPLabeler

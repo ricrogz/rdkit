@@ -10,6 +10,10 @@
 //
 #include "RDGeneral/ControlCHandler.h"
 
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <unordered_map>
 #include <utility>
 
 #include "SequenceRule.h"
@@ -18,6 +22,85 @@
 
 namespace RDKit {
 namespace CIPLabeler {
+
+namespace {
+
+struct EdgePair {
+  const Edge *first;
+  const Edge *second;
+
+  bool operator==(const EdgePair &other) const {
+    return first == other.first && second == other.second;
+  }
+};
+
+struct EdgePairHash {
+  std::size_t operator()(const EdgePair &pair) const {
+    const auto firstHash = std::hash<const Edge *>{}(pair.first);
+    const auto secondHash = std::hash<const Edge *>{}(pair.second);
+    return firstHash ^
+           (secondHash + 0x9e3779b9u + (firstHash << 6) + (firstHash >> 2));
+  }
+};
+
+struct RecursiveComparisonCache {
+  std::size_t depth = 0;
+  std::unordered_map<EdgePair, int, EdgePairHash> results;
+};
+
+// Digraph orientation, auxiliary labels, and the Rule 6 reference can change
+// between top-level comparisons. Keep results only while one exact rule object
+// has an active recursive comparison. This also prevents temporary Rule4b and
+// Rule5New replacement rules from inheriting entries when stack addresses are
+// reused with a different reference descriptor.
+thread_local std::unordered_map<const SequenceRule *,
+                                std::unique_ptr<RecursiveComparisonCache>>
+    recursiveComparisonCaches;
+
+class ScopedRecursiveComparisonCache {
+ public:
+  explicit ScopedRecursiveComparisonCache(const SequenceRule *rule)
+      : d_rule{rule} {
+    auto &cache = recursiveComparisonCaches[rule];
+    if (!cache) {
+      cache = std::make_unique<RecursiveComparisonCache>();
+    }
+    d_cache = cache.get();
+    if (d_cache->depth++ == 0) {
+      d_cache->results.clear();
+    }
+  }
+
+  ScopedRecursiveComparisonCache(const ScopedRecursiveComparisonCache &) =
+      delete;
+  ScopedRecursiveComparisonCache &operator=(
+      const ScopedRecursiveComparisonCache &) = delete;
+
+  ~ScopedRecursiveComparisonCache() {
+    if (--d_cache->depth == 0) {
+      recursiveComparisonCaches.erase(d_rule);
+    }
+  }
+
+  bool find(const Edge *first, const Edge *second, int &result) const {
+    const auto found = d_cache->results.find({first, second});
+    if (found == d_cache->results.end()) {
+      return false;
+    }
+    result = found->second;
+    return true;
+  }
+
+  void store(const Edge *first, const Edge *second, int result) {
+    d_cache->results.emplace(EdgePair{first, second}, result);
+  }
+
+ private:
+  const SequenceRule *d_rule;
+  RecursiveComparisonCache *d_cache;
+};
+
+}  // namespace
 
 SequenceRule::SequenceRule() : dp_sorter{new Sort(this)} {}
 
@@ -50,11 +133,23 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     throw ControlCCaught();
   }
 
-  int cmp = compare(a, b);
-  if (cmp != 0) {
-    return cmp;
+  const auto directResult = compare(a, b);
+  if (directResult != 0) {
+    return directResult;
   }
 
+  ScopedRecursiveComparisonCache cache(this);
+  int cachedResult;
+  if (cache.find(a, b, cachedResult)) {
+    return cachedResult;
+  }
+
+  const auto result = recursiveCompareEqual(a, b);
+  cache.store(a, b, result);
+  return result;
+}
+
+int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
   std::vector<std::pair<const Edge *, const Edge *>> queue{{a, b}};
   std::vector<Edge *> as;
   std::vector<Edge *> bs;
@@ -87,7 +182,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
           continue;
         }
 
-        cmp = compare(aEdge, bEdge);
+        const auto cmp = compare(aEdge, bEdge);
         if (cmp != 0) {
           return cmp;
         }
@@ -112,7 +207,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
           continue;
         }
 
-        cmp = compare(aEdge, bEdge);
+        const auto cmp = compare(aEdge, bEdge);
         if (cmp != 0) {
           return cmp;
         }
