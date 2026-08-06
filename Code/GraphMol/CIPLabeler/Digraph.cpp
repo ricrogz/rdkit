@@ -44,10 +44,28 @@ Node &Digraph::addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
   }
   d_nodes.emplace_back(this, std::move(visit), atom, std::move(frac), dist,
                        flags, parent);
+  if (atom == nullptr) {
+    d_seen_null = true;
+  } else {
+    const auto atom_idx = atom->getIdx();
+    if (atom_idx < d_seen_atoms.size() &&
+        d_mol.getAtom(atom_idx) == atom) {
+      d_seen_atoms[atom_idx] = true;
+    }
+  }
   return d_nodes.back();
 }
 
 bool Digraph::seenAtom(Atom *atom) const {
+  if (atom == nullptr) {
+    return d_seen_null;
+  }
+  const auto atom_idx = atom->getIdx();
+  if (atom_idx < d_seen_atoms.size() && d_mol.getAtom(atom_idx) == atom) {
+    return d_seen_atoms[atom_idx];
+  }
+  // Preserve the old pointer-identity behavior for an unexpected atom that
+  // does not belong to this molecule.
   return std::ranges::any_of(
       d_nodes, [&](const auto &n) { return n.getAtom() == atom; });
 }
@@ -60,7 +78,7 @@ void Digraph::addEdge(Node *beg, Bond *bond, Node *end) {
 }
 
 Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
-    : d_mol{mol} {
+    : d_mol{mol}, d_seen_atoms(mol.getNumAtoms()) {
   PRECONDITION(atom, "cannot init digraph on a nullptr")
 
   auto visit =
@@ -148,6 +166,18 @@ void Digraph::expand(Node *beg) {
   if (MAX_NODE_DIST > 0 && beg->getDistance() > MAX_NODE_DIST) {
     return;
   }
+
+  bool averaged_negative_checked = false;
+  bool averaged_negative = false;
+  const auto has_averaged_negative_charge = [&]() {
+    if (!averaged_negative_checked) {
+      averaged_negative_checked = true;
+      averaged_negative = atom->getFormalCharge() < 0 &&
+                          d_mol.getFractionalAtomicNum(atom).isAveraged();
+    }
+    return averaged_negative;
+  };
+
   // create 'explicit' nodes
   for (const auto &bond : d_mol.getBonds(atom)) {
     const auto &nbr = bond->getOtherAtom(atom);
@@ -162,8 +192,7 @@ void Digraph::expand(Node *beg) {
       // duplicate nodes for bond orders (except for root atoms...)
       // for example >S=O
       if (dp_origin != beg || d_atropisomerMode) {
-        if (atom->getFormalCharge() < 0 &&
-            d_mol.getFractionalAtomicNum(atom).isAveraged()) {
+        if (has_averaged_negative_charge()) {
           end = beg->newBondDuplicateChild(nbrIdx, nbr);
           addEdge(beg, bond, end);
         } else {
@@ -184,8 +213,7 @@ void Digraph::expand(Node *beg) {
       auto end = beg->newRingDuplicateChild(nbrIdx, nbr);
       addEdge(beg, bond, end);
 
-      if (atom->getFormalCharge() < 0 &&
-          d_mol.getFractionalAtomicNum(atom).isAveraged()) {
+      if (has_averaged_negative_charge()) {
         end = beg->newBondDuplicateChild(nbrIdx, nbr);
         addEdge(beg, bond, end);
       } else {
