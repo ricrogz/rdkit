@@ -1038,6 +1038,26 @@ TEST_CASE("CIP code errors on fragments which cannot be kekulized",
   }
 }
 
+TEST_CASE("CIPMol discards a failed partial kekulization", "[accurateCIP]") {
+  RWMol mol;
+  for (auto i = 0u; i < 5u; ++i) {
+    auto atom = new Atom(6);
+    atom->setNoImplicit(true);
+    mol.addAtom(atom, true, true);
+  }
+  for (auto i = 0u; i < 5u; ++i) {
+    mol.addBond(i, (i + 1) % 5u, Bond::AROMATIC);
+  }
+
+  RWMol probe{mol};
+  CHECK_THROWS_AS(MolOps::Kekulize(probe), MolSanitizeException);
+
+  CIPLabeler::CIPMol cipmol(mol);
+  for (const auto bond : mol.bonds()) {
+    CHECK(cipmol.getBondOrder(bond) == 1);
+  }
+}
+
 TEST_CASE("GitHub Issue #5142", "[bug][accurateCIP]") {
   auto mol = "*C1C[C@H](CCC)[C@@H](C)[C@H](C)C1"_smiles;
   REQUIRE(mol);
