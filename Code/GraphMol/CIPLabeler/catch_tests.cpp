@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <bitset>
 #include <list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -100,6 +101,10 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
     CHECK(descriptors.add(Descriptor::R));
     CHECK(descriptors.add(Descriptor::S));
   }
+  SECTION("EmptyLists") {
+    CHECK_THROWS_AS(descriptors.getRefDescriptor(), std::runtime_error);
+    CHECK(descriptors.compareTo(PairList()) == 0);
+  }
   SECTION("Pairing") {
     REQUIRE(descriptors.getPairing() == 0);
 
@@ -164,6 +169,22 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
     list2.add(Descriptor::M);
     CHECK(list1.toString() == "R:llu");
     CHECK(list2.toString() == "R:uul");
+  }
+  SECTION("PairingNormalizesDescriptorFamilies") {
+    descriptors.add(Descriptor::R);
+    descriptors.add(Descriptor::M);
+    descriptors.add(Descriptor::seqCis);
+    const auto expected =
+        (PairList::pairing_t{1} << (PairList::numPairingBits - 2)) |
+        (PairList::pairing_t{1} << (PairList::numPairingBits - 3));
+    CHECK(descriptors.getPairing() == expected);
+  }
+  SECTION("PairingIsBoundedByItsStorage") {
+    for (std::size_t i = 0; i < 2 * PairList::numPairingBits; ++i) {
+      descriptors.add(Descriptor::R);
+    }
+    CHECK(descriptors.getPairing() ==
+          std::numeric_limits<PairList::pairing_t>::max() >> 1);
   }
 }
 
