@@ -19,7 +19,7 @@ namespace RDKit {
 
 namespace CIPLabeler {
 
-Rule2::Rule2() = default;
+Rule2::Rule2() : SequenceRule(true) {}
 
 int Rule2::compare(const Edge *a, const Edge *b) const {
   auto a_end = a->getEnd();

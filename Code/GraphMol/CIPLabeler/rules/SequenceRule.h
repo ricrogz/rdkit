@@ -44,13 +44,13 @@ class SequenceRule {
   // the outermost session owns its lifetime.
   class ComparisonSession {
    public:
+    ComparisonSession();
+    ~ComparisonSession();
+
     ComparisonSession(const ComparisonSession &) = delete;
     ComparisonSession &operator=(const ComparisonSession &) = delete;
 
    private:
-    ComparisonSession();
-    ~ComparisonSession();
-
     friend class SequenceRule;
     friend class Sort;
     friend class AtropisomerBond;
@@ -58,7 +58,7 @@ class SequenceRule {
     friend class Tetrahedral;
   };
 
-  SequenceRule();
+  explicit SequenceRule(bool useConstitutionalRootEquivalence = false);
 
   virtual ~SequenceRule();
 
@@ -83,12 +83,29 @@ class SequenceRule {
  protected:
   std::unique_ptr<const Sort> dp_sorter = nullptr;
 
+  // Rules whose value can only come from a particular descriptor class can
+  // prove that recursion is unnecessary from per-side descriptor counts.
+  virtual bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const;
+
  private:
   std::uint64_t d_cacheId;
+  bool d_useConstitutionalRootEquivalence;
 
   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
   bool hasEquivalentAcyclicContinuation(const Edge *a, const Edge *b) const;
+  bool hasEquivalentConstitutionalRootContinuation(const Edge *a,
+                                                   const Edge *b) const;
   int recursiveCompareEqual(const Edge *a, const Edge *b) const;
+
+  static bool getCachedSort(std::uint64_t sortId, const Node *node, bool deep,
+                            std::vector<Edge *> &edges, bool &unique,
+                            bool &pseudoAsymmetric);
+  static void cacheSort(std::uint64_t sortId, const Node *node, bool deep,
+                        const std::vector<Edge *> &input,
+                        const std::vector<Edge *> &sorted,
+                        const Priority &priority);
+
+  friend class Sort;
 };
 
 }  // namespace CIPLabeler

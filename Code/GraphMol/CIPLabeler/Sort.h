@@ -10,6 +10,7 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <vector>
 #include "Priority.h"
 
@@ -40,6 +41,7 @@ class Sort {
       const std::vector<Edge *> &sorted) const;
 
  private:
+  std::uint64_t d_cacheId;
   const std::vector<const SequenceRule *> d_rules;
 
   int compareSubstituents(const Node *node, const Edge *a, const Edge *b,

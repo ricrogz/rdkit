@@ -43,8 +43,7 @@ std::vector<Descriptor> Rule4b::getReferenceDescriptors(
 }
 
 int Rule4b::compare(const Edge *a, const Edge *b) const {
-  if (!a->getBeg()->getDigraph()->hasEffectiveAuxDescriptors() &&
-      !b->getBeg()->getDigraph()->hasEffectiveAuxDescriptors()) {
+  if (!isRecursiveComparisonNeeded(a, b)) {
     return 0;
   }
   const auto &aBeg = a->getBeg();
@@ -185,7 +184,10 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
       eq.reserve(eqSize);
       for (const auto &groups : tmp) {
         for (const auto edge : groups[i]) {
-          eq.push_back(edge->getEnd());
+          if (edge->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
+                  edge, AUX_DESCRIPTOR_PAIR)) {
+            eq.push_back(edge->getEnd());
+          }
         }
       }
       if (!eq.empty()) {
@@ -221,7 +223,9 @@ void Rule4b::fillPairs(const Node *beg, PairList &plist,
     edges.assign(nodeEdges.begin(), nodeEdges.end());
     sorter.prioritize(node, edges);
     for (const auto &edge : edges) {
-      if (edge->isBeg(node) && !edge->getEnd()->isTerminal()) {
+      if (edge->isBeg(node) && !edge->getEnd()->isTerminal() &&
+          node->getDigraph()->hasAuxDescriptorOnSide(edge,
+                                                     AUX_DESCRIPTOR_PAIR)) {
         queue.push_back(edge->getEnd());
       }
     }
@@ -273,12 +277,24 @@ int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
       if (aIt == aEdges.end() || bIt == bEdges.end()) {
         break;
       }
-      queue.emplace_back((*aIt)->getEnd(), (*bIt)->getEnd());
+      if (aNode->getDigraph()->hasAuxDescriptorOnSide(*aIt,
+                                                      AUX_DESCRIPTOR_PAIR) ||
+          bNode->getDigraph()->hasAuxDescriptorOnSide(*bIt,
+                                                      AUX_DESCRIPTOR_PAIR)) {
+        queue.emplace_back((*aIt)->getEnd(), (*bIt)->getEnd());
+      }
       ++aIt;
       ++bIt;
     }
   }
   return 0;
+}
+
+bool Rule4b::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
+  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
+             a, AUX_DESCRIPTOR_PAIR) ||
+         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b,
+                                                           AUX_DESCRIPTOR_PAIR);
 }
 
 Sort Rule4b::getRefSorter(const SequenceRule *replacement_rule) const {

@@ -26,6 +26,9 @@ class Rule4a : public SequenceRule {
   Rule4a();
 
   int compare(const Edge *a, const Edge *b) const override;
+
+ protected:
+  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
 };
 
 }  // namespace CIPLabeler

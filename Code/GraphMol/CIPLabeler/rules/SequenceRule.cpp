@@ -10,6 +10,8 @@
 //
 #include "RDGeneral/ControlCHandler.h"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -67,12 +69,64 @@ struct ComparisonKeyHash {
 
 struct ComparisonSessionState {
   std::size_t depth = 0;
-  std::unordered_map<ComparisonKey, int, ComparisonKeyHash> results;
+  using ComparisonMap =
+      std::unordered_map<ComparisonKey, int, ComparisonKeyHash>;
+  ComparisonMap currentResults;
+  ComparisonMap previousResults;
+
+  static constexpr std::size_t MAX_INLINE_SORT_EDGES = 8;
+
+  struct SortKey {
+    std::uint64_t sortId;
+    const Node *node;
+    const Node *root;
+    const Atom *rule6Ref;
+    bool deep;
+    std::uint8_t inputCount;
+    std::array<const Edge *, MAX_INLINE_SORT_EDGES> input;
+
+    bool operator==(const SortKey &other) const {
+      return sortId == other.sortId && node == other.node &&
+             root == other.root && rule6Ref == other.rule6Ref &&
+             deep == other.deep && inputCount == other.inputCount &&
+             std::equal(input.begin(), input.begin() + inputCount,
+                        other.input.begin());
+    }
+  };
+
+  struct SortKeyHash {
+    std::size_t operator()(const SortKey &key) const {
+      std::size_t result = 0;
+      hashCombine(result, key.sortId);
+      hashCombine(result, key.node);
+      hashCombine(result, key.root);
+      hashCombine(result, key.rule6Ref);
+      hashCombine(result, key.deep);
+      for (std::size_t i = 0; i < key.inputCount; ++i) {
+        hashCombine(result, key.input[i]);
+      }
+      return result;
+    }
+  };
+
+  struct SortValue {
+    std::array<Edge *, MAX_INLINE_SORT_EDGES> sorted;
+    std::uint8_t sortedCount;
+    Priority priority;
+  };
+
+  using SortMap = std::unordered_map<SortKey, SortValue, SortKeyHash>;
+  SortMap currentSorts;
+  SortMap previousSorts;
 };
 
-// The cache is an accelerator, not part of the result. Stop adding entries on
-// exceptionally large digraphs so a labeling session has bounded cache memory.
+// The caches are accelerators, not part of the result. Two bounded generations
+// retain recent hot entries instead of permanently freezing the first entries
+// encountered by a large cage traversal.
 constexpr std::size_t MAX_CACHED_COMPARISONS = 250000;
+constexpr std::size_t COMPARISONS_PER_GENERATION = MAX_CACHED_COMPARISONS / 2;
+constexpr std::size_t MAX_CACHED_SORTS = 50000;
+constexpr std::size_t SORTS_PER_GENERATION = MAX_CACHED_SORTS / 2;
 
 thread_local ComparisonSessionState comparisonSessionState;
 
@@ -85,18 +139,26 @@ std::uint64_t nextCacheId() {
 
 SequenceRule::ComparisonSession::ComparisonSession() {
   if (comparisonSessionState.depth++ == 0) {
-    comparisonSessionState.results.clear();
+    comparisonSessionState.currentResults.clear();
+    comparisonSessionState.previousResults.clear();
+    comparisonSessionState.currentSorts.clear();
+    comparisonSessionState.previousSorts.clear();
   }
 }
 
 SequenceRule::ComparisonSession::~ComparisonSession() {
   if (--comparisonSessionState.depth == 0) {
-    comparisonSessionState.results.clear();
+    comparisonSessionState.currentResults.clear();
+    comparisonSessionState.previousResults.clear();
+    comparisonSessionState.currentSorts.clear();
+    comparisonSessionState.previousSorts.clear();
   }
 }
 
-SequenceRule::SequenceRule()
-    : dp_sorter{new Sort(this)}, d_cacheId{nextCacheId()} {}
+SequenceRule::SequenceRule(bool useConstitutionalRootEquivalence)
+    : dp_sorter{new Sort(this)},
+      d_cacheId{nextCacheId()},
+      d_useConstitutionalRootEquivalence{useConstitutionalRootEquivalence} {}
 
 SequenceRule::~SequenceRule() = default;
 
@@ -138,9 +200,34 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
                           secondGraph->getCurrentRoot(),
                           firstGraph->getRule6Ref(),
                           secondGraph->getRule6Ref()};
-  const auto found = comparisonSessionState.results.find(key);
-  if (found != comparisonSessionState.results.end()) {
-    return found->second;
+  const auto findResult = [](const auto &results,
+                             const ComparisonKey &candidate, int &value) {
+    const auto found = results.find(candidate);
+    if (found == results.end()) {
+      return false;
+    }
+    value = found->second;
+    return true;
+  };
+  int cachedResult = 0;
+  if (findResult(comparisonSessionState.currentResults, key, cachedResult) ||
+      findResult(comparisonSessionState.previousResults, key, cachedResult)) {
+    return cachedResult;
+  }
+  const ComparisonKey reverseKey{d_cacheId,
+                                 b,
+                                 a,
+                                 secondGraph->getCurrentRoot(),
+                                 firstGraph->getCurrentRoot(),
+                                 secondGraph->getRule6Ref(),
+                                 firstGraph->getRule6Ref()};
+  if (firstGraph == secondGraph) {
+    if (findResult(comparisonSessionState.currentResults, reverseKey,
+                   cachedResult) ||
+        findResult(comparisonSessionState.previousResults, reverseKey,
+                   cachedResult)) {
+      return -cachedResult;
+    }
   }
 
   const auto directResult = compare(a, b);
@@ -148,15 +235,80 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     return directResult;
   }
 
-  if (hasEquivalentAcyclicContinuation(a, b)) {
+  if (!isRecursiveComparisonNeeded(a, b) ||
+      hasEquivalentAcyclicContinuation(a, b) ||
+      hasEquivalentConstitutionalRootContinuation(a, b)) {
     return 0;
   }
 
   const auto result = recursiveCompareEqual(a, b);
-  if (comparisonSessionState.results.size() < MAX_CACHED_COMPARISONS) {
-    comparisonSessionState.results.emplace(key, result);
+  if (comparisonSessionState.currentResults.size() >=
+      COMPARISONS_PER_GENERATION) {
+    comparisonSessionState.previousResults =
+        std::move(comparisonSessionState.currentResults);
+    comparisonSessionState.currentResults.clear();
   }
+  comparisonSessionState.currentResults.emplace(key, result);
   return result;
+}
+
+bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
+                                 bool deep, std::vector<Edge *> &edges,
+                                 bool &unique, bool &pseudoAsymmetric) {
+  if (node == nullptr || edges.size() < 2u ||
+      edges.size() > ComparisonSessionState::MAX_INLINE_SORT_EDGES) {
+    return false;
+  }
+  const auto graph = node->getDigraph();
+  ComparisonSessionState::SortKey key{sortId,
+                                      node,
+                                      graph->getCurrentRoot(),
+                                      graph->getRule6Ref(),
+                                      deep,
+                                      static_cast<std::uint8_t>(edges.size()),
+                                      {}};
+  std::copy(edges.begin(), edges.end(), key.input.begin());
+  const auto findSort = [&](const auto &sorts) {
+    const auto found = sorts.find(key);
+    if (found == sorts.end()) {
+      return false;
+    }
+    edges.assign(found->second.sorted.begin(),
+                 found->second.sorted.begin() + found->second.sortedCount);
+    unique = found->second.priority.isUnique();
+    pseudoAsymmetric = found->second.priority.isPseudoAsymetric();
+    return true;
+  };
+  return findSort(comparisonSessionState.currentSorts) ||
+         findSort(comparisonSessionState.previousSorts);
+}
+
+void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
+                             const std::vector<Edge *> &input,
+                             const std::vector<Edge *> &sorted,
+                             const Priority &priority) {
+  if (node == nullptr || input.size() < 2u || sorted.size() != input.size() ||
+      input.size() > ComparisonSessionState::MAX_INLINE_SORT_EDGES) {
+    return;
+  }
+  if (comparisonSessionState.currentSorts.size() >= SORTS_PER_GENERATION) {
+    comparisonSessionState.previousSorts =
+        std::move(comparisonSessionState.currentSorts);
+    comparisonSessionState.currentSorts.clear();
+  }
+  const auto graph = node->getDigraph();
+  ComparisonSessionState::SortKey key{sortId,
+                                      node,
+                                      graph->getCurrentRoot(),
+                                      graph->getRule6Ref(),
+                                      deep,
+                                      static_cast<std::uint8_t>(input.size()),
+                                      {}};
+  std::copy(input.begin(), input.end(), key.input.begin());
+  ComparisonSessionState::SortValue value{
+      {}, static_cast<std::uint8_t>(sorted.size()), priority};
+  std::copy(sorted.begin(), sorted.end(), value.sorted.begin());
+  comparisonSessionState.currentSorts.emplace(std::move(key), std::move(value));
 }
 
 int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
@@ -237,6 +389,13 @@ void SequenceRule::setSorter(const Sort *sorter) {
   d_cacheId = nextCacheId();
 }
 
+bool SequenceRule::isRecursiveComparisonNeeded(const Edge *a,
+                                               const Edge *b) const {
+  (void)a;
+  (void)b;
+  return true;
+}
+
 Priority SequenceRule::sort(const Node *node, std::vector<Edge *> &edges,
                             bool deep) const {
   return getSorter()->prioritize(node, edges, deep);
@@ -278,6 +437,42 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
   }
 
   return graph->isAcyclicBranchWithoutConfiguration(a);
+}
+
+bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+    const Edge *a, const Edge *b) const {
+  if (!d_useConstitutionalRootEquivalence) {
+    return false;
+  }
+
+  const auto aBeg = a->getBeg();
+  const auto bBeg = b->getBeg();
+  const auto aEnd = a->getEnd();
+  const auto bEnd = b->getEnd();
+  const auto graph = aBeg->getDigraph();
+  const auto root = graph->getOriginalRoot();
+  if (graph != bBeg->getDigraph() || graph->getCurrentRoot() != root ||
+      aBeg != root || bBeg != root || a->getBond() == nullptr ||
+      b->getBond() == nullptr || aEnd->isDuplicateOrH() ||
+      bEnd->isDuplicateOrH() || !aEnd->isOriginalChildOf(root) ||
+      !bEnd->isOriginalChildOf(root)) {
+    return false;
+  }
+
+  // Keep the exact-isomorphism cost focused on cyclic ligand systems, where
+  // path unfolding is combinatorial and the cheaper bridge shortcut cannot
+  // apply. Returning false only disables this optimization.
+  if (!graph->getMol().isInRing(a->getBond()) ||
+      !graph->getMol().isInRing(b->getBond())) {
+    return false;
+  }
+
+  const bool equivalent = graph->getMol().hasConstitutionalAutomorphism(
+      root->getAtom(), aEnd->getAtom(), bEnd->getAtom());
+  if (equivalent) {
+    graph->noteConstitutionalRootEquivalence();
+  }
+  return equivalent;
 }
 
 }  // namespace CIPLabeler

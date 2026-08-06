@@ -12,13 +12,25 @@
 #include "Sort.h"
 #include "rules/SequenceRule.h"
 
+#include <atomic>
+
+#include <RDGeneral/ControlCHandler.h>
+
 namespace RDKit {
 namespace CIPLabeler {
 
-Sort::Sort(const SequenceRule *comparator) : d_rules{comparator} {}
+namespace {
+std::uint64_t nextSortCacheId() {
+  static std::atomic<std::uint64_t> nextId{0};
+  return ++nextId;
+}
+}  // namespace
+
+Sort::Sort(const SequenceRule *comparator)
+    : d_cacheId{nextSortCacheId()}, d_rules{comparator} {}
 
 Sort::Sort(std::vector<const SequenceRule *> comparators)
-    : d_rules{std::move(comparators)} {}
+    : d_cacheId{nextSortCacheId()}, d_rules{std::move(comparators)} {}
 
 const std::vector<const SequenceRule *> &Sort::getRules() const {
   return d_rules;
@@ -27,6 +39,17 @@ const std::vector<const SequenceRule *> &Sort::getRules() const {
 Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
                           bool deep) const {
   const SequenceRule::ComparisonSession comparisonSession;
+  bool cachedUnique = false;
+  bool cachedPseudoAsymmetric = false;
+  if (SequenceRule::getCachedSort(d_cacheId, node, deep, edges, cachedUnique,
+                                  cachedPseudoAsymmetric)) {
+    if (ControlCHandler::getGotSignal()) {
+      throw ControlCCaught();
+    }
+    return {cachedUnique, cachedPseudoAsymmetric};
+  }
+
+  const auto input = edges;
   bool unique = true;
   int numPseudoAsym = 0;
 
@@ -49,7 +72,9 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
     }
   }
 
-  return {unique, numPseudoAsym == 1};
+  const Priority result{unique, numPseudoAsym == 1};
+  SequenceRule::cacheSort(d_cacheId, node, deep, input, edges, result);
+  return result;
 }
 
 int Sort::compareSubstituents(const Node *node, const Edge *a, const Edge *b,

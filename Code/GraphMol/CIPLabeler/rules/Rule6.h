@@ -23,6 +23,9 @@ class Rule6 : public SequenceRule {
   Rule6();
 
   int compare(const Edge *a, const Edge *b) const override;
+
+ protected:
+  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
 };
 
 }  // namespace CIPLabeler

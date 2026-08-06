@@ -14,7 +14,7 @@
 namespace RDKit {
 namespace CIPLabeler {
 
-Rule1a::Rule1a() = default;
+Rule1a::Rule1a() : SequenceRule(true) {}
 
 // CIP Rule 1a: Higher atomic number precedes lower.
 int Rule1a::compare(const Edge *a, const Edge *b) const {

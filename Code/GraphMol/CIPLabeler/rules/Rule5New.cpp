@@ -22,8 +22,11 @@ Rule5New::Rule5New() = default;
 Rule5New::Rule5New(Descriptor ref) : d_ref{ref} {}
 
 int Rule5New::compare(const Edge *a, const Edge *b) const {
-  if (!a->getBeg()->getDigraph()->hasEffectiveAuxDescriptors() &&
-      !b->getBeg()->getDigraph()->hasEffectiveAuxDescriptors()) {
+  const bool aHasPairs =
+      a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(a, AUX_DESCRIPTOR_PAIR);
+  const bool bHasPairs =
+      b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b, AUX_DESCRIPTOR_PAIR);
+  if (!aHasPairs && !bHasPairs) {
     return 0;
   }
   const auto &aBeg = a->getBeg();
@@ -57,10 +60,14 @@ int Rule5New::compare(const Edge *a, const Edge *b) const {
     std::vector<const Node *> queue;
     std::vector<Edge *> edges;
     edges.reserve(4);
-    fillPairs(aEnd, listRA, queue, edges);
-    fillPairs(aEnd, listSA, queue, edges);
-    fillPairs(bEnd, listRB, queue, edges);
-    fillPairs(bEnd, listSB, queue, edges);
+    if (aHasPairs) {
+      fillPairs(aEnd, listRA, queue, edges);
+      fillPairs(aEnd, listSA, queue, edges);
+    }
+    if (bHasPairs) {
+      fillPairs(bEnd, listRB, queue, edges);
+      fillPairs(bEnd, listSB, queue, edges);
+    }
     int cmpR = listRA.compareTo(listRB);
     int cmpS = listSA.compareTo(listSB);
     // -2/+2 for pseudo-asymetric
@@ -90,11 +97,20 @@ void Rule5New::fillPairs(const Node *beg, PairList &plist,
     edges.assign(nodeEdges.begin(), nodeEdges.end());
     sorter.prioritize(node, edges);
     for (const auto &edge : edges) {
-      if (edge->isBeg(node) && !edge->getEnd()->isTerminal()) {
+      if (edge->isBeg(node) && !edge->getEnd()->isTerminal() &&
+          node->getDigraph()->hasAuxDescriptorOnSide(edge,
+                                                     AUX_DESCRIPTOR_PAIR)) {
         queue.push_back(edge->getEnd());
       }
     }
   }
+}
+
+bool Rule5New::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
+  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
+             a, AUX_DESCRIPTOR_PAIR) ||
+         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b,
+                                                           AUX_DESCRIPTOR_PAIR);
 }
 
 Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {

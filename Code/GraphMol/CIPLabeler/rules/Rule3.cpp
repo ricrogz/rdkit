@@ -11,6 +11,8 @@
 
 #include "Rule3.h"
 
+#include "../Digraph.h"
+
 namespace RDKit {
 namespace CIPLabeler {
 
@@ -32,6 +34,13 @@ Rule3::Rule3() = default;
 int Rule3::compare(const Edge *a, const Edge *b) const {
   return three_way_comparison(ord(a->getEnd()->getAux()),
                               ord(b->getEnd()->getAux()));
+}
+
+bool Rule3::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
+  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
+             a, AUX_DESCRIPTOR_GEOMETRIC) ||
+         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
+             b, AUX_DESCRIPTOR_GEOMETRIC);
 }
 
 }  // namespace CIPLabeler

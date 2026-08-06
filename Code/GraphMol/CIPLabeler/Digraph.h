@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <RDGeneral/BoostStartInclude.h>
+#include <boost/dynamic_bitset.hpp>
 #include <boost/rational.hpp>
 #include <RDGeneral/BoostEndInclude.h>
 
@@ -54,8 +55,7 @@ class Digraph {
 
   Digraph(const CIPMol &mol, Atom *atom, bool atropsomerMode = false);
   Digraph(CIPMol &&mol, Atom *atom, bool atropsomerMode = false) = delete;
-  Digraph(const CIPMol &&mol, Atom *atom,
-          bool atropsomerMode = false) = delete;
+  Digraph(const CIPMol &&mol, Atom *atom, bool atropsomerMode = false) = delete;
 
   const CIPMol &getMol() const;
 
@@ -79,13 +79,24 @@ class Digraph {
   std::vector<Node *> getNodesForAuxiliaryLabeling(Atom *atom) const;
 
   /**
+   * Collect occurrences for several configuration foci in one original-root
+   * traversal. Branches from which none of the still-unvisited targets is
+   * reachable are left unexpanded.
+   */
+  std::vector<std::vector<Node *>> getNodesForAuxiliaryLabeling(
+      const boost::dynamic_bitset<> &targets) const;
+
+  /**
    * Whether the current directed edge enters an acyclic molecular component
    * containing no registered stereochemical configuration focus.
    */
   bool isAcyclicBranchWithoutConfiguration(const Edge *edge) const;
 
-  bool hasEffectiveAuxDescriptors() const;
-  void noteAuxDescriptor(Descriptor descriptor);
+  // Whether the directed end side of edge contains a descriptor in mask.
+  bool hasAuxDescriptorOnSide(const Edge *edge, unsigned mask) const;
+
+  void noteConstitutionalRootEquivalence();
+  bool usedConstitutionalRootEquivalence() const;
 
   /**
    * Access the reference atom for Rule 6 (if one is set).
@@ -136,9 +147,7 @@ class Digraph {
 
   Atom *dp_rule6Ref = nullptr;
 
-  // Sticky within a labeling call. A conservative true only disables an
-  // optimization; NONE, UNKNOWN, and ns carry no Rule 4b/5 information.
-  bool d_hasEffectiveAuxDescriptors = false;
+  bool d_usedConstitutionalRootEquivalence = false;
 
   // Insertion at either end of a deque preserves element references, which
   // the graph stores extensively, while avoiding one allocation per element.
@@ -148,6 +157,11 @@ class Digraph {
   void addEdge(Node *beg, Bond *bond, Node *end);
   std::vector<Node *> collectNodes(Atom *atom,
                                    bool pruneConfigurationFreeBranches) const;
+  bool canReachUnvisitedTarget(const Node *node,
+                               const boost::dynamic_bitset<> &targets,
+                               std::vector<unsigned int> &queue,
+                               std::vector<unsigned int> &seen,
+                               unsigned int &generation) const;
 };
 
 }  // namespace CIPLabeler
