@@ -18,13 +18,15 @@
 #pragma once
 
 #include <cstdint>
-#include <list>
+#include <deque>
 #include <vector>
 
 #include <RDGeneral/BoostStartInclude.h>
 #include <boost/rational.hpp>
 #include <RDGeneral/BoostEndInclude.h>
 
+#include "Edge.h"
+#include "Node.h"
 #include "TooManyNodesException.h"
 
 namespace RDKit {
@@ -34,8 +36,6 @@ class Bond;
 
 namespace CIPLabeler {
 
-class Node;
-class Edge;
 class CIPMol;
 
 /**
@@ -104,6 +104,8 @@ class Digraph {
 
  private:
   const CIPMol &d_mol;
+  std::vector<bool> d_seen_atoms;
+  bool d_seen_null = false;
 
   // The node from which the Digraph is first initialized.
   // It matches the atom that is being labeled.
@@ -118,10 +120,10 @@ class Digraph {
 
   Atom *dp_rule6Ref = nullptr;
 
-  // We can't store these in a vector, as adding new items will
-  // cause it to reallocate and invalidate the references
-  std::list<Node> d_nodes;
-  std::list<Edge> d_edges;
+  // Insertion at either end of a deque preserves element references, which
+  // the graph stores extensively, while avoiding one allocation per element.
+  std::deque<Node> d_nodes;
+  std::deque<Edge> d_edges;
 
   void addEdge(Node *beg, Bond *bond, Node *end);
 };
