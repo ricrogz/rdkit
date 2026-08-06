@@ -23,7 +23,6 @@
 
 #ifndef __BGL_VF2_SUB_STATE_H__
 #define __BGL_VF2_SUB_STATE_H__
-// #define RDK_VF2_PRUNING
 #define RDK_ADJ_ITER typename Graph::adjacency_iterator
 
 namespace boost {
@@ -34,6 +33,7 @@ struct NodeInfo {
   node_id id;
   node_id in;
   node_id out;
+  node_id candidates;
 };
 
 template <class Graph>
@@ -75,6 +75,12 @@ static bool nodeInfoComp2(const NodeInfo &a, const NodeInfo &b) {
   if (a.in && !b.in) {
     return true;
   }
+  if (a.candidates < b.candidates) {
+    return true;
+  }
+  if (a.candidates > b.candidates) {
+    return false;
+  }
   if (a.out < b.out) {
     return true;
   }
@@ -100,6 +106,218 @@ VertexDescr getOtherIdx(const Graph &g, const EdgeDescr &edge,
   return tmp;
 }
 
+struct CandidateMatrix {
+  std::size_t targetSize{0};
+  std::vector<unsigned char> values;
+  std::vector<unsigned int> rowCounts;
+
+  explicit operator bool() const { return !values.empty(); }
+
+  bool get(node_id query, node_id target) const {
+    return values[static_cast<std::size_t>(query) * targetSize + target] != 0;
+  }
+
+  void remove(node_id query, node_id target) {
+    const auto idx = static_cast<std::size_t>(query) * targetSize + target;
+    if (values[idx]) {
+      values[idx] = 0;
+      --rowCounts[query];
+    }
+  }
+
+  bool hasEmptyRow() const {
+    return std::find(rowCounts.begin(), rowCounts.end(), 0) != rowCounts.end();
+  }
+};
+
+enum class NeighborhoodMatchResult {
+  Match,
+  NoMatch,
+  Incomplete
+};
+
+template <class Graph, class EdgeCompatible>
+NeighborhoodMatchResult HasCompatibleNeighborhood(
+    const Graph &g1, const Graph &g2, node_id query, node_id target,
+    const CandidateMatrix &candidateMatrix, EdgeCompatible &edgeCompatible,
+    std::size_t &work, std::size_t maxWork) {
+  using Edge = typename Graph::edge_descriptor;
+  std::vector<Edge> queryEdges;
+  std::vector<Edge> targetEdges;
+
+  typename Graph::out_edge_iterator edgeBeg, edgeEnd;
+  boost::tie(edgeBeg, edgeEnd) = boost::out_edges(query, g1);
+  queryEdges.assign(edgeBeg, edgeEnd);
+  boost::tie(edgeBeg, edgeEnd) = boost::out_edges(target, g2);
+  targetEdges.assign(edgeBeg, edgeEnd);
+
+  if (queryEdges.size() > targetEdges.size()) {
+    return NeighborhoodMatchResult::NoMatch;
+  }
+
+  const auto numTargetEdges = targetEdges.size();
+  // Bound both the relation work and its temporary allocation. This
+  // optimization is intended for the low-degree, simple graphs used by
+  // molecular matching; high-degree generic graphs fall back to normal VF2.
+  if (numTargetEdges && queryEdges.size() > (maxWork - work) / numTargetEdges) {
+    return NeighborhoodMatchResult::Incomplete;
+  }
+  const auto relationSize = queryEdges.size() * numTargetEdges;
+  work += relationSize;
+
+  std::vector<unsigned char> compatible(relationSize, 0);
+  std::vector<unsigned int> queryOrder(queryEdges.size());
+  std::vector<unsigned int> compatibleCounts(queryEdges.size(), 0);
+  for (unsigned int queryEdgeIdx = 0; queryEdgeIdx < queryEdges.size();
+       ++queryEdgeIdx) {
+    queryOrder[queryEdgeIdx] = queryEdgeIdx;
+    const auto queryNbr = getOtherIdx(g1, queryEdges[queryEdgeIdx], query);
+    for (unsigned int targetEdgeIdx = 0; targetEdgeIdx < targetEdges.size();
+         ++targetEdgeIdx) {
+      const auto targetNbr =
+          getOtherIdx(g2, targetEdges[targetEdgeIdx], target);
+      if (candidateMatrix.get(queryNbr, targetNbr) &&
+          edgeCompatible(queryEdges[queryEdgeIdx],
+                         targetEdges[targetEdgeIdx])) {
+        compatible[static_cast<std::size_t>(queryEdgeIdx) * numTargetEdges +
+                   targetEdgeIdx] = 1;
+        ++compatibleCounts[queryEdgeIdx];
+      }
+    }
+    if (!compatibleCounts[queryEdgeIdx]) {
+      return NeighborhoodMatchResult::NoMatch;
+    }
+  }
+
+  std::sort(queryOrder.begin(), queryOrder.end(),
+            [&compatibleCounts](unsigned int lhs, unsigned int rhs) {
+              return compatibleCounts[lhs] < compatibleCounts[rhs];
+            });
+
+  std::vector<int> targetMatches(numTargetEdges, -1);
+  auto augment = [&](auto &self, unsigned int queryEdgeIdx,
+                     std::vector<unsigned char> &seen) -> bool {
+    for (unsigned int targetEdgeIdx = 0; targetEdgeIdx < numTargetEdges;
+         ++targetEdgeIdx) {
+      const auto compatIdx =
+          static_cast<std::size_t>(queryEdgeIdx) * numTargetEdges +
+          targetEdgeIdx;
+      if (!compatible[compatIdx] || seen[targetEdgeIdx]) {
+        continue;
+      }
+      seen[targetEdgeIdx] = 1;
+      if (targetMatches[targetEdgeIdx] < 0 ||
+          self(self, static_cast<unsigned int>(targetMatches[targetEdgeIdx]),
+               seen)) {
+        targetMatches[targetEdgeIdx] = static_cast<int>(queryEdgeIdx);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::vector<unsigned char> seen(numTargetEdges, 0);
+  for (const auto queryEdgeIdx : queryOrder) {
+    std::fill(seen.begin(), seen.end(), 0);
+    if (!augment(augment, queryEdgeIdx, seen)) {
+      return NeighborhoodMatchResult::NoMatch;
+    }
+  }
+  return NeighborhoodMatchResult::Match;
+}
+
+template <class Graph, class VertexCompatible, class EdgeCompatible>
+CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
+                                     VertexCompatible &vertexCompatible,
+                                     EdgeCompatible &edgeCompatible,
+                                     bool exactMatch) {
+  constexpr std::size_t minQuerySize = 32;
+  constexpr std::size_t maxCandidateCells = 1U << 20;
+  constexpr std::size_t absoluteMaxRefinementWork = 8U << 20;
+  constexpr unsigned int maxRefinementPasses = 32;
+  constexpr unsigned int maxUnrefinedRootCandidates = 8;
+
+  CandidateMatrix result;
+  const auto querySize = boost::num_vertices(g1);
+  const auto targetSize = boost::num_vertices(g2);
+  // The eager relation is reserved for large graph-isomorphism searches. It
+  // solves the highly symmetric equal-size case without adding quadratic
+  // setup to ordinary substructure searches (including repeated FMCS calls).
+  if (!exactMatch || querySize < minQuerySize || !targetSize ||
+      querySize > maxCandidateCells / targetSize) {
+    return result;
+  }
+
+  result.targetSize = targetSize;
+  result.values.resize(querySize * targetSize, 0);
+  result.rowCounts.resize(querySize, 0);
+  // Compatibility functors are BinaryPredicates: their answers must remain
+  // stable while the relation is built and reused by both VF2 traversals.
+  using Degree = typename boost::graph_traits<Graph>::degree_size_type;
+  std::vector<Degree> targetDegrees(targetSize);
+  for (node_id target = 0; target < targetSize; ++target) {
+    targetDegrees[target] = boost::out_degree(target, g2);
+  }
+
+  std::size_t compatibilityChecks = 0;
+  for (node_id query = 0; query < querySize; ++query) {
+    const auto queryDegree = boost::out_degree(query, g1);
+    for (node_id target = 0; target < targetSize; ++target) {
+      if (!(compatibilityChecks++ & 0x3ffU) &&
+          RDKit::ControlCHandler::getGotSignal()) {
+        return result;
+      }
+      if (queryDegree == targetDegrees[target] &&
+          vertexCompatible(query, target)) {
+        result.values[static_cast<std::size_t>(query) * targetSize + target] =
+            1;
+        ++result.rowCounts[query];
+      }
+    }
+    if (!result.rowCounts[query]) {
+      return result;
+    }
+    // The legacy traversal starts at query vertex zero. If that root already
+    // has few choices, normal VF2 avoids the pathological branching and is
+    // cheaper than completing a quadratic compatibility relation.
+    if (!query && result.rowCounts[query] <= maxUnrefinedRootCandidates) {
+      return CandidateMatrix{};
+    }
+  }
+
+  const auto maxRefinementWork = std::min(
+      absoluteMaxRefinementWork, result.values.size() * std::size_t{64});
+  std::size_t work = 0;
+  for (unsigned int pass = 0; pass < maxRefinementPasses; ++pass) {
+    bool changed = false;
+    for (node_id query = 0; query < querySize; ++query) {
+      for (node_id target = 0; target < targetSize; ++target) {
+        if (!result.get(query, target)) {
+          continue;
+        }
+        const auto matchResult =
+            HasCompatibleNeighborhood(g1, g2, query, target, result,
+                                      edgeCompatible, work, maxRefinementWork);
+        if (matchResult == NeighborhoodMatchResult::Incomplete ||
+            RDKit::ControlCHandler::getGotSignal()) {
+          return result;
+        }
+        if (matchResult == NeighborhoodMatchResult::NoMatch) {
+          result.remove(query, target);
+          changed = true;
+          if (!result.rowCounts[query]) {
+            return result;
+          }
+        }
+      }
+    }
+    if (!changed) {
+      break;
+    }
+  }
+  return result;
+}
+
 /*----------------------------------------------------
  * Sorts the nodes of a graphs, returning a
  * heap-allocated vector (using new) with the node ids
@@ -108,13 +326,15 @@ VertexDescr getOtherIdx(const Graph &g, const EdgeDescr &edge,
  *    1 - The number of nodes with the same in/out
  *        degree.
  *    2 - The valence of the nodes.
- *    3 - The number of already ordered neighbors.
+ *    3 - The number of compatible target candidates, when available.
+ *    4 - The number of already ordered neighbors.
  * The nodes at the beginning of the vector are
  * the most singular, from which the matching should start. Components are
  * kept contiguous and ring closures are prioritized.
  *--------------------------------------------------*/
 template <class Graph>
-node_id *SortNodesByFrequency(const Graph *g) {
+node_id *SortNodesByFrequency(
+    const Graph *g, const CandidateMatrix *candidateMatrix = nullptr) {
   std::vector<NodeInfo> vect;
   vect.reserve(boost::num_vertices(*g));
   typename Graph::vertex_iterator bNode, eNode;
@@ -124,6 +344,7 @@ node_id *SortNodesByFrequency(const Graph *g) {
     t.id = vect.size();
     t.in = t.out =
         boost::out_degree(*bNode, *g);  // <- assuming undirected graph
+    t.candidates = candidateMatrix ? candidateMatrix->rowCounts[t.id] : 0;
     vect.push_back(t);
     ++bNode;
   }
@@ -231,6 +452,8 @@ class VF2SubState {
   EdgeCompatible &ec;
   MatchChecking &mc;
   unsigned int n1, n2;
+  const CandidateMatrix *candidateMatrix;
+  bool exactMatch;
 
   unsigned int core_len;
   unsigned int t1_len;
@@ -247,17 +470,21 @@ class VF2SubState {
 
  public:
   VF2SubState(Graph *ag1, Graph *ag2, VertexCompatible &avc,
-              EdgeCompatible &aec, MatchChecking &amc, bool sortNodes = false)
+              EdgeCompatible &aec, MatchChecking &amc, bool sortNodes = false,
+              const CandidateMatrix *candidates = nullptr,
+              bool requireExactMatch = false)
       : g1(ag1),
         g2(ag2),
         vc(avc),
         ec(aec),
         mc(amc),
         n1(num_vertices(*ag1)),
-        n2(num_vertices(*ag2)) {
+        n2(num_vertices(*ag2)),
+        candidateMatrix(candidates),
+        exactMatch(requireExactMatch) {
     std::unique_ptr<node_id[]> newOrder;
     if (sortNodes) {
-      newOrder.reset(SortNodesByFrequency(ag1));
+      newOrder.reset(SortNodesByFrequency(ag1, candidateMatrix));
     }
 
     core_len = 0;
@@ -298,6 +525,8 @@ class VF2SubState {
         mc(state.mc),
         n1(state.n1),
         n2(state.n2),
+        candidateMatrix(state.candidateMatrix),
+        exactMatch(state.exactMatch),
         order(state.order),
         vs_compared(state.vs_compared)
   // es_compared(state.es_compared)
@@ -329,7 +558,9 @@ class VF2SubState {
   bool MatchChecks(const node_id c1[], const node_id c2[]) {
     return mc(c1, c2);
   }
-  bool IsDead() { return n1 > n2 || t1_len > t2_len; }
+  bool IsDead() {
+    return n1 > n2 || (exactMatch ? t1_len != t2_len : t1_len > t2_len);
+  }
   unsigned int CoreLen() { return core_len; }
   Graph *GetGraph1() { return g1; }
   Graph *GetGraph2() { return g2; }
@@ -447,7 +678,10 @@ class VF2SubState {
 
     /* VF2 Plus iterator available? */
     if (pair.hasiter) {
-      while (pair.nbrbeg < pair.nbrend && core_2[*pair.nbrbeg] != NULL_NODE) {
+      while (
+          pair.nbrbeg < pair.nbrend &&
+          (core_2[*pair.nbrbeg] != NULL_NODE ||
+           (candidateMatrix && !candidateMatrix->get(pair.n1, *pair.nbrbeg)))) {
         ++pair.nbrbeg;
       }
 
@@ -459,11 +693,14 @@ class VF2SubState {
       }
     } else if (t1_len > core_len && t2_len > core_len) {
       while (pair.n2 < n2 &&
-             (core_2[pair.n2] != NULL_NODE || term_2[pair.n2] == 0)) {
+             (core_2[pair.n2] != NULL_NODE || term_2[pair.n2] == 0 ||
+              (candidateMatrix && !candidateMatrix->get(pair.n1, pair.n2)))) {
         pair.n2++;
       }
     } else {
-      while (pair.n2 < n2 && core_2[pair.n2] != NULL_NODE) {
+      while (pair.n2 < n2 &&
+             (core_2[pair.n2] != NULL_NODE ||
+              (candidateMatrix && !candidateMatrix->get(pair.n1, pair.n2)))) {
         pair.n2++;
       }
     }
@@ -486,19 +723,24 @@ class VF2SubState {
     //   return false;
     // }
 
-    // O(1) check for adjacency list
-    if (boost::out_degree(node1, *g1) > boost::out_degree(node2, *g2)) {
-      return false;
-    }
-    if (!vc(node1, node2)) {
-      return false;
+    const auto queryDegree = boost::out_degree(node1, *g1);
+    const auto targetDegree = boost::out_degree(node2, *g2);
+    if (candidateMatrix) {
+      if (!candidateMatrix->get(node1, node2)) {
+        return false;
+      }
+    } else {
+      const bool degreeMatches = exactMatch ? queryDegree == targetDegree
+                                            : queryDegree <= targetDegree;
+      if (!degreeMatches || !vc(node1, node2)) {
+        return false;
+      }
     }
 
     unsigned int other1, other2;
-#ifdef RDK_VF2_PRUNING
+    const bool useTerminalPruning = candidateMatrix || exactMatch;
     unsigned int term1 = 0, term2 = 0;
     unsigned int new1 = 0, new2 = 0;
-#endif
 
     // Check the out edges of node1
     typename Graph::out_edge_iterator bNbrs, eNbrs;
@@ -514,38 +756,41 @@ class VF2SubState {
           // std::cerr<<"  short2"<<std::endl;
           return false;
         }
-      }
-#ifdef RDK_VF2_PRUNING
-      else {
+      } else if (useTerminalPruning) {
         if (term_1[other1]) ++term1;
         if (!term_1[other1]) ++new1;
       }
-#endif
       ++bNbrs;
     }
 
-#ifdef RDK_VF2_PRUNING
-    // Check the out edges of node2
-    boost::tie(bNbrs, eNbrs) = boost::out_edges(node2, *g2);
-    while (bNbrs != eNbrs) {
-      other2 = getOtherIdx(*g2, *bNbrs, node2);
-      if (core_2[other2] != NULL_NODE) {
-        // do nothing
-      } else {
-        if (term_2[other2]) ++term2;
-        if (!term_2[other2]) ++new2;
+    if (useTerminalPruning) {
+      // Count target frontier neighbors. For an exact graph match, also reject
+      // target edges to mapped nodes which have no corresponding query edge.
+      boost::tie(bNbrs, eNbrs) = boost::out_edges(node2, *g2);
+      while (bNbrs != eNbrs) {
+        other2 = getOtherIdx(*g2, *bNbrs, node2);
+        if (core_2[other2] != NULL_NODE) {
+          if (exactMatch) {
+            other1 = core_2[other2];
+            // Compatibility for this edge was already checked while scanning
+            // query edges above; this reverse check rejects extra target edges.
+            if (!boost::edge(node1, other1, *g1).second) {
+              return false;
+            }
+          }
+        } else {
+          if (term_2[other2]) ++term2;
+          if (!term_2[other2]) ++new2;
+        }
+        ++bNbrs;
       }
-      ++bNbrs;
-    }
-    // std::cerr<<(termin1 <= termin2 && termout1 <= termout2 &&
-    // (termin1+termout1+new1)<=(termin2+termout2+new2))<<std::endl;
 
-    // n.b. term1+new1 == boost::out_degree(node1) and
-    //      term2+new2 == boost::out_degree(node2)
-    return term1 <= term2 && (term1 + new1) <= (term2 + new2);
-#else
+      if (exactMatch) {
+        return term1 == term2 && (term1 + new1) == (term2 + new2);
+      }
+      return term1 <= term2 && (term1 + new1) <= (term2 + new2);
+    }
     return true;
-#endif
   }
   void AddPair(node_id node1, node_id node2) {
     assert(node1 < n1);
@@ -740,10 +985,13 @@ struct AcceptAllFinalChecker {
 template <class Graph, class VertexLabeling, class EdgeLabeling>
 bool hasPotentialMatch(const Graph &g1, const Graph &g2,
                        VertexLabeling &vertex_labeling,
-                       EdgeLabeling &edge_labeling) {
+                       EdgeLabeling &edge_labeling,
+                       const CandidateMatrix *candidateMatrix,
+                       bool exactMatch) {
   AcceptAllFinalChecker matchChecker;
   VF2SubState<const Graph, VertexLabeling, EdgeLabeling, AcceptAllFinalChecker>
-      state(&g1, &g2, vertex_labeling, edge_labeling, matchChecker, true);
+      state(&g1, &g2, vertex_labeling, edge_labeling, matchChecker, true,
+            candidateMatrix, exactMatch);
   auto ni1 = std::make_unique<node_id[]>(num_vertices(g1));
   auto ni2 = std::make_unique<node_id[]>(num_vertices(g2));
   int n = 0;
@@ -772,11 +1020,21 @@ bool vf2(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
 
   RDKit::ControlCHandler hdlr;
 
+  const bool exactMatch =
+      num_vertices(g1) == num_vertices(g2) && num_edges(g1) == num_edges(g2);
+  auto candidateMatrix = detail::BuildCandidateMatrix(
+      g1, g2, vertex_labeling, edge_labeling, exactMatch);
+  const auto *candidateMatrixPtr = candidateMatrix ? &candidateMatrix : nullptr;
+
   // Use the optimized query order to reject impossible matches without
   // changing the order in which successful matches are returned.
-  if (detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling)) {
-    detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
-        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false);
+  if ((!candidateMatrixPtr || !candidateMatrix.hasEmptyRow()) &&
+      detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling,
+                                candidateMatrixPtr, exactMatch)) {
+    detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling,
+                        MatchChecking>
+        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false,
+           candidateMatrixPtr, exactMatch);
     auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
     auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
     int n = 0;
@@ -816,11 +1074,21 @@ bool vf2_all(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
 
   RDKit::ControlCHandler hdlr;
 
+  const bool exactMatch =
+      num_vertices(g1) == num_vertices(g2) && num_edges(g1) == num_edges(g2);
+  auto candidateMatrix = detail::BuildCandidateMatrix(
+      g1, g2, vertex_labeling, edge_labeling, exactMatch);
+  const auto *candidateMatrixPtr = candidateMatrix ? &candidateMatrix : nullptr;
+
   // Use the optimized query order to reject impossible matches without
   // changing the order in which successful matches are returned.
-  if (detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling)) {
-    detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling, MatchChecking>
-        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false);
+  if ((!candidateMatrixPtr || !candidateMatrix.hasEmptyRow()) &&
+      detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling,
+                                candidateMatrixPtr, exactMatch)) {
+    detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling,
+                        MatchChecking>
+        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false,
+           candidateMatrixPtr, exactMatch);
     auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
     auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
     match(ni1.get(), ni2.get(), s0, F, max_results);
@@ -837,5 +1105,4 @@ bool vf2_all(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
 }  // end of namespace boost
 #endif
 
-#undef RDK_VF2_PRUNING
 #undef RDK_ADJ_ITER
