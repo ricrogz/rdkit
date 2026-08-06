@@ -13,16 +13,13 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <vector>
 
-#include <RDGeneral/BoostStartInclude.h>
-#include <boost/container/small_vector.hpp>
-#include <RDGeneral/BoostEndInclude.h>
-
 #include "Descriptor.h"
-#include "Mancude.h"
 #include "Edge.h"
+#include "Mancude.h"
 
 namespace RDKit {
 
@@ -32,18 +29,49 @@ namespace CIPLabeler {
 
 class Digraph;
 
-// Most CIP molecules need only one 64-bit path word. Keeping it inline avoids
-// one heap allocation for every nonterminal occurrence without making the
-// many terminal Node objects unnecessarily large. The converting constructor
-// preserves source compatibility with the former std::vector-based API.
-class NodeVisitState : public boost::container::small_vector<std::uint64_t, 1> {
-  using Base = boost::container::small_vector<std::uint64_t, 1>;
-
+// Immutable-path visit state used while unfolding the molecular graph. States
+// requiring at most two 64-bit words remain entirely inline. Larger states
+// share a dense checkpoint and retain at most seven added atoms locally; the
+// eighth addition creates a new checkpoint. Copies therefore have bounded cost
+// and never copy the molecule-sized bitset.
+class NodeVisitState {
  public:
-  using Base::Base;
   NodeVisitState() = default;
-  NodeVisitState(std::vector<std::uint64_t> &&words)
-      : Base(words.begin(), words.end()) {}
+  explicit NodeVisitState(std::size_t wordCount);
+  NodeVisitState(std::vector<std::uint64_t> &&words);
+  NodeVisitState(const NodeVisitState &other);
+  NodeVisitState &operator=(const NodeVisitState &other);
+  NodeVisitState(NodeVisitState &&other) noexcept;
+  NodeVisitState &operator=(NodeVisitState &&other) noexcept;
+
+  bool empty() const noexcept;
+  bool test(unsigned int atomIdx) const;
+  void set(unsigned int atomIdx);
+
+  // Materializes pending additions into a private immutable checkpoint when
+  // necessary. The returned span remains valid until this state is modified.
+  std::span<const std::uint64_t> words() const;
+
+  // A non-materializing view used by exact symmetry queries. Together these
+  // two spans represent the same set as words().
+  std::span<const std::uint64_t> checkpointWords() const noexcept;
+  std::span<const unsigned int> addedAtoms() const noexcept;
+
+ private:
+  static constexpr std::size_t INLINE_WORD_COUNT = 2;
+  static constexpr std::size_t CHECKPOINT_INTERVAL = 8;
+
+  struct LargeState {
+    std::shared_ptr<const std::vector<std::uint64_t>> checkpoint;
+    std::array<unsigned int, CHECKPOINT_INTERVAL> addedAtoms{};
+    std::uint8_t addedAtomCount = 0;
+  };
+
+  std::size_t d_wordCount = 0;
+  std::array<std::uint64_t, INLINE_WORD_COUNT> d_inlineWords{};
+  std::unique_ptr<LargeState> dp_large;
+
+  void materialize() const;
 };
 
 class Node {
@@ -128,6 +156,8 @@ class Node {
   // Atoms in the immutable occurrence path built from the original root.
   // Temporary rerooting changes edge directions but not this history.
   std::span<const std::uint64_t> getVisitedAtoms() const;
+  std::span<const std::uint64_t> getVisitedAtomCheckpoint() const;
+  std::span<const unsigned int> getVisitedAtomDeltas() const;
 
   Node *newChild(int idx, Atom *atom) const;
 

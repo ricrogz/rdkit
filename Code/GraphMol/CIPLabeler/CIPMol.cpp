@@ -10,31 +10,178 @@
 //
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
+#include <tuple>
+#include <unordered_set>
 #include <utility>
 
 #include <GraphMol/MolOps.h>
 #include <GraphMol/Substruct/SubstructMatch.h>
+#include <RDGeneral/ControlCHandler.h>
 
 #include "CIPMol.h"
 
 namespace RDKit {
 namespace CIPLabeler {
 
-std::size_t CIPMol::ConstitutionalPathQueryHash::operator()(
-    const ConstitutionalPathQuery &query) const {
-  std::size_t result = 0;
-  const auto combine = [&result](auto value) {
-    const auto hash = std::hash<decltype(value)>{}(value);
-    result ^= hash + 0x9e3779b9u + (result << 6) + (result >> 2);
+namespace {
+
+constexpr std::size_t MAX_AUTOMORPHISM_EVIDENCE_PER_KIND = 8;
+constexpr std::size_t AUTOMORPHISM_EVIDENCE_KEYS_PER_GENERATION = 2048;
+constexpr std::size_t AUTOMORPHISM_EVIDENCE_ATOM_INDICES_PER_GENERATION =
+    262144;
+constexpr std::size_t MIN_AUTOMORPHISM_SEARCH_CALLBACKS = 65536;
+constexpr std::size_t AUTOMORPHISM_SEARCH_CALLBACKS_PER_ATOM = 4096;
+constexpr std::size_t MAX_AUTOMORPHISM_SEARCH_CALLBACKS = 4194304;
+constexpr std::size_t COMPONENT_AUTOMORPHISM_SEARCH_MULTIPLIER = 4;
+
+struct AutomorphismSearchCallbackLimitReached {};
+struct ComponentAutomorphismSearchCallbackLimitReached {};
+
+struct DistanceSignature {
+  unsigned int symmetryClass;
+  unsigned int rootDistance;
+  unsigned int branchDistance;
+
+  bool operator==(const DistanceSignature &other) const = default;
+};
+
+template <typename T>
+void hashCombine(std::size_t &seed, const T &value) {
+  const auto hash = std::hash<T>{}(value);
+  seed ^= hash + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+}
+
+void radixSortDistanceSignatures(std::vector<DistanceSignature> &signatures,
+                                 std::size_t keyCount) {
+  PRECONDITION(keyCount != 0u, "distance-signature key range is empty")
+  std::vector<DistanceSignature> scratch(signatures.size());
+  std::vector<std::size_t> offsets(keyCount + 1u);
+  const auto sortBy = [&](auto getKey) {
+    std::ranges::fill(offsets, 0u);
+    for (const auto &signature : signatures) {
+      const auto key = static_cast<std::size_t>(getKey(signature));
+      PRECONDITION(key < keyCount, "distance-signature key is out of range")
+      ++offsets[key + 1u];
+    }
+    for (std::size_t i = 1; i < offsets.size(); ++i) {
+      offsets[i] += offsets[i - 1u];
+    }
+    for (const auto &signature : signatures) {
+      scratch[offsets[getKey(signature)]++] = signature;
+    }
+    signatures.swap(scratch);
   };
-  combine(query.fixedAtoms[0]);
-  combine(query.fixedAtoms[1]);
-  combine(query.root);
-  combine(query.from);
-  combine(query.to);
+
+  // Stable least-significant-key passes produce an exact lexicographic order
+  // without node allocations or comparison-sort behavior on large components.
+  sortBy([](const auto &signature) { return signature.branchDistance; });
+  sortBy([](const auto &signature) { return signature.rootDistance; });
+  sortBy([](const auto &signature) { return signature.symmetryClass; });
+}
+
+using AtomPropertySignature =
+    std::tuple<unsigned int, unsigned int, int, unsigned int, unsigned int,
+               unsigned int>;
+using NeighborColor = std::tuple<int, bool, unsigned int>;
+
+struct RefinementSignature {
+  unsigned int oldColor;
+  std::vector<NeighborColor> neighbors;
+
+  bool operator==(const RefinementSignature &other) const = default;
+  bool operator<(const RefinementSignature &other) const {
+    return std::tie(oldColor, neighbors) <
+           std::tie(other.oldColor, other.neighbors);
+  }
+};
+
+AtomPropertySignature getAtomPropertySignature(const Atom &atom) {
+  return {atom.getAtomicNum(),    atom.getIsotope(),
+          atom.getFormalCharge(), atom.getNumRadicalElectrons(),
+          atom.getTotalNumHs(),   atom.getDegree()};
+}
+
+bool atomsHaveSameConstitutionalProperties(const Atom &first,
+                                           const Atom &second) {
+  return first.getAtomicNum() == second.getAtomicNum() &&
+         first.getIsotope() == second.getIsotope() &&
+         first.getFormalCharge() == second.getFormalCharge() &&
+         first.getNumRadicalElectrons() == second.getNumRadicalElectrons() &&
+         first.getTotalNumHs() == second.getTotalNumHs() &&
+         first.getDegree() == second.getDegree();
+}
+
+bool maskContainsAtom(std::span<const std::uint64_t> mask,
+                      unsigned int atomIdx) {
+  const auto word = atomIdx / 64u;
+  return word < mask.size() &&
+         (mask[word] & (std::uint64_t{1} << (atomIdx % 64u))) != 0u;
+}
+
+bool fixedSetContainsAtom(std::span<const std::uint64_t> mask,
+                          std::span<const unsigned int> addedAtoms,
+                          unsigned int atomIdx) {
+  return maskContainsAtom(mask, atomIdx) ||
+         std::ranges::find(addedAtoms, atomIdx) != addedAtoms.end();
+}
+
+bool atomSetIsDisjointFromMask(std::span<const unsigned int> atomSet,
+                               std::span<const std::uint64_t> mask,
+                               std::span<const unsigned int> addedAtoms) {
+  for (const auto atomIdx : atomSet) {
+    if (fixedSetContainsAtom(mask, addedAtoms, atomIdx)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool atomSetIsSubsetOfMask(std::span<const unsigned int> atomSet,
+                           std::span<const std::uint64_t> mask,
+                           std::span<const unsigned int> addedAtoms) {
+  for (const auto atomIdx : atomSet) {
+    if (!fixedSetContainsAtom(mask, addedAtoms, atomIdx)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool atomSetIsSubset(std::span<const unsigned int> subset,
+                     std::span<const unsigned int> superset) {
+  return std::ranges::includes(superset, subset);
+}
+
+bool hasSupportedConstitutionalBondType(const Bond &bond) {
+  switch (bond.getBondType()) {
+    case Bond::ZERO:
+    case Bond::HYDROGEN:
+    case Bond::SINGLE:
+    case Bond::DOUBLE:
+    case Bond::TRIPLE:
+    case Bond::QUADRUPLE:
+    case Bond::QUINTUPLE:
+    case Bond::HEXTUPLE:
+    case Bond::AROMATIC:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
+std::size_t CIPMol::ConstitutionalAutomorphismKeyHash::operator()(
+    const ConstitutionalAutomorphismKey &key) const {
+  std::size_t result = 0;
+  hashCombine(result, key.root);
+  hashCombine(result, key.first);
+  hashCombine(result, key.second);
   return result;
 }
 
@@ -154,81 +301,274 @@ bool CIPMol::hasUniqueBond(Atom *begin, Atom *end) const {
   return count == 1u;
 }
 
-void CIPMol::initConstitutionalAutomorphisms() const {
-  if (d_constitutional_automorphisms_initialized) {
-    return;
-  }
-  d_constitutional_automorphisms_initialized = true;
-
-  // Exact self-isomorphism is intended as a shortcut for compact, highly
-  // cyclic stereochemical units. Avoid introducing potentially expensive VF2
-  // work on large molecules; a false result only disables the optimization.
-  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
-  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
-  if (numAtoms == 0u || numAtoms > MAX_AUTOMORPHISM_ATOMS) {
-    return;
-  }
-  if (std::ranges::any_of(d_bonds, [](const Bond *bond) {
-        return bond->getBondType() == Bond::AROMATIC;
-      })) {
+void CIPMol::initConstitutionalAutomorphismData() const {
+  if (d_constitutional_automorphism_data_initialized) {
     return;
   }
 
-  SubstructMatchParameters params;
-  params.recursionPossible = false;
-  params.uniquify = false;
-  // Every retained mapping is an exact proof. If a molecule has more
-  // automorphisms than this bounded sample, a missing mapping merely disables
-  // a shortcut for that query.
-  params.maxMatches = 1024;
-  params.numThreads = 1;
-  params.useChirality = false;
-  params.extraAtomCheckOverridesDefaultCheck = true;
-  params.extraAtomCheck = [](const Atom &queryAtom, const Atom &molAtom) {
-    return queryAtom.getAtomicNum() == molAtom.getAtomicNum() &&
-           queryAtom.getIsotope() == molAtom.getIsotope() &&
-           queryAtom.getFormalCharge() == molAtom.getFormalCharge() &&
-           queryAtom.getNumRadicalElectrons() ==
-               molAtom.getNumRadicalElectrons() &&
-           queryAtom.getTotalNumHs() == molAtom.getTotalNumHs();
-  };
-  params.extraBondCheckOverridesDefaultCheck = true;
-  params.extraBondCheck = [](const Bond &queryBond, const Bond &molBond) {
-    return queryBond.getBondType() == molBond.getBondType() &&
-           queryBond.getIsAromatic() == molBond.getIsAromatic();
-  };
+  const auto numAtoms = getNumAtoms();
+  constexpr auto unassigned = std::numeric_limits<unsigned int>::max();
+  d_component_ids.assign(numAtoms, unassigned);
+  d_component_local_indices.assign(numAtoms, unassigned);
+  d_constitutional_symmetry_classes.assign(numAtoms, 0u);
+  if (numAtoms == 0u) {
+    d_constitutional_automorphism_data_initialized = true;
+    return;
+  }
 
-  const auto matches = SubstructMatch(d_mol, d_mol, params);
-  d_constitutional_automorphisms.reserve(matches.size());
-  for (const auto &match : matches) {
-    if (match.size() != numAtoms) {
+  d_component_atoms.clear();
+  std::vector<Atom *> queue;
+  for (unsigned int atomIdx = 0; atomIdx < numAtoms; ++atomIdx) {
+    if (d_component_ids[atomIdx] != unassigned) {
       continue;
     }
-    std::vector<unsigned int> mapping(numAtoms,
-                                      static_cast<unsigned int>(numAtoms));
-    for (const auto &[queryIdx, molIdx] : match) {
-      if (queryIdx < 0 || molIdx < 0 ||
-          static_cast<std::uint64_t>(queryIdx) >= numAtoms ||
-          static_cast<std::uint64_t>(molIdx) >= numAtoms) {
-        mapping.clear();
-        break;
-      }
-      mapping[queryIdx] = molIdx;
-    }
-    if (!mapping.empty() &&
-        std::ranges::none_of(mapping, [numAtoms](unsigned int idx) {
-          return idx == numAtoms;
-        })) {
-      ConstitutionalAutomorphism automorphism{std::move(mapping), {}};
-      for (std::uint64_t atomIdx = 0; atomIdx < numAtoms; ++atomIdx) {
-        if (automorphism.mapping[atomIdx] != atomIdx) {
-          automorphism.movedAtoms[atomIdx / 64u] |= std::uint64_t{1}
-                                                    << (atomIdx % 64u);
+    const auto component = static_cast<unsigned int>(d_component_atoms.size());
+    d_component_atoms.emplace_back();
+    queue.clear();
+    queue.push_back(getAtom(atomIdx));
+    d_component_ids[atomIdx] = component;
+    for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+      const auto atom = queue[pos];
+      d_component_local_indices[atom->getIdx()] =
+          static_cast<unsigned int>(d_component_atoms.back().size());
+      d_component_atoms.back().push_back(atom->getIdx());
+      for (const auto neighbor : getNeighbors(atom)) {
+        if (d_component_ids[neighbor->getIdx()] == unassigned) {
+          d_component_ids[neighbor->getIdx()] = component;
+          queue.push_back(neighbor);
         }
       }
-      d_constitutional_automorphisms.push_back(std::move(automorphism));
     }
   }
+
+  d_component_has_cycle.assign(d_component_atoms.size(), 0u);
+  d_component_is_supported.assign(d_component_atoms.size(), 1u);
+  d_component_automorphism_search_callbacks.assign(d_component_atoms.size(),
+                                                   0u);
+  d_component_automorphism_prefilter_queries.assign(d_component_atoms.size(),
+                                                    0u);
+  d_component_mols.clear();
+  d_component_mols.resize(d_component_atoms.size());
+  d_component_bond_indices.clear();
+  d_component_bond_indices.resize(d_component_atoms.size());
+  d_constitutional_symmetry_classes_initialized.assign(d_component_atoms.size(),
+                                                       0u);
+  std::unordered_set<std::uint64_t> atomPairs;
+  atomPairs.reserve(d_bonds.size());
+  for (const auto bond : d_bonds) {
+    const auto begin = bond->getBeginAtomIdx();
+    const auto end = bond->getEndAtomIdx();
+    const auto component = d_component_ids[begin];
+    d_component_bond_indices[component].push_back(bond->getIdx());
+
+    const auto first = std::min(begin, end);
+    const auto second = std::max(begin, end);
+    const auto atomPair = (static_cast<std::uint64_t>(first) << 32u) | second;
+    if (begin == end || !atomPairs.insert(atomPair).second ||
+        !hasSupportedConstitutionalBondType(*bond)) {
+      // VF2 treats the molecular topology as an undirected simple graph. Fall
+      // back to normal CIP traversal when that graph cannot exactly represent
+      // a bond, or when ordinary CIP expansion would reject its bond order.
+      d_component_is_supported[component] = 0u;
+    }
+  }
+  for (std::size_t component = 0; component < d_component_atoms.size();
+       ++component) {
+    d_component_has_cycle[component] =
+        d_component_bond_indices[component].size() >=
+        d_component_atoms[component].size();
+  }
+
+  // Peel leaves to obtain the cyclic 2-core. A symmetry query is useful only
+  // when both compared branches lead into this core; this keeps remote rings
+  // from making unrelated pendant trees eligible for VF2.
+  std::vector<unsigned int> coreDegree(numAtoms, 0u);
+  std::vector<unsigned int> peelQueue;
+  peelQueue.reserve(numAtoms);
+  for (const auto atom : atoms()) {
+    coreDegree[atom->getIdx()] = atom->getDegree();
+    if (coreDegree[atom->getIdx()] < 2u) {
+      peelQueue.push_back(atom->getIdx());
+    }
+  }
+  d_atom_in_cyclic_core.assign(numAtoms, 1u);
+  for (std::size_t pos = 0; pos < peelQueue.size(); ++pos) {
+    const auto atomIdx = peelQueue[pos];
+    if (!d_atom_in_cyclic_core[atomIdx]) {
+      continue;
+    }
+    d_atom_in_cyclic_core[atomIdx] = 0u;
+    for (const auto neighbor : getNeighbors(getAtom(atomIdx))) {
+      const auto neighborIdx = neighbor->getIdx();
+      if (d_atom_in_cyclic_core[neighborIdx] && coreDegree[neighborIdx] > 0u &&
+          --coreDegree[neighborIdx] == 1u) {
+        peelQueue.push_back(neighborIdx);
+      }
+    }
+  }
+  // The vertices outside a graph's 2-core form trees rooted at that core.
+  // Multi-source distances therefore answer every directed "does this side
+  // reach the core?" query in O(1), instead of running a BFS for each bond in
+  // a long pendant tree.
+  d_cyclic_core_distances.assign(numAtoms, unassigned);
+  std::vector<unsigned int> coreQueue;
+  coreQueue.reserve(numAtoms);
+  for (unsigned int atomIdx = 0; atomIdx < numAtoms; ++atomIdx) {
+    if (d_atom_in_cyclic_core[atomIdx]) {
+      d_cyclic_core_distances[atomIdx] = 0u;
+      coreQueue.push_back(atomIdx);
+    }
+  }
+  for (std::size_t pos = 0; pos < coreQueue.size(); ++pos) {
+    if ((pos & 0xffu) == 0u && ControlCHandler::getGotSignal()) {
+      throw ControlCCaught();
+    }
+    const auto atomIdx = coreQueue[pos];
+    for (const auto neighbor : getNeighbors(getAtom(atomIdx))) {
+      const auto neighborIdx = neighbor->getIdx();
+      if (d_cyclic_core_distances[neighborIdx] == unassigned) {
+        d_cyclic_core_distances[neighborIdx] =
+            d_cyclic_core_distances[atomIdx] + 1u;
+        coreQueue.push_back(neighborIdx);
+      }
+    }
+  }
+
+  d_constitutional_automorphism_data_initialized = true;
+}
+
+void CIPMol::initConstitutionalSymmetryClasses(unsigned int component) const {
+  if (d_constitutional_symmetry_classes_initialized[component]) {
+    return;
+  }
+
+  // Build an equitable constitutional partition directly from the fields
+  // used by the exact matcher. Unlike canonical SMILES ranking, this ignores
+  // annotations such as dummy-atom maps and avoids special ring traversals on
+  // the highly fused systems for which this shortcut is intended. The result
+  // is only a necessary-condition filter; VF2 still proves equality exactly.
+  const auto &componentAtoms = d_component_atoms[component];
+  std::vector<std::pair<AtomPropertySignature, unsigned int>> initialOrder;
+  initialOrder.reserve(componentAtoms.size());
+  for (std::size_t localIdx = 0; localIdx < componentAtoms.size(); ++localIdx) {
+    initialOrder.emplace_back(
+        getAtomPropertySignature(*getAtom(componentAtoms[localIdx])), localIdx);
+  }
+  std::ranges::sort(initialOrder, [](const auto &first, const auto &second) {
+    return first.first < second.first;
+  });
+
+  std::vector<unsigned int> colors(componentAtoms.size());
+  unsigned int classCount = 0u;
+  for (std::size_t pos = 0; pos < initialOrder.size(); ++pos) {
+    if (pos != 0u && initialOrder[pos - 1u].first != initialOrder[pos].first) {
+      ++classCount;
+    }
+    colors[initialOrder[pos].second] = classCount;
+  }
+  ++classCount;
+
+  // Use only logarithmically many synchronous refinement rounds so path-like
+  // appendages cannot turn this prefilter into an unbounded propagation pass.
+  // Regular symmetric cages normally stabilize after one round. Stopping
+  // early is conservative: it can only merge candidate classes and cannot
+  // create a false equality.
+  const auto maxRounds =
+      std::max<std::size_t>(1u, 2u * std::bit_width(componentAtoms.size()));
+  std::vector<RefinementSignature> signatures(componentAtoms.size());
+  std::vector<unsigned int> order(componentAtoms.size());
+  std::vector<unsigned int> nextColors(componentAtoms.size());
+  for (std::size_t round = 0; round < maxRounds; ++round) {
+    for (std::size_t localIdx = 0; localIdx < componentAtoms.size();
+         ++localIdx) {
+      if ((localIdx & 0xffu) == 0u && ControlCHandler::getGotSignal()) {
+        throw ControlCCaught();
+      }
+      auto &signature = signatures[localIdx];
+      signature.oldColor = colors[localIdx];
+      signature.neighbors.clear();
+      const auto atom = getAtom(componentAtoms[localIdx]);
+      signature.neighbors.reserve(atom->getDegree());
+      for (const auto bond : getBonds(atom)) {
+        const auto neighborIdx = bond->getOtherAtomIdx(atom->getIdx());
+        signature.neighbors.emplace_back(
+            static_cast<int>(bond->getBondType()), bond->getIsAromatic(),
+            colors[d_component_local_indices[neighborIdx]]);
+      }
+      std::ranges::sort(signature.neighbors);
+      order[localIdx] = localIdx;
+    }
+    std::ranges::sort(order, [&](const auto first, const auto second) {
+      return signatures[first] < signatures[second];
+    });
+
+    unsigned int nextClassCount = 0u;
+    for (std::size_t pos = 0; pos < order.size(); ++pos) {
+      if (pos != 0u && signatures[order[pos - 1u]] != signatures[order[pos]]) {
+        ++nextClassCount;
+      }
+      nextColors[order[pos]] = nextClassCount;
+    }
+    ++nextClassCount;
+    colors.swap(nextColors);
+    if (nextClassCount == classCount) {
+      break;
+    }
+    classCount = nextClassCount;
+  }
+
+  for (std::size_t localIdx = 0; localIdx < componentAtoms.size(); ++localIdx) {
+    d_constitutional_symmetry_classes[componentAtoms[localIdx]] =
+        colors[localIdx];
+  }
+  d_constitutional_symmetry_classes_initialized[component] = 1u;
+}
+
+const RWMol &CIPMol::getConstitutionalComponentMol(
+    unsigned int component) const {
+  if (d_component_mols[component]) {
+    return *d_component_mols[component];
+  }
+
+  auto componentMol = std::make_shared<RWMol>();
+  const auto &componentAtoms = d_component_atoms[component];
+  for (const auto atomIdx : componentAtoms) {
+    auto atomCopy = std::unique_ptr<Atom>(getAtom(atomIdx)->copy());
+    componentMol->addAtom(atomCopy.get(), false, true);
+    atomCopy.release();
+  }
+
+  const auto &componentBondIndices = d_component_bond_indices[component];
+  for (const auto bondIdx : componentBondIndices) {
+    const auto bond = getBond(bondIdx);
+    const auto beginIdx = bond->getBeginAtomIdx();
+    auto bondCopy = std::unique_ptr<Bond>(bond->copy());
+    bondCopy->setBeginAtomIdx(d_component_local_indices[beginIdx]);
+    bondCopy->setEndAtomIdx(d_component_local_indices[bond->getEndAtomIdx()]);
+    // Chirality is deliberately excluded from this constitutional equality
+    // proof. Clearing index-bearing stereo metadata also keeps the component
+    // copy independent of the atom numbering in the source molecule.
+    bondCopy->setStereo(Bond::STEREONONE);
+    bondCopy->getStereoAtoms().clear();
+    bondCopy->setBondDir(Bond::NONE);
+    componentMol->addBond(bondCopy.get(), true);
+    bondCopy.release();
+  }
+
+  d_component_mols[component] = std::move(componentMol);
+  return *d_component_mols[component];
+}
+
+bool CIPMol::branchReachesCyclicCore(Atom *root, Atom *end) const {
+  const auto bond = d_mol.getBondBetweenAtoms(root->getIdx(), end->getIdx());
+  if (bond == nullptr) {
+    return false;
+  }
+  constexpr auto unreachable = std::numeric_limits<unsigned int>::max();
+  const auto rootDistance = d_cyclic_core_distances[root->getIdx()];
+  const auto endDistance = d_cyclic_core_distances[end->getIdx()];
+  return endDistance != unreachable &&
+         (endDistance == 0u || endDistance < rootDistance);
 }
 
 bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
@@ -236,6 +576,15 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
   if (root == nullptr || from == nullptr || to == nullptr) {
     return false;
   }
+  const auto numAtoms = getNumAtoms();
+  const auto rootIdx = root->getIdx();
+  const auto fromIdx = from->getIdx();
+  const auto toIdx = to->getIdx();
+  if (rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms ||
+      getAtom(rootIdx) != root || getAtom(fromIdx) != from ||
+      getAtom(toIdx) != to) {
+    return false;
+  }
   if (!hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
     return false;
   }
@@ -243,78 +592,22 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
     return true;
   }
 
-  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
-  if (numAtoms == 0u) {
-    return false;
-  }
-  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
-  auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
-  auto toIdx = static_cast<std::uint64_t>(to->getIdx());
-  if (rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms) {
-    return false;
-  }
-  if (fromIdx > toIdx) {
-    std::swap(fromIdx, toIdx);
-  }
-  const auto cacheKey = (rootIdx * numAtoms + fromIdx) * numAtoms + toIdx;
-  const auto cached = d_constitutional_automorphism_cache.find(cacheKey);
-  if (cached != d_constitutional_automorphism_cache.end()) {
-    return cached->second;
-  }
-
-  // A one-off root query only needs one constrained match. Enumerating the
-  // automorphism group is reserved for the many path-constrained reroot
-  // queries, where it is amortized.
-  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
-  bool equivalent = false;
-  if (d_constitutional_automorphisms_initialized) {
-    equivalent = std::ranges::any_of(
-        d_constitutional_automorphisms, [&](const auto &automorphism) {
-          return automorphism.mapping[rootIdx] == rootIdx &&
-                 automorphism.mapping[fromIdx] == toIdx;
-        });
-  }
-  if (numAtoms <= MAX_AUTOMORPHISM_ATOMS && !equivalent &&
-      std::ranges::none_of(d_bonds, [](const Bond *bond) {
-        return bond->getBondType() == Bond::AROMATIC;
-      })) {
-    SubstructMatchParameters params;
-    params.recursionPossible = false;
-    params.uniquify = false;
-    params.maxMatches = 1;
-    params.numThreads = 1;
-    params.useChirality = false;
-    params.extraAtomCheckOverridesDefaultCheck = true;
-    params.extraAtomCheck = [rootIdx, fromIdx, toIdx](const Atom &queryAtom,
-                                                      const Atom &molAtom) {
-      const auto queryIdx = static_cast<std::uint64_t>(queryAtom.getIdx());
-      const auto molIdx = static_cast<std::uint64_t>(molAtom.getIdx());
-      if ((queryIdx == rootIdx) != (molIdx == rootIdx) ||
-          (queryIdx == fromIdx) != (molIdx == toIdx)) {
-        return false;
-      }
-      return queryAtom.getAtomicNum() == molAtom.getAtomicNum() &&
-             queryAtom.getIsotope() == molAtom.getIsotope() &&
-             queryAtom.getFormalCharge() == molAtom.getFormalCharge() &&
-             queryAtom.getNumRadicalElectrons() ==
-                 molAtom.getNumRadicalElectrons() &&
-             queryAtom.getTotalNumHs() == molAtom.getTotalNumHs();
-    };
-    params.extraBondCheckOverridesDefaultCheck = true;
-    params.extraBondCheck = [](const Bond &queryBond, const Bond &molBond) {
-      return queryBond.getBondType() == molBond.getBondType() &&
-             queryBond.getIsAromatic() == molBond.getIsAromatic();
-    };
-    equivalent = !SubstructMatch(d_mol, d_mol, params).empty();
-  }
-  d_constitutional_automorphism_cache.emplace(cacheKey, equivalent);
-  return equivalent;
+  return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, {}, {});
 }
 
 bool CIPMol::hasConstitutionalAutomorphism(
-    Atom *root, Atom *from, Atom *to,
-    std::span<const std::uint64_t> fixedAtoms) const {
+    Atom *root, Atom *from, Atom *to, std::span<const std::uint64_t> fixedAtoms,
+    std::span<const unsigned int> addedFixedAtoms) const {
   if (root == nullptr || from == nullptr || to == nullptr) {
+    return false;
+  }
+  const auto numAtoms = getNumAtoms();
+  const auto rootIdx = root->getIdx();
+  const auto fromIdx = from->getIdx();
+  const auto toIdx = to->getIdx();
+  if (rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms ||
+      getAtom(rootIdx) != root || getAtom(fromIdx) != from ||
+      getAtom(toIdx) != to || fixedAtoms.size() < (numAtoms + 63u) / 64u) {
     return false;
   }
   if (!hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
@@ -324,77 +617,482 @@ bool CIPMol::hasConstitutionalAutomorphism(
     return true;
   }
 
-  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
-  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
-  const auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
-  const auto toIdx = static_cast<std::uint64_t>(to->getIdx());
-  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
-  if (numAtoms == 0u || numAtoms > MAX_AUTOMORPHISM_ATOMS ||
-      rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms ||
-      fixedAtoms.size() < (numAtoms + 63u) / 64u) {
+  return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, fixedAtoms,
+                                       addedFixedAtoms);
+}
+
+bool CIPMol::isInSameComponent(Atom *first, Atom *second) const {
+  if (first == nullptr || second == nullptr) {
+    return false;
+  }
+  const auto firstIdx = first->getIdx();
+  const auto secondIdx = second->getIdx();
+  if (firstIdx >= getNumAtoms() || secondIdx >= getNumAtoms() ||
+      getAtom(firstIdx) != first || getAtom(secondIdx) != second) {
+    return false;
+  }
+  initConstitutionalAutomorphismData();
+  return d_component_ids[firstIdx] == d_component_ids[secondIdx];
+}
+
+bool CIPMol::atomsConstitutionallyEquivalent(const Atom &first,
+                                             const Atom &second) const {
+  // Every refinement class is a subset of one complete atom-property class,
+  // so this single comparison covers the explicit constitutional fields as
+  // well as the refined neighborhood invariant.
+  return d_constitutional_symmetry_classes[first.getIdx()] ==
+         d_constitutional_symmetry_classes[second.getIdx()];
+}
+
+bool CIPMol::bondsConstitutionallyEquivalent(const Bond &first,
+                                             const Bond &second) const {
+  return first.getBondType() == second.getBondType() &&
+         first.getIsAromatic() == second.getIsAromatic() &&
+         d_kekulized_bonds[first.getIdx()] ==
+             d_kekulized_bonds[second.getIdx()];
+}
+
+CIPMol::ConstitutionalAutomorphismEvidence &CIPMol::getAutomorphismEvidence(
+    const ConstitutionalAutomorphismKey &key) const {
+  if (const auto current =
+          d_current_constitutional_automorphism_evidence.find(key);
+      current != d_current_constitutional_automorphism_evidence.end()) {
+    return current->second;
+  }
+
+  std::optional<ConstitutionalAutomorphismEvidence> previousEvidence;
+  if (const auto previous =
+          d_previous_constitutional_automorphism_evidence.find(key);
+      previous != d_previous_constitutional_automorphism_evidence.end()) {
+    previousEvidence.emplace(std::move(previous->second));
+    d_previous_automorphism_evidence_atom_indices -=
+        previousEvidence->storedAtomIndexCount;
+    d_previous_constitutional_automorphism_evidence.erase(previous);
+  }
+
+  if (d_current_constitutional_automorphism_evidence.size() >=
+          AUTOMORPHISM_EVIDENCE_KEYS_PER_GENERATION ||
+      (previousEvidence &&
+       d_current_automorphism_evidence_atom_indices +
+               previousEvidence->storedAtomIndexCount >
+           AUTOMORPHISM_EVIDENCE_ATOM_INDICES_PER_GENERATION)) {
+    d_previous_constitutional_automorphism_evidence =
+        std::move(d_current_constitutional_automorphism_evidence);
+    d_previous_automorphism_evidence_atom_indices =
+        d_current_automorphism_evidence_atom_indices;
+    d_current_constitutional_automorphism_evidence.clear();
+    d_current_automorphism_evidence_atom_indices = 0;
+  }
+
+  const auto insertion =
+      previousEvidence
+          ? d_current_constitutional_automorphism_evidence.emplace(
+                key, std::move(*previousEvidence))
+          : d_current_constitutional_automorphism_evidence.try_emplace(key);
+  if (previousEvidence) {
+    d_current_automorphism_evidence_atom_indices +=
+        insertion.first->second.storedAtomIndexCount;
+  }
+  return insertion.first->second;
+}
+
+std::optional<bool> CIPMol::findAutomorphismEvidence(
+    const ConstitutionalAutomorphismEvidence &evidence,
+    std::span<const std::uint64_t> fixedAtoms,
+    std::span<const unsigned int> addedFixedAtoms) {
+  if (fixedAtoms.empty() && addedFixedAtoms.empty() &&
+      !evidence.movedAtomSets.empty()) {
+    return true;
+  }
+  if (std::ranges::any_of(evidence.movedAtomSets, [&](const auto &movedAtoms) {
+        return atomSetIsDisjointFromMask(movedAtoms, fixedAtoms,
+                                         addedFixedAtoms);
+      })) {
+    return true;
+  }
+  if (evidence.searchDisabled) {
+    return false;
+  }
+  if (std::ranges::any_of(evidence.failedFixedAtomSets,
+                          [&](const auto &failedFixedAtoms) {
+                            return atomSetIsSubsetOfMask(
+                                failedFixedAtoms, fixedAtoms, addedFixedAtoms);
+                          })) {
+    return false;
+  }
+  return std::nullopt;
+}
+
+void CIPMol::addAutomorphismWitness(
+    ConstitutionalAutomorphismEvidence &evidence,
+    std::vector<unsigned int> movedAtoms) const {
+  std::ranges::sort(movedAtoms);
+  if (std::ranges::any_of(evidence.movedAtomSets, [&](const auto &existing) {
+        return atomSetIsSubset(existing, movedAtoms);
+      })) {
+    return;
+  }
+  std::size_t removedIndices = 0;
+  std::size_t removedSets = 0;
+  for (const auto &existing : evidence.movedAtomSets) {
+    if (atomSetIsSubset(movedAtoms, existing)) {
+      removedIndices += existing.size();
+      ++removedSets;
+    }
+  }
+  if (evidence.movedAtomSets.size() - removedSets >=
+          MAX_AUTOMORPHISM_EVIDENCE_PER_KIND ||
+      d_current_automorphism_evidence_atom_indices - removedIndices +
+              movedAtoms.size() >
+          AUTOMORPHISM_EVIDENCE_ATOM_INDICES_PER_GENERATION) {
+    return;
+  }
+  std::erase_if(evidence.movedAtomSets, [&](const auto &existing) {
+    return atomSetIsSubset(movedAtoms, existing);
+  });
+  evidence.storedAtomIndexCount -= removedIndices;
+  d_current_automorphism_evidence_atom_indices -= removedIndices;
+  evidence.storedAtomIndexCount += movedAtoms.size();
+  d_current_automorphism_evidence_atom_indices += movedAtoms.size();
+  evidence.movedAtomSets.push_back(std::move(movedAtoms));
+}
+
+void CIPMol::addAutomorphismFailure(
+    ConstitutionalAutomorphismEvidence &evidence,
+    std::vector<unsigned int> fixedAtoms) const {
+  std::ranges::sort(fixedAtoms);
+  if (std::ranges::any_of(evidence.failedFixedAtomSets,
+                          [&](const auto &existing) {
+                            return atomSetIsSubset(existing, fixedAtoms);
+                          })) {
+    return;
+  }
+  std::size_t removedIndices = 0;
+  std::size_t removedSets = 0;
+  for (const auto &existing : evidence.failedFixedAtomSets) {
+    if (atomSetIsSubset(fixedAtoms, existing)) {
+      removedIndices += existing.size();
+      ++removedSets;
+    }
+  }
+  if (evidence.failedFixedAtomSets.size() - removedSets >=
+          MAX_AUTOMORPHISM_EVIDENCE_PER_KIND ||
+      d_current_automorphism_evidence_atom_indices - removedIndices +
+              fixedAtoms.size() >
+          AUTOMORPHISM_EVIDENCE_ATOM_INDICES_PER_GENERATION) {
+    return;
+  }
+  std::erase_if(evidence.failedFixedAtomSets, [&](const auto &existing) {
+    return atomSetIsSubset(fixedAtoms, existing);
+  });
+  evidence.storedAtomIndexCount -= removedIndices;
+  d_current_automorphism_evidence_atom_indices -= removedIndices;
+  evidence.storedAtomIndexCount += fixedAtoms.size();
+  d_current_automorphism_evidence_atom_indices += fixedAtoms.size();
+  evidence.failedFixedAtomSets.push_back(std::move(fixedAtoms));
+}
+
+bool CIPMol::hasConstitutionalAutomorphism(
+    unsigned int rootIdx, unsigned int fromIdx, unsigned int toIdx,
+    std::span<const std::uint64_t> fixedAtoms,
+    std::span<const unsigned int> addedFixedAtoms) const {
+  initConstitutionalAutomorphismData();
+  const auto component = d_component_ids[rootIdx];
+  if (d_component_ids[fromIdx] != component ||
+      d_component_ids[toIdx] != component ||
+      !d_component_has_cycle[component] ||
+      !d_component_is_supported[component] ||
+      !branchReachesCyclicCore(getAtom(rootIdx), getAtom(fromIdx)) ||
+      !branchReachesCyclicCore(getAtom(rootIdx), getAtom(toIdx))) {
     return false;
   }
 
-  ConstitutionalPathQuery query{
-      {fixedAtoms[0], numAtoms > 64u ? fixedAtoms[1] : 0u},
-      static_cast<unsigned int>(rootIdx),
-      static_cast<unsigned int>(fromIdx),
-      static_cast<unsigned int>(toIdx)};
-  const auto cached = d_constitutional_path_query_cache.find(query);
-  if (cached != d_constitutional_path_query_cache.end()) {
-    return cached->second;
+  if (fromIdx > toIdx) {
+    std::swap(fromIdx, toIdx);
+  }
+  if (!atomsHaveSameConstitutionalProperties(*getAtom(fromIdx),
+                                             *getAtom(toIdx))) {
+    return false;
+  }
+  initConstitutionalSymmetryClasses(component);
+  if (!atomsConstitutionallyEquivalent(*getAtom(fromIdx), *getAtom(toIdx))) {
+    return false;
   }
 
-  initConstitutionalAutomorphisms();
-  const auto equivalent = std::ranges::any_of(
-      d_constitutional_automorphisms, [&](const auto &automorphism) {
-        if (automorphism.mapping[rootIdx] != rootIdx ||
-            automorphism.mapping[fromIdx] != toIdx) {
-          return false;
+  const ConstitutionalAutomorphismKey key{rootIdx, fromIdx, toIdx};
+  auto &evidence = getAutomorphismEvidence(key);
+  if (const auto cached =
+          findAutomorphismEvidence(evidence, fixedAtoms, addedFixedAtoms)) {
+    return *cached;
+  }
+
+  const auto &componentAtoms = d_component_atoms[component];
+  const auto cacheFailure = [&](bool pathIndependent = false) {
+    std::vector<unsigned int> fixedAtomSet;
+    if (!pathIndependent) {
+      for (const auto atomIdx : componentAtoms) {
+        if (atomIdx != rootIdx &&
+            fixedSetContainsAtom(fixedAtoms, addedFixedAtoms, atomIdx)) {
+          fixedAtomSet.push_back(atomIdx);
         }
-        const auto wordCount = (numAtoms + 63u) / 64u;
-        for (std::uint64_t word = 0; word < wordCount; ++word) {
-          if ((fixedAtoms[word] & automorphism.movedAtoms[word]) != 0u) {
-            return false;
+      }
+    }
+    addAutomorphismFailure(evidence, std::move(fixedAtomSet));
+  };
+  if (fixedSetContainsAtom(fixedAtoms, addedFixedAtoms, fromIdx) ||
+      fixedSetContainsAtom(fixedAtoms, addedFixedAtoms, toIdx)) {
+    cacheFailure();
+    return false;
+  }
+
+  const auto scaledSearchCallbacks =
+      componentAtoms.size() > MAX_AUTOMORPHISM_SEARCH_CALLBACKS /
+                                  AUTOMORPHISM_SEARCH_CALLBACKS_PER_ATOM
+          ? MAX_AUTOMORPHISM_SEARCH_CALLBACKS
+          : componentAtoms.size() * AUTOMORPHISM_SEARCH_CALLBACKS_PER_ATOM;
+  const auto searchCallbackLimit =
+      std::clamp(scaledSearchCallbacks, MIN_AUTOMORPHISM_SEARCH_CALLBACKS,
+                 MAX_AUTOMORPHISM_SEARCH_CALLBACKS);
+  const auto componentSearchCallbackLimit =
+      COMPONENT_AUTOMORPHISM_SEARCH_MULTIPLIER * searchCallbackLimit;
+  auto &componentSearchCallbacks =
+      d_component_automorphism_search_callbacks[component];
+  if (componentSearchCallbacks >= componentSearchCallbackLimit) {
+    return false;
+  }
+
+  // Exact graph-distance individualization is a strong VF2 prefilter, but it
+  // is itself linear in the component. Use it for only logarithmically many
+  // uncached endpoint pairs so a succession of cheap negative proofs cannot
+  // become quadratic. Later searches remain exact and are bounded by their
+  // root/endpoint/fixed constraints plus the callback allowances below.
+  auto &prefilterQueries =
+      d_component_automorphism_prefilter_queries[component];
+  const auto prefilterQueryLimit =
+      std::max<std::size_t>(1u, 2u * std::bit_width(componentAtoms.size()));
+  const bool useDistanceInvariants = prefilterQueries < prefilterQueryLimit;
+  std::vector<unsigned int> rootDistances;
+  std::vector<unsigned int> fromDistances;
+  std::vector<unsigned int> toDistances;
+  if (useDistanceInvariants) {
+    ++prefilterQueries;
+    std::vector<unsigned int> queue;
+    queue.reserve(componentAtoms.size());
+    const auto getDistances = [&](unsigned int start) {
+      constexpr auto unreachable = std::numeric_limits<unsigned int>::max();
+      std::vector<unsigned int> distances(componentAtoms.size(), unreachable);
+      queue.clear();
+      queue.push_back(start);
+      distances[d_component_local_indices[start]] = 0u;
+      for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+        if ((pos & 0xffu) == 0u && ControlCHandler::getGotSignal()) {
+          throw ControlCCaught();
+        }
+        const auto atomIdx = queue[pos];
+        const auto atomDistance = distances[d_component_local_indices[atomIdx]];
+        for (const auto neighbor : getNeighbors(getAtom(atomIdx))) {
+          const auto neighborIdx = neighbor->getIdx();
+          const auto neighborLocal = d_component_local_indices[neighborIdx];
+          if (distances[neighborLocal] == unreachable) {
+            distances[neighborLocal] = atomDistance + 1u;
+            queue.push_back(neighborIdx);
           }
         }
-        return true;
+      }
+      return distances;
+    };
+    rootDistances = getDistances(rootIdx);
+    fromDistances = getDistances(fromIdx);
+    toDistances = getDistances(toIdx);
+
+    // Compare the two exact distance-signature multisets in deterministic
+    // linear time using the component size as the key range. A mismatch proves
+    // that no root-fixing automorphism can map from to to.
+    std::vector<DistanceSignature> querySignatures;
+    std::vector<DistanceSignature> targetSignatures;
+    querySignatures.reserve(componentAtoms.size());
+    targetSignatures.reserve(componentAtoms.size());
+    for (const auto atomIdx : componentAtoms) {
+      const auto localIdx = d_component_local_indices[atomIdx];
+      querySignatures.push_back({d_constitutional_symmetry_classes[atomIdx],
+                                 rootDistances[localIdx],
+                                 fromDistances[localIdx]});
+      targetSignatures.push_back({d_constitutional_symmetry_classes[atomIdx],
+                                  rootDistances[localIdx],
+                                  toDistances[localIdx]});
+    }
+    radixSortDistanceSignatures(querySignatures, componentAtoms.size());
+    radixSortDistanceSignatures(targetSignatures, componentAtoms.size());
+    if (querySignatures != targetSignatures) {
+      cacheFailure(true);
+      return false;
+    }
+  }
+
+  std::size_t searchCallbacks = 0;
+  const auto consumeSearchCallback = [&]() {
+    if (componentSearchCallbacks >= componentSearchCallbackLimit) {
+      throw ComponentAutomorphismSearchCallbackLimitReached();
+    }
+    if (searchCallbacks >= searchCallbackLimit) {
+      throw AutomorphismSearchCallbackLimitReached();
+    }
+    ++componentSearchCallbacks;
+    ++searchCallbacks;
+  };
+  initKekulizedBonds();
+  const auto &componentMol = getConstitutionalComponentMol(component);
+
+  // One constrained match answers the exact question directly. Unlike a
+  // bounded sample of the automorphism group, this remains effective for very
+  // large symmetry groups and for arbitrary molecule sizes.
+  SubstructMatchParameters params;
+  params.recursionPossible = false;
+  params.uniquify = false;
+  params.maxMatches = 1;
+  params.numThreads = 1;
+  params.useChirality = false;
+  params.extraAtomCheckOverridesDefaultCheck = true;
+  params.extraAtomCheck =
+      [this, rootIdx, fromIdx, toIdx, component, fixedAtoms, addedFixedAtoms,
+       &rootDistances, &fromDistances, &consumeSearchCallback, &toDistances,
+       useDistanceInvariants](const Atom &queryAtom, const Atom &molAtom) {
+        if (ControlCHandler::getGotSignal()) {
+          throw ControlCCaught();
+        }
+        const auto queryLocal = queryAtom.getIdx();
+        const auto molLocal = molAtom.getIdx();
+        const auto &componentAtoms = d_component_atoms[component];
+        if (queryLocal >= componentAtoms.size() ||
+            molLocal >= componentAtoms.size()) {
+          return false;
+        }
+        consumeSearchCallback();
+        const auto queryIdx = componentAtoms[queryLocal];
+        const auto molIdx = componentAtoms[molLocal];
+        const auto queryFixed =
+            queryIdx == rootIdx ||
+            fixedSetContainsAtom(fixedAtoms, addedFixedAtoms, queryIdx);
+        const auto molFixed =
+            molIdx == rootIdx ||
+            fixedSetContainsAtom(fixedAtoms, addedFixedAtoms, molIdx);
+        if ((queryIdx == fromIdx && molIdx != toIdx) ||
+            (useDistanceInvariants &&
+             (rootDistances[queryLocal] != rootDistances[molLocal] ||
+              fromDistances[queryLocal] != toDistances[molLocal])) ||
+            ((queryFixed || molFixed) && molIdx != queryIdx)) {
+          return false;
+        }
+        return atomsConstitutionallyEquivalent(*getAtom(queryIdx),
+                                               *getAtom(molIdx));
+      };
+  params.extraBondCheckOverridesDefaultCheck = true;
+  params.extraBondCheck = [this, component, &consumeSearchCallback](
+                              const Bond &queryBond, const Bond &molBond) {
+    if (ControlCHandler::getGotSignal()) {
+      throw ControlCCaught();
+    }
+    consumeSearchCallback();
+    const auto &componentBonds = d_component_bond_indices[component];
+    const auto queryIdx = queryBond.getIdx();
+    const auto molIdx = molBond.getIdx();
+    if (queryIdx >= componentBonds.size() || molIdx >= componentBonds.size()) {
+      return false;
+    }
+    return bondsConstitutionallyEquivalent(*getBond(componentBonds[queryIdx]),
+                                           *getBond(componentBonds[molIdx]));
+  };
+
+  std::vector<MatchVectType> matches;
+  try {
+    matches = SubstructMatch(componentMol, componentMol, params);
+  } catch (const ComponentAutomorphismSearchCallbackLimitReached &) {
+    // Aggregate exhaustion is unknown, never an inequality proof. Existing
+    // witnesses remain reusable, but new searches in this component fall back
+    // to ordinary CIP traversal.
+    evidence.searchDisabled = true;
+    return false;
+  } catch (const AutomorphismSearchCallbackLimitReached &) {
+    // Per-key exhaustion is likewise unknown. Avoid paying the same bounded
+    // search again for this endpoint pair without admitting negative evidence.
+    evidence.searchDisabled = true;
+    return false;
+  }
+  if (ControlCHandler::getGotSignal()) {
+    throw ControlCCaught();
+  }
+  if (matches.empty()) {
+    cacheFailure();
+    return false;
+  }
+
+  if (matches.front().size() != componentAtoms.size()) {
+    return false;
+  }
+  std::vector<unsigned int> componentMapping(
+      componentAtoms.size(), std::numeric_limits<unsigned int>::max());
+  for (const auto &[queryIdx, molIdx] : matches.front()) {
+    if (queryIdx < 0 || molIdx < 0 ||
+        static_cast<unsigned int>(queryIdx) >= componentAtoms.size() ||
+        static_cast<unsigned int>(molIdx) >= componentAtoms.size()) {
+      return false;
+    }
+    const auto queryLocal = static_cast<unsigned int>(queryIdx);
+    const auto molLocal = static_cast<unsigned int>(molIdx);
+    componentMapping[queryLocal] = componentAtoms[molLocal];
+  }
+  if (std::ranges::any_of(componentMapping, [](const auto atomIdx) {
+        return atomIdx == std::numeric_limits<unsigned int>::max();
+      })) {
+    return false;
+  }
+
+  std::vector<unsigned int> movedAtoms;
+  for (const auto atomIdx : componentAtoms) {
+    if (componentMapping[d_component_local_indices[atomIdx]] != atomIdx) {
+      movedAtoms.push_back(atomIdx);
+    }
+  }
+  addAutomorphismWitness(evidence, std::move(movedAtoms));
+  return true;
+}
+
+void CIPMol::initKekulizedBonds() const {
+  if (!d_kekulized_bonds.empty()) {
+    return;
+  }
+
+  std::vector<RDKit::Bond::BondType> bonds;
+  bonds.reserve(d_mol.getNumBonds());
+  const bool hasAromaticBond =
+      std::ranges::any_of(d_bonds, [](const Bond *candidate) {
+        return candidate->getBondType() == Bond::AROMATIC;
       });
-  d_constitutional_path_query_cache.emplace(std::move(query), equivalent);
-  return equivalent;
+  if (hasAromaticBond) {
+    RWMol tmp{d_mol};
+    const ROMol *bondSource = &tmp;
+    try {
+      MolOps::Kekulize(tmp);
+    } catch (const MolSanitizeException &) {
+      // Kekulize() may have changed some bonds before discovering that no
+      // valid assignment exists. Fall back to the untouched input instead of
+      // caching that partial assignment.
+      bondSource = &d_mol;
+    }
+    for (const auto candidate : bondSource->bonds()) {
+      bonds.push_back(candidate->getBondType());
+    }
+  } else {
+    for (const auto candidate : d_bonds) {
+      bonds.push_back(candidate->getBondType());
+    }
+  }
+  d_kekulized_bonds = std::move(bonds);
 }
 
 int CIPMol::getBondOrder(Bond *bond) const {
   PRECONDITION(bond, "bad bond")
-  if (d_kekulized_bonds.empty()) {
-    auto &bonds =
-        const_cast<std::vector<RDKit::Bond::BondType> &>(d_kekulized_bonds);
-    bonds.reserve(d_mol.getNumBonds());
-
-    const bool hasAromaticBond =
-        std::ranges::any_of(d_bonds, [](const Bond *candidate) {
-          return candidate->getBondType() == Bond::AROMATIC;
-        });
-    if (hasAromaticBond) {
-      RWMol tmp{d_mol};
-      const ROMol *bond_source = &tmp;
-      try {
-        MolOps::Kekulize(tmp);
-      } catch (const MolSanitizeException &) {
-        // Kekulize() may have changed some bonds before discovering that no
-        // valid assignment exists. Fall back to the untouched input instead
-        // of caching that partial assignment.
-        bond_source = &d_mol;
-      }
-      for (const auto candidate : bond_source->bonds()) {
-        bonds.push_back(candidate->getBondType());
-      }
-    } else {
-      for (const auto candidate : d_bonds) {
-        bonds.push_back(candidate->getBondType());
-      }
-    }
-  }
+  initKekulizedBonds();
 
   const auto bond_type = d_kekulized_bonds.at(bond->getIdx());
 
