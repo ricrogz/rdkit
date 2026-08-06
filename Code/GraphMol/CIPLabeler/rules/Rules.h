@@ -27,6 +27,11 @@ class Rules : public SequenceRule {
     for (auto &rule : rules) {
       add(rule);
     }
+    // Rules instances are shared globally by the labeler, so their sorter must
+    // be fully initialized before construction of a const Rules object ends.
+    // The Sort stores this composite comparator and will therefore continue to
+    // see rules added later through add().
+    setSorter(new Sort(this));
   }
 
   ~Rules() override {
@@ -45,12 +50,7 @@ class Rules : public SequenceRule {
 
   int getNumSubRules() const { return d_rules.size(); }
 
-  const Sort *getSorter() const override {
-    if (dp_sorter == nullptr) {
-      const_cast<Rules *>(this)->setSorter(new Sort(this));
-    }
-    return dp_sorter.get();
-  }
+  const Sort *getSorter() const override { return dp_sorter.get(); }
 
   int compare(const Edge *o1, const Edge *o2) const override {
     // Try using each rules. The rules will expand the search exhaustively
