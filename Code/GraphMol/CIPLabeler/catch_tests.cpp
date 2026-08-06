@@ -789,15 +789,37 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
 
     boost::dynamic_bitset<> noBonds;
     boost::dynamic_bitset<> wrongAtoms(mol->getNumAtoms() + 1);
-    wrongAtoms.set(1);
+    wrongAtoms.set(mol->getNumAtoms());
     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, wrongAtoms, noBonds),
                     ValueErrorException);
 
     boost::dynamic_bitset<> noAtoms;
     boost::dynamic_bitset<> wrongBonds(mol->getNumBonds() + 1);
-    wrongBonds.set(0);
+    wrongBonds.set(mol->getNumBonds());
     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, noAtoms, wrongBonds),
                     ValueErrorException);
+
+    auto center = mol->getAtomWithIdx(1);
+    center->clearProp(common_properties::_CIPCode);
+    mol->clearProp(common_properties::_CIPComputed);
+    boost::dynamic_bitset<> shortAtoms(2);
+    shortAtoms.set(1);
+    CHECK_NOTHROW(
+        CIPLabeler::assignCIPLabels(*mol, shortAtoms, noBonds));
+    CHECK(center->hasProp(common_properties::_CIPCode));
+    CHECK(!mol->hasProp(common_properties::_CIPComputed));
+
+    boost::dynamic_bitset<> paddedAtoms(mol->getNumAtoms() + 1);
+    boost::dynamic_bitset<> paddedBonds(mol->getNumBonds() + 1);
+    for (size_t i = 0; i < mol->getNumAtoms(); ++i) {
+      paddedAtoms.set(i);
+    }
+    for (size_t i = 0; i < mol->getNumBonds(); ++i) {
+      paddedBonds.set(i);
+    }
+    CHECK_NOTHROW(
+        CIPLabeler::assignCIPLabels(*mol, paddedAtoms, paddedBonds));
+    CHECK(mol->hasProp(common_properties::_CIPComputed));
   }
 }
 

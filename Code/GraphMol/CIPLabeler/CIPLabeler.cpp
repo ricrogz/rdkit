@@ -56,7 +56,7 @@ struct ConfigEntry {
 using ConfigList = std::vector<ConfigEntry>;
 
 bool isSelected(const boost::dynamic_bitset<> &selection, size_t index) {
-  return !selection.empty() && selection.test(index);
+  return index < selection.size() && selection.test(index);
 }
 
 ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
@@ -297,18 +297,24 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
 
 void validateSelection(const boost::dynamic_bitset<> &selection,
                        size_t expectedSize, const char *kind) {
-  // Empty bitsets intentionally select none and are part of the public API.
-  if (!selection.empty() && selection.size() != expectedSize) {
-    std::ostringstream msg;
-    msg << "CIP " << kind << " selection bitset has size " << selection.size()
-        << "; expected " << expectedSize;
-    throw ValueErrorException(msg.str());
+  for (auto index = selection.find_first();
+       index != boost::dynamic_bitset<>::npos;
+       index = selection.find_next(index)) {
+    if (index >= expectedSize) {
+      std::ostringstream msg;
+      msg << "CIP " << kind
+          << " selection contains out-of-range index " << index
+          << "; molecule has " << expectedSize << ' ' << kind << " entries";
+      throw ValueErrorException(msg.str());
+    }
   }
 }
 
 bool isFullSelection(const boost::dynamic_bitset<> &selection,
                      size_t expectedSize) {
-  return selection.size() == expectedSize && selection.all();
+  // validateSelection() guarantees that every set bit denotes a molecule
+  // object, so selecting expectedSize objects means that all are selected.
+  return selection.count() == expectedSize;
 }
 
 template <typename T>
