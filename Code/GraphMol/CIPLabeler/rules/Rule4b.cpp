@@ -175,18 +175,19 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
       tmp.push_back(getSorter()->getGroups(edges));
     }
 
-    // check sizes
-    int size = -1;
-    for (auto i = 0u; i < tmp.size(); ++i) {
-      int localSize = tmp[0].size();
-      if (size < 0) {
-        size = localSize;
-      } else if (size != localSize) {
-        throw std::runtime_error("Something unexpected!");
+    // Equivalent nodes must produce the same number of priority groups.
+    // Check each node's groups, not just the first node repeatedly.
+    std::size_t size = 0;
+    if (!tmp.empty()) {
+      size = tmp.front().size();
+      for (const auto &groups : tmp) {
+        if (size != groups.size()) {
+          throw std::runtime_error("Something unexpected!");
+        }
       }
     }
 
-    for (int i = 0; i < size; ++i) {
+    for (std::size_t i = 0; i < size; ++i) {
       std::vector<const Node *> eq;
       for (const auto &aTmp : tmp) {
         auto tmpNodes = toNodeList(aTmp[i]);

@@ -222,6 +222,70 @@ TEST_CASE("Rule 6 decisions mark pseudoasymmetry", "[accurateCIP]") {
   CHECK(toSort == std::vector<Edge *>{refEdge, otherEdge});
 }
 
+TEST_CASE("Rule 4b checks every equivalent node's priority groups",
+          "[bug][accurateCIP]") {
+  UseLegacyStereoPerceptionFixture fx(false);
+
+  auto mol = R"ctab(
+                    2D
+
+  0  0  0     0  0            999 V3000
+M  V30 BEGIN CTAB
+M  V30 COUNTS 14 18 0 0 0
+M  V30 BEGIN ATOM
+M  V30 1 C  -3.0525 3.1316 0.0000 0
+M  V30 2 C  -2.1595 3.5875 0.0000 0
+M  V30 3 C  -1.5607 3.3616 0.0000 0
+M  V30 4 C  -2.4508 2.9043 0.0000 0
+M  V30 5 C  -1.9950 2.0145 0.0000 0
+M  V30 6 C  -1.1055 2.4718 0.0000 0
+M  V30 7 C  -1.7004 2.6970 0.0000 0
+M  V30 8 C  -2.5915 2.2471 0.0000 0
+M  V30 9 C  -1.9630 0.8413 0.0000 0
+M  V30 10 O  -2.8223 0.3466 0.0000 0
+M  V30 11 N  -1.0053 0.2789 0.0000 0
+M  V30 12 F  -2.2149 4.5869 0.0000 0
+M  V30 13 H  -1.0129 -0.7311 0.0000 0
+M  V30 14 H  -0.1269 0.7773 -0.0000 0
+M  V30 END ATOM
+M  V30 BEGIN BOND
+M  V30 1 1 1 2
+M  V30 2 1 1 4
+M  V30 3 1 8 1
+M  V30 4 1 2 3
+M  V30 5 1 2 7
+M  V30 6 1 2 12
+M  V30 7 1 3 4
+M  V30 8 1 6 3
+M  V30 9 1 4 5
+M  V30 10 1 5 6
+M  V30 11 1 5 8
+M  V30 12 1 5 9
+M  V30 13 1 7 6
+M  V30 14 1 7 8
+M  V30 15 2 9 10
+M  V30 16 1 9 11
+M  V30 17 1 11 13
+M  V30 18 1 11 14
+M  V30 END BOND
+M  V30 END CTAB
+M  END
+$$$$
+)ctab"_ctab;
+  REQUIRE(mol);
+
+  for (atomindex_t i = 0; i < 8; ++i) {
+    auto atom = mol->getAtomWithIdx(i);
+    REQUIRE(atom->hasProp(common_properties::_ChiralityPossible));
+    atom->setChiralTag(Atom::CHI_TETRAHEDRAL_CW);
+  }
+
+  CHECK_NOTHROW(CIPLabeler::assignCIPLabels(*mol));
+  for (atomindex_t i = 0; i < 8; ++i) {
+    CHECK(mol->getAtomWithIdx(i)->hasProp(common_properties::_CIPCode));
+  }
+}
+
 void check_incoming_edge_count(Node *root) {
   auto queue = std::list<Node *>({root});
 
