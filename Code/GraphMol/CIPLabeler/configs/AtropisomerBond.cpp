@@ -93,6 +93,7 @@ Descriptor AtropisomerBond::label(const Rules &comp) {
 
 Descriptor AtropisomerBond::label(Node *root1, Digraph &digraph,
                                   const Rules &comp) {
+  const SequenceRule::ComparisonSession comparisonSession;
   const auto &focus1 = getFoci()[0];
   const auto &focus2 = getFoci()[1];
 

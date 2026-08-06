@@ -104,6 +104,15 @@ Node *Digraph::getCurrentRoot() const { return dp_root; }
 int Digraph::getNumNodes() const { return d_nodes.size(); }
 
 std::vector<Node *> Digraph::getNodes(Atom *atom) const {
+  return collectNodes(atom, false);
+}
+
+std::vector<Node *> Digraph::getNodesForAuxiliaryLabeling(Atom *atom) const {
+  return collectNodes(atom, true);
+}
+
+std::vector<Node *> Digraph::collectNodes(
+    Atom *atom, bool pruneConfigurationFreeBranches) const {
   std::vector<Node *> result;
   std::vector<Node *> queue = {getCurrentRoot()};
 
@@ -116,10 +125,38 @@ std::vector<Node *> Digraph::getNodes(Atom *atom) const {
       if (!e->isBeg(node)) {
         continue;
       }
+      if (pruneConfigurationFreeBranches &&
+          isAcyclicBranchWithoutConfiguration(e)) {
+        continue;
+      }
       queue.push_back(e->getEnd());
     }
   }
   return result;
+}
+
+bool Digraph::isAcyclicBranchWithoutConfiguration(const Edge *edge) const {
+  if (edge == nullptr) {
+    return false;
+  }
+  const auto end = edge->getEnd();
+  if (end == nullptr || end->isDuplicateOrH() ||
+      !end->isOriginalChildOf(edge->getBeg())) {
+    return false;
+  }
+  return d_mol.isAcyclicBranchWithoutConfiguration(edge->getBond(),
+                                                   end->getAtom());
+}
+
+bool Digraph::hasEffectiveAuxDescriptors() const {
+  return d_hasEffectiveAuxDescriptors;
+}
+
+void Digraph::noteAuxDescriptor(Descriptor descriptor) {
+  if (descriptor != Descriptor::NONE && descriptor != Descriptor::UNKNOWN &&
+      descriptor != Descriptor::ns) {
+    d_hasEffectiveAuxDescriptors = true;
+  }
 }
 
 /**

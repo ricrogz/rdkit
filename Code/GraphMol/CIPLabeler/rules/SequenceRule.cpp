@@ -10,99 +10,93 @@
 //
 #include "RDGeneral/ControlCHandler.h"
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <unordered_map>
 #include <utility>
 
 #include "SequenceRule.h"
 
 #include "../CIPMol.h"
+#include "../Digraph.h"
 
 namespace RDKit {
 namespace CIPLabeler {
 
 namespace {
 
-struct EdgePair {
+struct ComparisonKey {
+  std::uint64_t ruleId;
   const Edge *first;
   const Edge *second;
+  const Node *firstRoot;
+  const Node *secondRoot;
+  const Atom *firstRule6Ref;
+  const Atom *secondRule6Ref;
 
-  bool operator==(const EdgePair &other) const {
-    return first == other.first && second == other.second;
+  bool operator==(const ComparisonKey &other) const {
+    return ruleId == other.ruleId && first == other.first &&
+           second == other.second && firstRoot == other.firstRoot &&
+           secondRoot == other.secondRoot &&
+           firstRule6Ref == other.firstRule6Ref &&
+           secondRule6Ref == other.secondRule6Ref;
   }
 };
 
-struct EdgePairHash {
-  std::size_t operator()(const EdgePair &pair) const {
-    const auto firstHash = std::hash<const Edge *>{}(pair.first);
-    const auto secondHash = std::hash<const Edge *>{}(pair.second);
-    return firstHash ^
-           (secondHash + 0x9e3779b9u + (firstHash << 6) + (firstHash >> 2));
+template <typename T>
+void hashCombine(std::size_t &seed, const T &value) {
+  const auto hash = std::hash<T>{}(value);
+  seed ^= hash + 0x9e3779b9u + (seed << 6) + (seed >> 2);
+}
+
+struct ComparisonKeyHash {
+  std::size_t operator()(const ComparisonKey &key) const {
+    std::size_t result = 0;
+    hashCombine(result, key.ruleId);
+    hashCombine(result, key.first);
+    hashCombine(result, key.second);
+    hashCombine(result, key.firstRoot);
+    hashCombine(result, key.secondRoot);
+    hashCombine(result, key.firstRule6Ref);
+    hashCombine(result, key.secondRule6Ref);
+    return result;
   }
 };
 
-struct RecursiveComparisonCache {
+struct ComparisonSessionState {
   std::size_t depth = 0;
-  std::unordered_map<EdgePair, int, EdgePairHash> results;
+  std::unordered_map<ComparisonKey, int, ComparisonKeyHash> results;
 };
 
-// Digraph orientation, auxiliary labels, and the Rule 6 reference can change
-// between top-level comparisons. Keep results only while one exact rule object
-// has an active recursive comparison. This also prevents temporary Rule4b and
-// Rule5New replacement rules from inheriting entries when stack addresses are
-// reused with a different reference descriptor.
-thread_local std::unordered_map<const SequenceRule *,
-                                std::unique_ptr<RecursiveComparisonCache>>
-    recursiveComparisonCaches;
+// The cache is an accelerator, not part of the result. Stop adding entries on
+// exceptionally large digraphs so a labeling session has bounded cache memory.
+constexpr std::size_t MAX_CACHED_COMPARISONS = 250000;
 
-class ScopedRecursiveComparisonCache {
- public:
-  explicit ScopedRecursiveComparisonCache(const SequenceRule *rule)
-      : d_rule{rule} {
-    auto &cache = recursiveComparisonCaches[rule];
-    if (!cache) {
-      cache = std::make_unique<RecursiveComparisonCache>();
-    }
-    d_cache = cache.get();
-    if (d_cache->depth++ == 0) {
-      d_cache->results.clear();
-    }
-  }
+thread_local ComparisonSessionState comparisonSessionState;
 
-  ScopedRecursiveComparisonCache(const ScopedRecursiveComparisonCache &) =
-      delete;
-  ScopedRecursiveComparisonCache &operator=(
-      const ScopedRecursiveComparisonCache &) = delete;
-
-  ~ScopedRecursiveComparisonCache() {
-    if (--d_cache->depth == 0) {
-      recursiveComparisonCaches.erase(d_rule);
-    }
-  }
-
-  bool find(const Edge *first, const Edge *second, int &result) const {
-    const auto found = d_cache->results.find({first, second});
-    if (found == d_cache->results.end()) {
-      return false;
-    }
-    result = found->second;
-    return true;
-  }
-
-  void store(const Edge *first, const Edge *second, int result) {
-    d_cache->results.emplace(EdgePair{first, second}, result);
-  }
-
- private:
-  const SequenceRule *d_rule;
-  RecursiveComparisonCache *d_cache;
-};
+std::uint64_t nextCacheId() {
+  static std::atomic<std::uint64_t> nextId{0};
+  return ++nextId;
+}
 
 }  // namespace
 
-SequenceRule::SequenceRule() : dp_sorter{new Sort(this)} {}
+SequenceRule::ComparisonSession::ComparisonSession() {
+  if (comparisonSessionState.depth++ == 0) {
+    comparisonSessionState.results.clear();
+  }
+}
+
+SequenceRule::ComparisonSession::~ComparisonSession() {
+  if (--comparisonSessionState.depth == 0) {
+    comparisonSessionState.results.clear();
+  }
+}
+
+SequenceRule::SequenceRule()
+    : dp_sorter{new Sort(this)}, d_cacheId{nextCacheId()} {}
 
 SequenceRule::~SequenceRule() = default;
 
@@ -126,6 +120,8 @@ int SequenceRule::getComparision(const Edge *a, const Edge *b,
 const Sort *SequenceRule::getSorter() const { return dp_sorter.get(); }
 
 int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+  const ComparisonSession comparisonSession;
+
   if (!CIPLabeler_detail::decrementRemainingCallCountAndCheck()) {
     throw MaxIterationsExceeded();
   }
@@ -133,19 +129,33 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     throw ControlCCaught();
   }
 
+  const auto firstGraph = a->getBeg()->getDigraph();
+  const auto secondGraph = b->getBeg()->getDigraph();
+  const ComparisonKey key{d_cacheId,
+                          a,
+                          b,
+                          firstGraph->getCurrentRoot(),
+                          secondGraph->getCurrentRoot(),
+                          firstGraph->getRule6Ref(),
+                          secondGraph->getRule6Ref()};
+  const auto found = comparisonSessionState.results.find(key);
+  if (found != comparisonSessionState.results.end()) {
+    return found->second;
+  }
+
   const auto directResult = compare(a, b);
   if (directResult != 0) {
     return directResult;
   }
 
-  ScopedRecursiveComparisonCache cache(this);
-  int cachedResult;
-  if (cache.find(a, b, cachedResult)) {
-    return cachedResult;
+  if (hasEquivalentAcyclicContinuation(a, b)) {
+    return 0;
   }
 
   const auto result = recursiveCompareEqual(a, b);
-  cache.store(a, b, result);
+  if (comparisonSessionState.results.size() < MAX_CACHED_COMPARISONS) {
+    comparisonSessionState.results.emplace(key, result);
+  }
   return result;
 }
 
@@ -158,6 +168,9 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
 
   for (std::size_t pos = 0; pos < queue.size(); ++pos) {
     const auto [aParent, bParent] = queue[pos];
+    if (hasEquivalentAcyclicContinuation(aParent, bParent)) {
+      continue;
+    }
     auto aNode = aParent->getEnd();
     auto bNode = bParent->getEnd();
     const auto &aNodeEdges = aNode->getEdges();
@@ -219,7 +232,10 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
   return 0;
 }
 
-void SequenceRule::setSorter(const Sort *sorter) { dp_sorter.reset(sorter); }
+void SequenceRule::setSorter(const Sort *sorter) {
+  dp_sorter.reset(sorter);
+  d_cacheId = nextCacheId();
+}
 
 Priority SequenceRule::sort(const Node *node, std::vector<Edge *> &edges,
                             bool deep) const {
@@ -242,6 +258,26 @@ bool SequenceRule::areUpEdges(Node *aNode, Node *bNode, Edge *aEdge,
     return true;
   }
   return false;
+}
+
+bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
+                                                    const Edge *b) const {
+  const auto aBeg = a->getBeg();
+  const auto bBeg = b->getBeg();
+  const auto aEnd = a->getEnd();
+  const auto bEnd = b->getEnd();
+  const auto graph = aBeg->getDigraph();
+
+  if (graph != bBeg->getDigraph() || a->getBond() == nullptr ||
+      a->getBond() != b->getBond() || aBeg->getAtom() != bBeg->getAtom() ||
+      aEnd->getAtom() == nullptr || aEnd->getAtom() != bEnd->getAtom() ||
+      aEnd->isDuplicateOrH() || bEnd->isDuplicateOrH() ||
+      aEnd->getDistance() != bEnd->getDistance() ||
+      !aEnd->isOriginalChildOf(aBeg) || !bEnd->isOriginalChildOf(bBeg)) {
+    return false;
+  }
+
+  return graph->isAcyclicBranchWithoutConfiguration(a);
 }
 
 }  // namespace CIPLabeler

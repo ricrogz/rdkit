@@ -10,6 +10,8 @@
 //
 
 #include <algorithm>
+#include <cstddef>
+#include <utility>
 
 #include <GraphMol/MolOps.h>
 
@@ -65,6 +67,64 @@ bool CIPMol::isInRing(Bond *bond) const {
 
   return rings->numBondRings(bond->getIdx()) != 0u;
 };
+
+void CIPMol::setConfigurationFoci(boost::dynamic_bitset<> foci) {
+  PRECONDITION(foci.size() == getNumAtoms(),
+               "configuration focus bitset has the wrong size")
+  d_configuration_foci = std::move(foci);
+  d_configuration_branch_cache.assign(2u * getNumBonds(), 0u);
+}
+
+bool CIPMol::isAcyclicBranchWithoutConfiguration(Bond *bond,
+                                                 Atom *endAtom) const {
+  if (bond == nullptr || endAtom == nullptr ||
+      d_configuration_foci.size() != getNumAtoms() || isInRing(bond)) {
+    return false;
+  }
+
+  const auto beginAtom = bond->getBeginAtom();
+  const auto otherAtom = bond->getEndAtom();
+  std::size_t side = 0;
+  if (endAtom == beginAtom) {
+    side = 0;
+  } else if (endAtom == otherAtom) {
+    side = 1;
+  } else {
+    return false;
+  }
+
+  const auto cacheIdx = 2u * bond->getIdx() + side;
+  const auto cached = d_configuration_branch_cache[cacheIdx];
+  if (cached != 0u) {
+    return cached == 2u;
+  }
+
+  boost::dynamic_bitset<> seen(getNumAtoms());
+  std::vector<Atom *> queue{endAtom};
+  seen.set(endAtom->getIdx());
+  bool containsFocus = false;
+
+  for (std::size_t pos = 0; pos < queue.size() && !containsFocus; ++pos) {
+    auto atom = queue[pos];
+    if (d_configuration_foci.test(atom->getIdx())) {
+      containsFocus = true;
+      break;
+    }
+    for (auto candidate : getBonds(atom)) {
+      if (candidate == bond) {
+        continue;
+      }
+      auto neighbor = candidate->getOtherAtom(atom);
+      if (!seen.test(neighbor->getIdx())) {
+        seen.set(neighbor->getIdx());
+        queue.push_back(neighbor);
+      }
+    }
+  }
+
+  d_configuration_branch_cache[cacheIdx] = containsFocus ? 1u : 2u;
+  return !containsFocus;
+}
 
 int CIPMol::getBondOrder(Bond *bond) const {
   PRECONDITION(bond, "bad bond")

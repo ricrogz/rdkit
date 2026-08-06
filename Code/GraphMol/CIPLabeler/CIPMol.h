@@ -14,6 +14,9 @@
 #include <vector>
 
 #include <GraphMol/RDKitBase.h>
+#include <RDGeneral/BoostStartInclude.h>
+#include <boost/dynamic_bitset.hpp>
+#include <RDGeneral/BoostEndInclude.h>
 
 #include "Descriptor.h"
 #include "Mancude.h"
@@ -90,6 +93,15 @@ class CIPMol {
 
   bool isInRing(Bond *bond) const;
 
+  // Record every atom that is the focus of a configuration considered by the
+  // current labeling operation. This lets the lazy digraph prove that an
+  // acyclic branch cannot contain auxiliary stereochemical information.
+  void setConfigurationFoci(boost::dynamic_bitset<> foci);
+
+  // Returns true only when bond is acyclic and the molecular component on the
+  // endAtom side contains no registered configuration focus.
+  bool isAcyclicBranchWithoutConfiguration(Bond *bond, Atom *endAtom) const;
+
   // Integer bond order of a kekulized molecule
   // Dative bonds get bond order 0.
   int getBondOrder(Bond *bond) const;
@@ -103,6 +115,9 @@ class CIPMol {
   std::vector<RDKit::Bond *> d_bonds;
   mutable std::vector<double> d_atomic_masses;
   mutable std::vector<unsigned char> d_atomic_mass_cached;
+  boost::dynamic_bitset<> d_configuration_foci;
+  // Two directed sides per bond: 0=unknown, 1=contains a focus, 2=no focus.
+  mutable std::vector<unsigned char> d_configuration_branch_cache;
 };
 
 }  // namespace CIPLabeler

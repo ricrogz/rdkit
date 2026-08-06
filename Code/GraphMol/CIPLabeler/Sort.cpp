@@ -26,6 +26,7 @@ const std::vector<const SequenceRule *> &Sort::getRules() const {
 
 Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
                           bool deep) const {
+  const SequenceRule::ComparisonSession comparisonSession;
   bool unique = true;
   int numPseudoAsym = 0;
 
@@ -72,6 +73,7 @@ int Sort::compareSubstituents(const Node *node, const Edge *a, const Edge *b,
 
 std::vector<std::vector<Edge *>> Sort::getGroups(
     const std::vector<Edge *> &sorted) const {
+  const SequenceRule::ComparisonSession comparisonSession;
   // would be nice to have this integrated whilst sorting - may provide a
   // small speed increase but as most of our lists are small we take use
   // ugly sort then group approach

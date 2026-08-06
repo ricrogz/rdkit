@@ -72,6 +72,22 @@ class Digraph {
   std::vector<Node *> getNodes(Atom *atom) const;
 
   /**
+   * Get occurrences of a configuration focus while leaving acyclic molecular
+   * components that contain no configuration focus unexpanded. This preserves
+   * auxiliary-label discovery while avoiding irrelevant symmetric tails.
+   */
+  std::vector<Node *> getNodesForAuxiliaryLabeling(Atom *atom) const;
+
+  /**
+   * Whether the current directed edge enters an acyclic molecular component
+   * containing no registered stereochemical configuration focus.
+   */
+  bool isAcyclicBranchWithoutConfiguration(const Edge *edge) const;
+
+  bool hasEffectiveAuxDescriptors() const;
+  void noteAuxDescriptor(Descriptor descriptor);
+
+  /**
    * Access the reference atom for Rule 6 (if one is set).
    */
   Atom *getRule6Ref() const;
@@ -120,12 +136,18 @@ class Digraph {
 
   Atom *dp_rule6Ref = nullptr;
 
+  // Sticky within a labeling call. A conservative true only disables an
+  // optimization; NONE, UNKNOWN, and ns carry no Rule 4b/5 information.
+  bool d_hasEffectiveAuxDescriptors = false;
+
   // Insertion at either end of a deque preserves element references, which
   // the graph stores extensively, while avoiding one allocation per element.
   std::deque<Node> d_nodes;
   std::deque<Edge> d_edges;
 
   void addEdge(Node *beg, Bond *bond, Node *end);
+  std::vector<Node *> collectNodes(Atom *atom,
+                                   bool pruneConfigurationFreeBranches) const;
 };
 
 }  // namespace CIPLabeler

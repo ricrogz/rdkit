@@ -119,6 +119,14 @@ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
     }
   }
 
+  boost::dynamic_bitset<> configurationFoci(mol.getNumAtoms());
+  for (const auto &entry : configs) {
+    for (const auto focus : entry.config->getFoci()) {
+      configurationFoci.set(focus->getIdx());
+    }
+  }
+  mol.setConfigurationFoci(std::move(configurationFoci));
+
   return configs;
 }
 
@@ -140,7 +148,7 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
                              [&](auto f) { return digraph.seenAtom(f); })) {
       continue;
     }
-    for (const auto &node : digraph.getNodes(foci[0])) {
+    for (const auto &node : digraph.getNodesForAuxiliaryLabeling(foci[0])) {
       if (node->isDuplicate()) {
         continue;
       }

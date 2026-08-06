@@ -112,6 +112,7 @@ Descriptor Sp2Bond::label(const Rules &comp) {
 }
 
 Descriptor Sp2Bond::label(Node *root1, Digraph &digraph, const Rules &comp) {
+  const SequenceRule::ComparisonSession comparisonSession;
   const auto &focus1 = getFoci()[0];
   const auto &focus2 = getFoci()[1];
 
