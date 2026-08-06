@@ -60,6 +60,11 @@ static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
 static_assert(!std::is_constructible_v<Digraph, const CIPMol &&, Atom *>);
 
 TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
+  const Rule1a standaloneRule;
+  REQUIRE(standaloneRule.getSorter());
+  CHECK(standaloneRule.getSorter()->getRules() ==
+        std::vector<const SequenceRule *>{&standaloneRule});
+
   const Rules rules({new Rule1a});
 
 #ifdef RDK_TEST_MULTITHREADED
