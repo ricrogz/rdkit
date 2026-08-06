@@ -9,7 +9,6 @@
 //  of the RDKit source tree.
 //
 
-#include <list>
 #include <sstream>
 
 #include "Digraph.h"
@@ -121,8 +120,9 @@ void Digraph::setRule6Ref(Atom *ref) { dp_rule6Ref = ref; }
  */
 void Digraph::changeRoot(Node *newroot) {
   std::vector<Edge *> toflip;
-  auto queue = std::list<Node *>({newroot});
-  for (const auto &node : queue) {
+  std::vector<Node *> queue{newroot};
+  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+    const auto node = queue[pos];
     for (const auto &e : node->getEdges()) {
       if (e->isEnd(node)) {
         toflip.push_back(e);
