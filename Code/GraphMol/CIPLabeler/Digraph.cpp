@@ -82,7 +82,7 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
   PRECONDITION(atom, "cannot init digraph on a nullptr")
 
   auto visit = NodeVisitState((d_mol.getNumAtoms() + 63u) / 64u);
-  visit[atom->getIdx() / 64u] |= std::uint64_t{1} << (atom->getIdx() % 64u);
+  visit.set(atom->getIdx());
 
   auto dist = 1;
   auto flags = 0x0;

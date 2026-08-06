@@ -10,10 +10,10 @@
 //
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -117,7 +117,12 @@ class CIPMol {
   // path-history state that controls ring-duplicate construction.
   bool hasConstitutionalAutomorphism(
       Atom *root, Atom *from, Atom *to,
-      std::span<const std::uint64_t> fixedAtoms) const;
+      std::span<const std::uint64_t> fixedAtoms,
+      std::span<const unsigned int> addedFixedAtoms = {}) const;
+
+  // Component membership is used to keep symmetry and auxiliary-label work
+  // local to the connected structure containing the center of interest.
+  bool isInSameComponent(Atom *first, Atom *second) const;
 
   // Integer bond order of a kekulized molecule
   // Dative bonds get bond order 0.
@@ -127,7 +132,7 @@ class CIPMol {
 
  private:
   ROMol &d_mol;
-  std::vector<RDKit::Bond::BondType> d_kekulized_bonds;
+  mutable std::vector<RDKit::Bond::BondType> d_kekulized_bonds;
   std::vector<FractionalAtomicNum> d_atomnums;
   std::vector<RDKit::Bond *> d_bonds;
   mutable std::vector<double> d_atomic_masses;
@@ -135,35 +140,92 @@ class CIPMol {
   boost::dynamic_bitset<> d_configuration_foci;
   // Two directed sides per bond: 0=unknown, 1=contains a focus, 2=no focus.
   mutable std::vector<unsigned char> d_configuration_branch_cache;
-  mutable std::unordered_map<std::uint64_t, bool>
-      d_constitutional_automorphism_cache;
-  mutable bool d_constitutional_automorphisms_initialized = false;
-  struct ConstitutionalAutomorphism {
-    std::vector<unsigned int> mapping;
-    std::array<std::uint64_t, 2> movedAtoms{};
-  };
-  mutable std::vector<ConstitutionalAutomorphism>
-      d_constitutional_automorphisms;
-  struct ConstitutionalPathQuery {
-    std::array<std::uint64_t, 2> fixedAtoms{};
+  struct ConstitutionalAutomorphismKey {
     unsigned int root;
-    unsigned int from;
-    unsigned int to;
+    unsigned int first;
+    unsigned int second;
 
-    bool operator==(const ConstitutionalPathQuery &other) const {
-      return fixedAtoms == other.fixedAtoms && root == other.root &&
-             from == other.from && to == other.to;
+    bool operator==(const ConstitutionalAutomorphismKey &other) const {
+      return root == other.root && first == other.first &&
+             second == other.second;
     }
   };
-  struct ConstitutionalPathQueryHash {
-    std::size_t operator()(const ConstitutionalPathQuery &query) const;
+  struct ConstitutionalAutomorphismKeyHash {
+    std::size_t operator()(const ConstitutionalAutomorphismKey &key) const;
   };
-  mutable std::unordered_map<ConstitutionalPathQuery, bool,
-                             ConstitutionalPathQueryHash>
-      d_constitutional_path_query_cache;
+  struct ConstitutionalAutomorphismEvidence {
+    // A witness mapping is represented by the sorted atoms it moves. It
+    // remains a proof for any path disjoint from that set. Sparse sets avoid
+    // making cache entries proportional to the size of a large molecule.
+    std::vector<std::vector<unsigned int>> movedAtomSets;
+    // An exhaustive failure while fixing F remains a proof for every superset
+    // of F. Both collections are maintained as small dominance antichains.
+    std::vector<std::vector<unsigned int>> failedFixedAtomSets;
+    std::size_t storedAtomIndexCount = 0;
+    // A bounded search exhausted its compatibility-callback allowance.
+    // Existing witnesses can still be reused, but new searches for this
+    // endpoint pair are disabled.
+    bool searchDisabled = false;
+  };
+  using ConstitutionalAutomorphismEvidenceMap =
+      std::unordered_map<ConstitutionalAutomorphismKey,
+                         ConstitutionalAutomorphismEvidence,
+                         ConstitutionalAutomorphismKeyHash>;
+  mutable ConstitutionalAutomorphismEvidenceMap
+      d_current_constitutional_automorphism_evidence;
+  mutable ConstitutionalAutomorphismEvidenceMap
+      d_previous_constitutional_automorphism_evidence;
+  mutable std::size_t d_current_automorphism_evidence_atom_indices = 0;
+  mutable std::size_t d_previous_automorphism_evidence_atom_indices = 0;
+  mutable bool d_constitutional_automorphism_data_initialized = false;
+  mutable std::vector<unsigned int> d_component_ids;
+  mutable std::vector<unsigned int> d_component_local_indices;
+  mutable std::vector<std::vector<unsigned int>> d_component_atoms;
+  // The exact self-isomorphism search is performed only on the connected
+  // component containing the compared ligands. Components are copied lazily,
+  // so disconnected spectators neither consume VF2 work nor add memory unless
+  // they are themselves queried.
+  mutable std::vector<std::shared_ptr<RWMol>> d_component_mols;
+  mutable std::vector<std::vector<unsigned int>> d_component_bond_indices;
+  mutable std::vector<unsigned int> d_constitutional_symmetry_classes;
+  mutable std::vector<unsigned char>
+      d_constitutional_symmetry_classes_initialized;
+  mutable std::vector<unsigned char> d_component_has_cycle;
+  mutable std::vector<unsigned char> d_component_is_supported;
+  // Candidate-compatibility callbacks spent by constrained self-matches in
+  // each component. A cumulative bound prevents many individually bounded
+  // endpoint queries from becoming an unbounded aggregate cost.
+  mutable std::vector<std::size_t> d_component_automorphism_search_callbacks;
+  // Linear distance-prefilter passes are independently bounded so negative
+  // endpoint pairs cannot accumulate quadratic preprocessing.
+  mutable std::vector<std::size_t> d_component_automorphism_prefilter_queries;
+  mutable std::vector<unsigned char> d_atom_in_cyclic_core;
+  mutable std::vector<unsigned int> d_cyclic_core_distances;
 
   bool hasUniqueBond(Atom *begin, Atom *end) const;
-  void initConstitutionalAutomorphisms() const;
+  void initKekulizedBonds() const;
+  void initConstitutionalAutomorphismData() const;
+  void initConstitutionalSymmetryClasses(unsigned int component) const;
+  const RWMol &getConstitutionalComponentMol(unsigned int component) const;
+  bool atomsConstitutionallyEquivalent(const Atom &first,
+                                       const Atom &second) const;
+  bool bondsConstitutionallyEquivalent(const Bond &first,
+                                       const Bond &second) const;
+  bool branchReachesCyclicCore(Atom *root, Atom *end) const;
+  bool hasConstitutionalAutomorphism(
+      unsigned int rootIdx, unsigned int fromIdx, unsigned int toIdx,
+      std::span<const std::uint64_t> fixedAtoms,
+      std::span<const unsigned int> addedFixedAtoms) const;
+  ConstitutionalAutomorphismEvidence &getAutomorphismEvidence(
+      const ConstitutionalAutomorphismKey &key) const;
+  static std::optional<bool> findAutomorphismEvidence(
+      const ConstitutionalAutomorphismEvidence &evidence,
+      std::span<const std::uint64_t> fixedAtoms,
+      std::span<const unsigned int> addedFixedAtoms);
+  void addAutomorphismWitness(ConstitutionalAutomorphismEvidence &evidence,
+                              std::vector<unsigned int> movedAtoms) const;
+  void addAutomorphismFailure(ConstitutionalAutomorphismEvidence &evidence,
+                              std::vector<unsigned int> fixedAtoms) const;
 };
 
 }  // namespace CIPLabeler

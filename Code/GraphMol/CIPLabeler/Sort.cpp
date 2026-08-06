@@ -13,7 +13,9 @@
 #include "rules/SequenceRule.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <span>
 
 #include <RDGeneral/ControlCHandler.h>
 
@@ -57,7 +59,11 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
     return {cachedUnique, cachedPseudoAsymmetric};
   }
 
-  const auto input = edges;
+  std::array<Edge *, SequenceRule::MAX_CACHED_SORT_EDGES> input{};
+  const bool cacheable = edges.size() >= 2u && edges.size() <= input.size();
+  if (cacheable) {
+    std::copy(edges.begin(), edges.end(), input.begin());
+  }
   bool unique = true;
   int numPseudoAsym = 0;
 
@@ -81,8 +87,11 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
   }
 
   const Priority result{unique, numPseudoAsym == 1};
-  SequenceRule::cacheSort(d_cacheId, node, deep, d_auxiliaryIndependent, input,
-                          edges, result);
+  if (cacheable) {
+    SequenceRule::cacheSort(d_cacheId, node, deep, d_auxiliaryIndependent,
+                            std::span<Edge *const>{input.data(), edges.size()},
+                            edges, result);
+  }
   return result;
 }
 

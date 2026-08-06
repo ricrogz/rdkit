@@ -141,9 +141,12 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
 
   // Ordinarily retain the existing reached-focus optimization. If an exact
   // constitutional automorphism ended a comparison without expanding its
-  // remote paths, include every configuration: those unseen descriptors may
-  // be precisely what Rules 3-6 need to break the constitutional symmetry.
+  // remote paths, also include unseen configurations in this center's
+  // connected component: those descriptors may be precisely what Rules 3-6
+  // need to break the constitutional symmetry. Unrelated components cannot
+  // contribute to this center's ligand priorities.
   const bool includeUnseen = digraph.usedConstitutionalRootEquivalence();
+  const auto rootAtom = digraph.getOriginalRoot()->getAtom();
   std::vector<unsigned char> eligible(configs.size());
   boost::dynamic_bitset<> targetFoci(digraph.getMol().getNumAtoms());
   for (std::size_t i = 0; i < configs.size(); ++i) {
@@ -155,9 +158,13 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
     // FIXME: specific to each descriptor
     const auto &foci = config->getFoci();
 
-    if (!includeUnseen && std::ranges::none_of(foci, [&](auto focus) {
-          return digraph.seenAtom(focus);
-        })) {
+    const bool reached = std::ranges::any_of(
+        foci, [&](auto focus) { return digraph.seenAtom(focus); });
+    const bool inRootComponent =
+        includeUnseen && std::ranges::any_of(foci, [&](auto focus) {
+          return digraph.getMol().isInSameComponent(rootAtom, focus);
+        });
+    if (!reached && !inRootComponent) {
       continue;
     }
     eligible[i] = 1u;

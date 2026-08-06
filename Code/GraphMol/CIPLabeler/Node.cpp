@@ -8,8 +8,12 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
+#include <algorithm>
 #include <bit>
+#include <utility>
 #include <vector>
+
+#include <RDGeneral/Invariant.h>
 
 #include "Digraph.h"
 #include "Edge.h"
@@ -18,6 +22,153 @@
 
 namespace RDKit {
 namespace CIPLabeler {
+
+NodeVisitState::NodeVisitState(std::size_t wordCount) : d_wordCount{wordCount} {
+  if (d_wordCount > INLINE_WORD_COUNT) {
+    dp_large = std::make_unique<LargeState>();
+    dp_large->checkpoint = std::make_shared<const std::vector<std::uint64_t>>(
+        d_wordCount, std::uint64_t{0});
+  }
+}
+
+NodeVisitState::NodeVisitState(std::vector<std::uint64_t> &&words)
+    : d_wordCount{words.size()} {
+  if (d_wordCount <= INLINE_WORD_COUNT) {
+    std::copy(words.begin(), words.end(), d_inlineWords.begin());
+  } else {
+    dp_large = std::make_unique<LargeState>();
+    dp_large->checkpoint =
+        std::make_shared<const std::vector<std::uint64_t>>(std::move(words));
+  }
+}
+
+NodeVisitState::NodeVisitState(const NodeVisitState &other)
+    : d_wordCount{other.d_wordCount}, d_inlineWords{other.d_inlineWords} {
+  if (other.dp_large != nullptr) {
+    dp_large = std::make_unique<LargeState>(*other.dp_large);
+  }
+}
+
+NodeVisitState &NodeVisitState::operator=(const NodeVisitState &other) {
+  if (this != &other) {
+    std::unique_ptr<LargeState> large;
+    if (other.dp_large != nullptr) {
+      large = std::make_unique<LargeState>(*other.dp_large);
+    }
+    d_wordCount = other.d_wordCount;
+    d_inlineWords = other.d_inlineWords;
+    dp_large = std::move(large);
+  }
+  return *this;
+}
+
+NodeVisitState::NodeVisitState(NodeVisitState &&other) noexcept
+    : d_wordCount{std::exchange(other.d_wordCount, std::size_t{0})},
+      d_inlineWords{other.d_inlineWords},
+      dp_large{std::move(other.dp_large)} {
+  other.d_inlineWords = {};
+}
+
+NodeVisitState &NodeVisitState::operator=(NodeVisitState &&other) noexcept {
+  if (this != &other) {
+    d_wordCount = std::exchange(other.d_wordCount, std::size_t{0});
+    d_inlineWords = other.d_inlineWords;
+    other.d_inlineWords = {};
+    dp_large = std::move(other.dp_large);
+  }
+  return *this;
+}
+
+bool NodeVisitState::empty() const noexcept { return d_wordCount == 0u; }
+
+bool NodeVisitState::test(unsigned int atomIdx) const {
+  const auto word = atomIdx / 64u;
+  if (word >= d_wordCount) {
+    return false;
+  }
+  const auto mask = std::uint64_t{1} << (atomIdx % 64u);
+  if (d_wordCount <= INLINE_WORD_COUNT) {
+    return (d_inlineWords[word] & mask) != 0u;
+  }
+  const auto &large = *dp_large;
+  if (((*large.checkpoint)[word] & mask) != 0u) {
+    return true;
+  }
+  for (std::size_t i = 0; i < large.addedAtomCount; ++i) {
+    if (large.addedAtoms[i] == atomIdx) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void NodeVisitState::set(unsigned int atomIdx) {
+  const auto word = atomIdx / 64u;
+  PRECONDITION(word < d_wordCount, "visit atom index is out of range")
+  if (d_wordCount <= INLINE_WORD_COUNT) {
+    d_inlineWords[word] |= std::uint64_t{1} << (atomIdx % 64u);
+    return;
+  }
+  if (test(atomIdx)) {
+    return;
+  }
+
+  auto &large = *dp_large;
+  if (large.addedAtomCount == CHECKPOINT_INTERVAL) {
+    materialize();
+  }
+  PRECONDITION(large.addedAtomCount < CHECKPOINT_INTERVAL,
+               "visit-state delta count overflow")
+  large.addedAtoms[large.addedAtomCount++] = atomIdx;
+  if (large.addedAtomCount == CHECKPOINT_INTERVAL) {
+    materialize();
+  }
+}
+
+void NodeVisitState::materialize() const {
+  if (dp_large == nullptr || dp_large->addedAtomCount == 0u) {
+    return;
+  }
+
+  auto &large = *dp_large;
+  auto checkpoint =
+      std::make_shared<std::vector<std::uint64_t>>(*large.checkpoint);
+  for (std::size_t i = 0; i < large.addedAtomCount; ++i) {
+    const auto atomIdx = large.addedAtoms[i];
+    (*checkpoint)[atomIdx / 64u] |= std::uint64_t{1} << (atomIdx % 64u);
+  }
+  large.checkpoint = std::move(checkpoint);
+  large.addedAtomCount = 0u;
+}
+
+std::span<const std::uint64_t> NodeVisitState::words() const {
+  if (d_wordCount == 0u) {
+    return {};
+  }
+  if (d_wordCount <= INLINE_WORD_COUNT) {
+    return {d_inlineWords.data(), d_wordCount};
+  }
+  materialize();
+  return {dp_large->checkpoint->data(), dp_large->checkpoint->size()};
+}
+
+std::span<const std::uint64_t> NodeVisitState::checkpointWords()
+    const noexcept {
+  if (d_wordCount == 0u) {
+    return {};
+  }
+  if (d_wordCount <= INLINE_WORD_COUNT) {
+    return {d_inlineWords.data(), d_wordCount};
+  }
+  return {dp_large->checkpoint->data(), dp_large->checkpoint->size()};
+}
+
+std::span<const unsigned int> NodeVisitState::addedAtoms() const noexcept {
+  if (dp_large == nullptr) {
+    return {};
+  }
+  return {dp_large->addedAtoms.data(), dp_large->addedAtomCount};
+}
 
 Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
   int new_dist = flags & DUPLICATE ? getVisitedDistance(idx) : d_dist + 1;
@@ -107,7 +258,7 @@ bool Node::isExpanded() const { return d_flags & EXPANDED; }
 
 bool Node::isVisited(int idx) const {
   const auto atom_idx = static_cast<unsigned int>(idx);
-  return d_visit[atom_idx / 64u] & (std::uint64_t{1} << (atom_idx % 64u));
+  return d_visit.test(atom_idx);
 }
 
 bool Node::isOriginalChildOf(const Node *parent) const {
@@ -115,7 +266,15 @@ bool Node::isOriginalChildOf(const Node *parent) const {
 }
 
 std::span<const std::uint64_t> Node::getVisitedAtoms() const {
-  return {d_visit.data(), d_visit.size()};
+  return d_visit.words();
+}
+
+std::span<const std::uint64_t> Node::getVisitedAtomCheckpoint() const {
+  return d_visit.checkpointWords();
+}
+
+std::span<const unsigned int> Node::getVisitedAtomDeltas() const {
+  return d_visit.addedAtoms();
 }
 
 int Node::getVisitedDistance(int idx) const {
@@ -136,7 +295,7 @@ int Node::getVisitedDistance(int idx) const {
 Node *Node::newChild(int idx, Atom *atom) const {
   auto new_visit = d_visit;
   const auto atom_idx = static_cast<unsigned int>(idx);
-  new_visit[atom_idx / 64u] |= std::uint64_t{1} << (atom_idx % 64u);
+  new_visit.set(atom_idx);
   auto atomic_num = atom ? atom->getAtomicNum() : 1;
   return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0,
                         this);
