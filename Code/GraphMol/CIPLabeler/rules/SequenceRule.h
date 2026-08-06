@@ -10,6 +10,7 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <stdexcept>
 #include <memory>
 #include <vector>
@@ -25,6 +26,9 @@ namespace RDKit {
 namespace CIPLabeler {
 
 class CIPMol;
+class AtropisomerBond;
+class Sp2Bond;
+class Tetrahedral;
 
 namespace {
 template <typename T>
@@ -35,6 +39,25 @@ inline int three_way_comparison(const T &x, const T &y) {
 
 class SequenceRule {
  public:
+  // Keeps exact comparison results alive across the nested sorts performed by
+  // one configuration-label calculation. Nested sessions share the cache;
+  // the outermost session owns its lifetime.
+  class ComparisonSession {
+   public:
+    ComparisonSession(const ComparisonSession &) = delete;
+    ComparisonSession &operator=(const ComparisonSession &) = delete;
+
+   private:
+    ComparisonSession();
+    ~ComparisonSession();
+
+    friend class SequenceRule;
+    friend class Sort;
+    friend class AtropisomerBond;
+    friend class Sp2Bond;
+    friend class Tetrahedral;
+  };
+
   SequenceRule();
 
   virtual ~SequenceRule();
@@ -61,7 +84,10 @@ class SequenceRule {
   std::unique_ptr<const Sort> dp_sorter = nullptr;
 
  private:
+  std::uint64_t d_cacheId;
+
   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
+  bool hasEquivalentAcyclicContinuation(const Edge *a, const Edge *b) const;
   int recursiveCompareEqual(const Edge *a, const Edge *b) const;
 };
 

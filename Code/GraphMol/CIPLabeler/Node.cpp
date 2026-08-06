@@ -111,6 +111,10 @@ bool Node::isVisited(int idx) const {
          (std::uint64_t{1} << (atom_idx % 64u));
 }
 
+bool Node::isOriginalChildOf(const Node *parent) const {
+  return dp_parent == parent;
+}
+
 int Node::getVisitedDistance(int idx) const {
   if (!isVisited(idx)) {
     // A forward bond duplicate refers to the new child, which is not yet in
@@ -150,7 +154,10 @@ Node *Node::newImplicitHydrogenChild() const {
 
 void Node::add(Edge *e) { d_edges.push_back(e); }
 
-void Node::setAux(Descriptor desc) { d_aux = desc; }
+void Node::setAux(Descriptor desc) {
+  d_aux = desc;
+  dp_g->noteAuxDescriptor(desc);
+}
 
 const std::vector<Edge *> &Node::getEdges() const {
   if (!isExpanded()) {

@@ -102,6 +102,7 @@ Descriptor Tetrahedral::label(Node *node, Digraph &digraph, const Rules &comp) {
 }
 
 Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
+  const SequenceRule::ComparisonSession comparisonSession;
   auto focus = getFocus();
   auto edges = node->getEdges();
 
