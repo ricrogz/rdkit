@@ -132,12 +132,12 @@ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
 
 bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
   using Node_Cfg_Pair = std::pair<Node *, Configuration *>;
-  std::vector<Node_Cfg_Pair> aux;
 
   auto &digraph = center.config->getDigraph();
   if (digraph.getCurrentRoot() != digraph.getOriginalRoot()) {
     digraph.changeRoot(digraph.getOriginalRoot());
   }
+  std::vector<std::vector<Node_Cfg_Pair>> auxByDistance;
 
   // Ordinarily retain the existing reached-focus optimization. If an exact
   // constitutional automorphism ended a comparison without expanding its
@@ -188,26 +188,24 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
         }
       }
       if (!low->isDuplicate()) {
-        aux.emplace_back(low, config.get());
+        const auto distance = static_cast<std::size_t>(low->getDistance());
+        if (distance >= auxByDistance.size()) {
+          auxByDistance.resize(distance + 1u);
+        }
+        auxByDistance[distance].emplace_back(low, config.get());
       }
     }
   }
 
-  auto farthest = [](const Node_Cfg_Pair &a, const Node_Cfg_Pair &b) {
-    return a.first->getDistance() > b.first->getDistance();
-  };
-  // Java's Collections.sort() is stable, so preserve configuration discovery
-  // order for configurations at the same distance.
-  std::stable_sort(aux.begin(), aux.end(), farthest);
-
   // Using a boost::unordered_map because it is more performant
   // than the STL version.
   boost::unordered_map<Node *, Descriptor> queue;
-  for (std::size_t begin = 0; begin < aux.size();) {
-    std::size_t end = begin + 1;
-    while (end < aux.size() &&
-           aux[end].first->getDistance() == aux[begin].first->getDistance()) {
-      ++end;
+  // Distance buckets are exactly equivalent to Java's stable descending sort:
+  // records were appended in discovery order and each bucket preserves it.
+  for (std::size_t distance = auxByDistance.size(); distance-- > 0;) {
+    const auto &sphere = auxByDistance[distance];
+    if (sphere.empty()) {
+      continue;
     }
 
     // Descriptors are immutable within one distance sphere. Keep exact
@@ -215,9 +213,7 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
     // then clear the session before committing labels for the next sphere.
     {
       const SequenceRule::ComparisonSession comparisonSession;
-      for (auto pos = begin; pos < end; ++pos) {
-        const auto &node = aux[pos].first;
-        const auto &config = aux[pos].second;
+      for (const auto &[node, config] : sphere) {
         auto label = config->label(node, digraph, rules);
         // Match Java HashMap.put(): a later configuration at this distance wins
         // if multiple configurations map to the same digraph node.
@@ -228,8 +224,8 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
     for (const auto &entry : queue) {
       entry.first->setAux(entry.second);
     }
+    SequenceRule::ComparisonSession::invalidateAuxiliaryCaches();
     queue.clear();
-    begin = end;
   }
 
   return true;
@@ -302,6 +298,11 @@ class ScopedPreliminaryBudget {
 
 void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
   const ScopedIterationBudget callBudget(maxRecursiveIterations);
+  // Constitutional rules never read auxiliary descriptors. Keep their exact
+  // directed-occurrence results across every reroot and distance sphere in
+  // this labeling operation; descriptor-dependent entries are invalidated as
+  // soon as a sphere is committed.
+  const SequenceRule::ComparisonSession comparisonSession;
 
   // First, if the specified number of iterations allows it, run all centers
   // through a fast pass with the constitutional rules allow easy stuff to be

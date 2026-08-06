@@ -8,6 +8,9 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
+#include <algorithm>
+#include <utility>
+
 #include <RDGeneral/Invariant.h>
 
 #include "Rule5New.h"
@@ -17,9 +20,25 @@
 namespace RDKit {
 namespace CIPLabeler {
 
-Rule5New::Rule5New() = default;
+Rule5New::Rule5New() : Rule5New(Descriptor::NONE) {}
 
-Rule5New::Rule5New(Descriptor ref) : d_ref{ref} {}
+Rule5New::Rule5New(Descriptor ref)
+    : d_ref{ref},
+      dp_referenceR{new Rule5New(Descriptor::R, ReferenceRuleTag{})},
+      dp_referenceS{new Rule5New(Descriptor::S, ReferenceRuleTag{})} {
+  dp_referenceSorterR = makeRefSorter(dp_referenceR.get());
+  dp_referenceSorterS = makeRefSorter(dp_referenceS.get());
+}
+
+Rule5New::Rule5New(Descriptor ref, ReferenceRuleTag) : d_ref{ref} {}
+
+void Rule5New::setSorter(const Sort *sorter) {
+  SequenceRule::setSorter(sorter);
+  if (dp_referenceR != nullptr) {
+    dp_referenceSorterR = makeRefSorter(dp_referenceR.get());
+    dp_referenceSorterS = makeRefSorter(dp_referenceS.get());
+  }
+}
 
 int Rule5New::compare(const Edge *a, const Edge *b) const {
   const bool aHasPairs =
@@ -85,8 +104,7 @@ int Rule5New::compare(const Edge *a, const Edge *b) const {
 void Rule5New::fillPairs(const Node *beg, PairList &plist,
                          std::vector<const Node *> &queue,
                          std::vector<Edge *> &edges) const {
-  const Rule5New replacement_rule(plist.getRefDescriptor());
-  const auto &sorter = getRefSorter(&replacement_rule);
+  const auto &sorter = getRefSorter(plist.getRefDescriptor());
   queue.clear();
   queue.push_back(beg);
 
@@ -113,7 +131,20 @@ bool Rule5New::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
                                                            AUX_DESCRIPTOR_PAIR);
 }
 
-Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {
+const Sort &Rule5New::getRefSorter(Descriptor ref) const {
+  if (ref == Descriptor::R) {
+    PRECONDITION(dp_referenceSorterR, "Rule 5 R sorter is not initialized")
+    return *dp_referenceSorterR;
+  }
+  if (ref == Descriptor::S) {
+    PRECONDITION(dp_referenceSorterS, "Rule 5 S sorter is not initialized")
+    return *dp_referenceSorterS;
+  }
+  throw std::logic_error("Invalid Rule 5 reference descriptor");
+}
+
+std::unique_ptr<const Sort> Rule5New::makeRefSorter(
+    const SequenceRule *replacementRule) const {
   const auto &rules = getSorter()->getRules();
 
   CHECK_INVARIANT(std::find(rules.begin(), rules.end(), this) != rules.end(),
@@ -126,8 +157,8 @@ Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {
       new_rules.push_back(rule);
     }
   }
-  new_rules.push_back(replacement_rule);
-  return {new_rules};
+  new_rules.push_back(replacementRule);
+  return std::make_unique<const Sort>(std::move(new_rules));
 }
 
 }  // namespace CIPLabeler

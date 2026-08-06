@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <utility>
 
 #include <GraphMol/MolOps.h>
@@ -21,6 +22,21 @@
 
 namespace RDKit {
 namespace CIPLabeler {
+
+std::size_t CIPMol::ConstitutionalPathQueryHash::operator()(
+    const ConstitutionalPathQuery &query) const {
+  std::size_t result = 0;
+  const auto combine = [&result](auto value) {
+    const auto hash = std::hash<decltype(value)>{}(value);
+    result ^= hash + 0x9e3779b9u + (result << 6) + (result >> 2);
+  };
+  combine(query.fixedAtoms[0]);
+  combine(query.fixedAtoms[1]);
+  combine(query.root);
+  combine(query.from);
+  combine(query.to);
+  return result;
+}
 
 CIPMol::CIPMol(ROMol &mol) : d_mol{mol} {
   d_bonds.reserve(mol.getNumBonds());
@@ -128,14 +144,21 @@ bool CIPMol::isAcyclicBranchWithoutConfiguration(Bond *bond,
   return !containsFocus;
 }
 
-bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
-                                           Atom *to) const {
-  if (root == nullptr || from == nullptr || to == nullptr) {
-    return false;
+bool CIPMol::hasUniqueBond(Atom *begin, Atom *end) const {
+  unsigned int count = 0;
+  for (const auto bond : getBonds(begin)) {
+    if (bond->getOtherAtom(begin) == end && ++count > 1u) {
+      return false;
+    }
   }
-  if (from == to) {
-    return true;
+  return count == 1u;
+}
+
+void CIPMol::initConstitutionalAutomorphisms() const {
+  if (d_constitutional_automorphisms_initialized) {
+    return;
   }
+  d_constitutional_automorphisms_initialized = true;
 
   // Exact self-isomorphism is intended as a shortcut for compact, highly
   // cyclic stereochemical units. Avoid introducing potentially expensive VF2
@@ -143,42 +166,25 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
   constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
   const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
   if (numAtoms == 0u || numAtoms > MAX_AUTOMORPHISM_ATOMS) {
-    return false;
+    return;
   }
   if (std::ranges::any_of(d_bonds, [](const Bond *bond) {
         return bond->getBondType() == Bond::AROMATIC;
       })) {
-    return false;
-  }
-
-  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
-  auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
-  auto toIdx = static_cast<std::uint64_t>(to->getIdx());
-  if (fromIdx > toIdx) {
-    std::swap(fromIdx, toIdx);
-  }
-  const auto cacheKey = (rootIdx * numAtoms + fromIdx) * numAtoms + toIdx;
-  const auto cached = d_constitutional_automorphism_cache.find(cacheKey);
-  if (cached != d_constitutional_automorphism_cache.end()) {
-    return cached->second;
+    return;
   }
 
   SubstructMatchParameters params;
   params.recursionPossible = false;
   params.uniquify = false;
-  params.maxMatches = 1;
+  // Every retained mapping is an exact proof. If a molecule has more
+  // automorphisms than this bounded sample, a missing mapping merely disables
+  // a shortcut for that query.
+  params.maxMatches = 1024;
   params.numThreads = 1;
   params.useChirality = false;
   params.extraAtomCheckOverridesDefaultCheck = true;
-  params.extraAtomCheck = [this, rootIdx, fromIdx, toIdx](const Atom &queryAtom,
-                                                          const Atom &molAtom) {
-    const auto queryIdx = static_cast<std::uint64_t>(queryAtom.getIdx());
-    const auto molIdx = static_cast<std::uint64_t>(molAtom.getIdx());
-    if ((queryIdx == rootIdx) != (molIdx == rootIdx) ||
-        (queryIdx == fromIdx) != (molIdx == toIdx)) {
-      return false;
-    }
-
+  params.extraAtomCheck = [](const Atom &queryAtom, const Atom &molAtom) {
     return queryAtom.getAtomicNum() == molAtom.getAtomicNum() &&
            queryAtom.getIsotope() == molAtom.getIsotope() &&
            queryAtom.getFormalCharge() == molAtom.getFormalCharge() &&
@@ -192,8 +198,169 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
            queryBond.getIsAromatic() == molBond.getIsAromatic();
   };
 
-  const bool equivalent = !SubstructMatch(d_mol, d_mol, params).empty();
+  const auto matches = SubstructMatch(d_mol, d_mol, params);
+  d_constitutional_automorphisms.reserve(matches.size());
+  for (const auto &match : matches) {
+    if (match.size() != numAtoms) {
+      continue;
+    }
+    std::vector<unsigned int> mapping(numAtoms,
+                                      static_cast<unsigned int>(numAtoms));
+    for (const auto &[queryIdx, molIdx] : match) {
+      if (queryIdx < 0 || molIdx < 0 ||
+          static_cast<std::uint64_t>(queryIdx) >= numAtoms ||
+          static_cast<std::uint64_t>(molIdx) >= numAtoms) {
+        mapping.clear();
+        break;
+      }
+      mapping[queryIdx] = molIdx;
+    }
+    if (!mapping.empty() &&
+        std::ranges::none_of(mapping, [numAtoms](unsigned int idx) {
+          return idx == numAtoms;
+        })) {
+      ConstitutionalAutomorphism automorphism{std::move(mapping), {}};
+      for (std::uint64_t atomIdx = 0; atomIdx < numAtoms; ++atomIdx) {
+        if (automorphism.mapping[atomIdx] != atomIdx) {
+          automorphism.movedAtoms[atomIdx / 64u] |= std::uint64_t{1}
+                                                    << (atomIdx % 64u);
+        }
+      }
+      d_constitutional_automorphisms.push_back(std::move(automorphism));
+    }
+  }
+}
+
+bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
+                                           Atom *to) const {
+  if (root == nullptr || from == nullptr || to == nullptr) {
+    return false;
+  }
+  if (!hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
+    return false;
+  }
+  if (from == to) {
+    return true;
+  }
+
+  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
+  if (numAtoms == 0u) {
+    return false;
+  }
+  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
+  auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
+  auto toIdx = static_cast<std::uint64_t>(to->getIdx());
+  if (rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms) {
+    return false;
+  }
+  if (fromIdx > toIdx) {
+    std::swap(fromIdx, toIdx);
+  }
+  const auto cacheKey = (rootIdx * numAtoms + fromIdx) * numAtoms + toIdx;
+  const auto cached = d_constitutional_automorphism_cache.find(cacheKey);
+  if (cached != d_constitutional_automorphism_cache.end()) {
+    return cached->second;
+  }
+
+  // A one-off root query only needs one constrained match. Enumerating the
+  // automorphism group is reserved for the many path-constrained reroot
+  // queries, where it is amortized.
+  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
+  bool equivalent = false;
+  if (d_constitutional_automorphisms_initialized) {
+    equivalent = std::ranges::any_of(
+        d_constitutional_automorphisms, [&](const auto &automorphism) {
+          return automorphism.mapping[rootIdx] == rootIdx &&
+                 automorphism.mapping[fromIdx] == toIdx;
+        });
+  }
+  if (numAtoms <= MAX_AUTOMORPHISM_ATOMS && !equivalent &&
+      std::ranges::none_of(d_bonds, [](const Bond *bond) {
+        return bond->getBondType() == Bond::AROMATIC;
+      })) {
+    SubstructMatchParameters params;
+    params.recursionPossible = false;
+    params.uniquify = false;
+    params.maxMatches = 1;
+    params.numThreads = 1;
+    params.useChirality = false;
+    params.extraAtomCheckOverridesDefaultCheck = true;
+    params.extraAtomCheck = [rootIdx, fromIdx, toIdx](const Atom &queryAtom,
+                                                      const Atom &molAtom) {
+      const auto queryIdx = static_cast<std::uint64_t>(queryAtom.getIdx());
+      const auto molIdx = static_cast<std::uint64_t>(molAtom.getIdx());
+      if ((queryIdx == rootIdx) != (molIdx == rootIdx) ||
+          (queryIdx == fromIdx) != (molIdx == toIdx)) {
+        return false;
+      }
+      return queryAtom.getAtomicNum() == molAtom.getAtomicNum() &&
+             queryAtom.getIsotope() == molAtom.getIsotope() &&
+             queryAtom.getFormalCharge() == molAtom.getFormalCharge() &&
+             queryAtom.getNumRadicalElectrons() ==
+                 molAtom.getNumRadicalElectrons() &&
+             queryAtom.getTotalNumHs() == molAtom.getTotalNumHs();
+    };
+    params.extraBondCheckOverridesDefaultCheck = true;
+    params.extraBondCheck = [](const Bond &queryBond, const Bond &molBond) {
+      return queryBond.getBondType() == molBond.getBondType() &&
+             queryBond.getIsAromatic() == molBond.getIsAromatic();
+    };
+    equivalent = !SubstructMatch(d_mol, d_mol, params).empty();
+  }
   d_constitutional_automorphism_cache.emplace(cacheKey, equivalent);
+  return equivalent;
+}
+
+bool CIPMol::hasConstitutionalAutomorphism(
+    Atom *root, Atom *from, Atom *to,
+    std::span<const std::uint64_t> fixedAtoms) const {
+  if (root == nullptr || from == nullptr || to == nullptr) {
+    return false;
+  }
+  if (!hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
+    return false;
+  }
+  if (from == to) {
+    return true;
+  }
+
+  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
+  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
+  const auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
+  const auto toIdx = static_cast<std::uint64_t>(to->getIdx());
+  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
+  if (numAtoms == 0u || numAtoms > MAX_AUTOMORPHISM_ATOMS ||
+      rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms ||
+      fixedAtoms.size() < (numAtoms + 63u) / 64u) {
+    return false;
+  }
+
+  ConstitutionalPathQuery query{
+      {fixedAtoms[0], numAtoms > 64u ? fixedAtoms[1] : 0u},
+      static_cast<unsigned int>(rootIdx),
+      static_cast<unsigned int>(fromIdx),
+      static_cast<unsigned int>(toIdx)};
+  const auto cached = d_constitutional_path_query_cache.find(query);
+  if (cached != d_constitutional_path_query_cache.end()) {
+    return cached->second;
+  }
+
+  initConstitutionalAutomorphisms();
+  const auto equivalent = std::ranges::any_of(
+      d_constitutional_automorphisms, [&](const auto &automorphism) {
+        if (automorphism.mapping[rootIdx] != rootIdx ||
+            automorphism.mapping[fromIdx] != toIdx) {
+          return false;
+        }
+        const auto wordCount = (numAtoms + 63u) / 64u;
+        for (std::uint64_t word = 0; word < wordCount; ++word) {
+          if ((fixedAtoms[word] & automorphism.movedAtoms[word]) != 0u) {
+            return false;
+          }
+        }
+        return true;
+      });
+  d_constitutional_path_query_cache.emplace(std::move(query), equivalent);
   return equivalent;
 }
 

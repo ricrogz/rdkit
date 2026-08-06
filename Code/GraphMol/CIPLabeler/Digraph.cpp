@@ -34,7 +34,7 @@ constexpr std::size_t MAX_NODE_COUNT = 100000;
 const int MAX_NODE_DIST = 0;
 }  // namespace
 
-Node &Digraph::addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
+Node &Digraph::addNode(NodeVisitState &&visit, Atom *atom,
                        boost::rational<int> &&frac, int dist, int flags,
                        const Node *parent) {
   if (MAX_NODE_COUNT > 0 && d_nodes.size() >= MAX_NODE_COUNT) {
@@ -81,7 +81,7 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
     : d_mol{mol}, d_seen_atoms(mol.getNumAtoms()) {
   PRECONDITION(atom, "cannot init digraph on a nullptr")
 
-  auto visit = std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
+  auto visit = NodeVisitState((d_mol.getNumAtoms() + 63u) / 64u);
   visit[atom->getIdx() / 64u] |= std::uint64_t{1} << (atom->getIdx() % 64u);
 
   auto dist = 1;

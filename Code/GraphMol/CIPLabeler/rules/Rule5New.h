@@ -10,6 +10,7 @@
 //
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "SequenceRule.h"
@@ -30,17 +31,29 @@ class Rule5New : public SequenceRule {
 
   int compare(const Edge *a, const Edge *b) const override;
 
+  void setSorter(const Sort *sorter) override;
+
  protected:
   bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
 
  private:
+  struct ReferenceRuleTag {};
+
+  Rule5New(Descriptor ref, ReferenceRuleTag);
+
   const Descriptor d_ref = Descriptor::NONE;
+  std::unique_ptr<Rule5New> dp_referenceR;
+  std::unique_ptr<Rule5New> dp_referenceS;
+  std::unique_ptr<const Sort> dp_referenceSorterR;
+  std::unique_ptr<const Sort> dp_referenceSorterS;
 
   void fillPairs(const Node *beg, PairList &plist,
                  std::vector<const Node *> &queue,
                  std::vector<Edge *> &edges) const;
 
-  Sort getRefSorter(const SequenceRule *replacement_rule) const;
+  const Sort &getRefSorter(Descriptor ref) const;
+  std::unique_ptr<const Sort> makeRefSorter(
+      const SequenceRule *replacementRule) const;
 };
 
 }  // namespace CIPLabeler

@@ -10,8 +10,11 @@
 //
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -109,6 +112,13 @@ class CIPMol {
   // used as CIP priorities.
   bool hasConstitutionalAutomorphism(Atom *root, Atom *from, Atom *to) const;
 
+  // As above, but require every atom set in the path bitset to remain fixed.
+  // This proves equality for a rerooted occurrence without losing the
+  // path-history state that controls ring-duplicate construction.
+  bool hasConstitutionalAutomorphism(
+      Atom *root, Atom *from, Atom *to,
+      std::span<const std::uint64_t> fixedAtoms) const;
+
   // Integer bond order of a kekulized molecule
   // Dative bonds get bond order 0.
   int getBondOrder(Bond *bond) const;
@@ -127,6 +137,33 @@ class CIPMol {
   mutable std::vector<unsigned char> d_configuration_branch_cache;
   mutable std::unordered_map<std::uint64_t, bool>
       d_constitutional_automorphism_cache;
+  mutable bool d_constitutional_automorphisms_initialized = false;
+  struct ConstitutionalAutomorphism {
+    std::vector<unsigned int> mapping;
+    std::array<std::uint64_t, 2> movedAtoms{};
+  };
+  mutable std::vector<ConstitutionalAutomorphism>
+      d_constitutional_automorphisms;
+  struct ConstitutionalPathQuery {
+    std::array<std::uint64_t, 2> fixedAtoms{};
+    unsigned int root;
+    unsigned int from;
+    unsigned int to;
+
+    bool operator==(const ConstitutionalPathQuery &other) const {
+      return fixedAtoms == other.fixedAtoms && root == other.root &&
+             from == other.from && to == other.to;
+    }
+  };
+  struct ConstitutionalPathQueryHash {
+    std::size_t operator()(const ConstitutionalPathQuery &query) const;
+  };
+  mutable std::unordered_map<ConstitutionalPathQuery, bool,
+                             ConstitutionalPathQueryHash>
+      d_constitutional_path_query_cache;
+
+  bool hasUniqueBond(Atom *begin, Atom *end) const;
+  void initConstitutionalAutomorphisms() const;
 };
 
 }  // namespace CIPLabeler

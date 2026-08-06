@@ -13,7 +13,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <vector>
+
+#include <RDGeneral/BoostStartInclude.h>
+#include <boost/container/small_vector.hpp>
+#include <RDGeneral/BoostEndInclude.h>
 
 #include "Descriptor.h"
 #include "Mancude.h"
@@ -26,6 +31,20 @@ class Atom;
 namespace CIPLabeler {
 
 class Digraph;
+
+// Most CIP molecules need only one 64-bit path word. Keeping it inline avoids
+// one heap allocation for every nonterminal occurrence without making the
+// many terminal Node objects unnecessarily large. The converting constructor
+// preserves source compatibility with the former std::vector-based API.
+class NodeVisitState : public boost::container::small_vector<std::uint64_t, 1> {
+  using Base = boost::container::small_vector<std::uint64_t, 1>;
+
+ public:
+  using Base::Base;
+  NodeVisitState() = default;
+  NodeVisitState(std::vector<std::uint64_t> &&words)
+      : Base(words.begin(), words.end()) {}
+};
 
 class Node {
  public:
@@ -69,7 +88,7 @@ class Node {
   Node(const Node &) = delete;
   Node &operator=(const Node &) = delete;
 
-  Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
+  Node(Digraph *g, NodeVisitState &&visit, Atom *atom,
        boost::rational<int> &&frac, int dist, int flags, const Node *parent);
 
   Digraph *getDigraph() const;
@@ -105,6 +124,10 @@ class Node {
   // True when this node was created as a child of parent before any temporary
   // digraph rerooting changed edge directions.
   bool isOriginalChildOf(const Node *parent) const;
+
+  // Atoms in the immutable occurrence path built from the original root.
+  // Temporary rerooting changes edge directions but not this history.
+  std::span<const std::uint64_t> getVisitedAtoms() const;
 
   Node *newChild(int idx, Atom *atom) const;
 
@@ -146,7 +169,7 @@ class Node {
 
   std::vector<Edge *> d_edges;
 
-  std::vector<std::uint64_t> d_visit;
+  NodeVisitState d_visit;
 
   Node *newTerminalChild(int idx, Atom *atom, int flags) const;
   int getVisitedDistance(int idx) const;
