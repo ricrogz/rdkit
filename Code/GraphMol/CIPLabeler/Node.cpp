@@ -192,11 +192,17 @@ Node::Node(Digraph *g, NodeVisitState &&visit, Atom *atom,
     : dp_g{g},
       dp_atom{atom},
       dp_parent{parent},
+      d_tree_depth{parent == nullptr ? 0u : parent->d_tree_depth + 1u},
       d_dist{dist},
       d_atomic_num{std::move(frac)},
       d_flags{flags},
       d_visit{std::move(visit)} {
-  d_edges.reserve(d_visit.empty() ? 1u : 4u);
+  // Terminal duplicate and hydrogen nodes never acquire outgoing edges. Do
+  // not allocate adjacency storage for the very large number of such leaves
+  // produced while unfolding multiply bonded ring systems.
+  if (!d_visit.empty() && !(d_flags & DUPLICATE)) {
+    d_edges.reserve(4u);
+  }
   if (d_flags & DUPLICATE) {
     d_atomic_mass = 0.;
   } else if (dp_atom != nullptr) {
@@ -251,7 +257,7 @@ bool Node::isDuplicate() const { return d_flags & DUPLICATE; }
 bool Node::isDuplicateOrH() const { return d_flags & DUPLICATE_OR_H; }
 
 bool Node::isTerminal() const {
-  return d_visit.empty() || (isExpanded() && d_edges.size() == 1);
+  return d_visit.empty() || (isExpanded() && d_edges.size() == 1u);
 }
 
 bool Node::isExpanded() const { return d_flags & EXPANDED; }
@@ -360,6 +366,12 @@ void Node::adjustAuxDescriptorCount(unsigned descriptorClass, int delta) {
 }
 
 const std::vector<Edge *> &Node::getEdges() const {
+  if (d_visit.empty() && d_edges.empty() && dp_parent_edge != nullptr) {
+    // Terminal nodes keep their only edge inline in dp_parent_edge. Preserve
+    // the historical adjacency API lazily for callers that explicitly inspect
+    // a duplicate or hydrogen leaf.
+    const_cast<Node *>(this)->d_edges.push_back(dp_parent_edge);
+  }
   if (!isExpanded()) {
     auto non_const_this = const_cast<Node *>(this);
     non_const_this->d_flags |= EXPANDED;

@@ -244,6 +244,9 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     if (directResult != 0) {
       return directResult;
     }
+    if (a->getEnd()->isTerminal() && b->getEnd()->isTerminal()) {
+      return 0;
+    }
   }
 
   const auto firstGraph = a->getBeg()->getDigraph();
@@ -311,6 +314,9 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
       // Direct Rule 4b/5 comparisons can include complete pair-list
       // traversals.
       return cacheResult(directResult);
+    }
+    if (a->getEnd()->isTerminal() && b->getEnd()->isTerminal()) {
+      return cacheResult(0);
     }
   }
 
@@ -413,6 +419,9 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
     }
     auto aNode = aParent->getEnd();
     auto bNode = bParent->getEnd();
+    if (aNode->isTerminal() && bNode->isTerminal()) {
+      continue;
+    }
     const auto &aNodeEdges = aNode->getEdges();
     const auto &bNodeEdges = bNode->getEdges();
     as.assign(aNodeEdges.begin(), aNodeEdges.end());
@@ -524,6 +533,14 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
     return false;
   }
 
+  // Constitutional rules do not inspect auxiliary descriptors. Once two
+  // occurrences enter the same side of the same bridge at the same distance,
+  // their remaining unfolded trees are identical even when that side contains
+  // stereochemical configurations. Descriptor-dependent rules retain the
+  // stricter configuration-free proof below.
+  if (d_auxiliaryIndependent && !graph->getMol().isInRing(a->getBond())) {
+    return true;
+  }
   return graph->isAcyclicBranchWithoutConfiguration(a);
 }
 
@@ -547,19 +564,21 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
   }
 
   bool equivalent = false;
+  std::vector<unsigned int> movedAtoms;
   if (root == graph->getOriginalRoot()) {
     equivalent = graph->getMol().hasConstitutionalAutomorphism(
-        root->getAtom(), aEnd->getAtom(), bEnd->getAtom());
+        root->getAtom(), aEnd->getAtom(), bEnd->getAtom(), movedAtoms);
   } else {
     // A rerooted occurrence carries an immutable visited path. Requiring that
     // path to be fixed pointwise preserves both its visited set and every
     // distance used for ring-duplicate ordering under Rule 1b.
     equivalent = graph->getMol().hasConstitutionalAutomorphism(
         root->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
-        root->getVisitedAtomCheckpoint(), root->getVisitedAtomDeltas());
+        root->getVisitedAtomCheckpoint(), root->getVisitedAtomDeltas(),
+        movedAtoms);
   }
   if (equivalent) {
-    graph->noteConstitutionalRootEquivalence();
+    graph->noteConstitutionalRootEquivalence(movedAtoms);
   }
   return equivalent;
 }

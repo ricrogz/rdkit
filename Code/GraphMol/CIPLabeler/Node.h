@@ -187,9 +187,16 @@ class Node {
   std::vector<Edge *> getNonTerminalOutEdges() const;
 
  private:
+  friend class Digraph;
+
   Digraph *dp_g;
   Atom *dp_atom;
   const Node *dp_parent;
+  Edge *dp_parent_edge = nullptr;
+  unsigned int d_tree_depth = 0;
+  // Permanent membership in the immutable original-parent tree. This is
+  // independent of the edge directions around the current temporary root.
+  bool d_attached_to_origin = false;
   int d_dist;
   boost::rational<int> d_atomic_num;
   double d_atomic_mass;

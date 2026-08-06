@@ -573,6 +573,14 @@ bool CIPMol::branchReachesCyclicCore(Atom *root, Atom *end) const {
 
 bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
                                            Atom *to) const {
+  std::vector<unsigned int> movedAtoms;
+  return hasConstitutionalAutomorphism(root, from, to, movedAtoms);
+}
+
+bool CIPMol::hasConstitutionalAutomorphism(
+    Atom *root, Atom *from, Atom *to,
+    std::vector<unsigned int> &movedAtoms) const {
+  movedAtoms.clear();
   if (root == nullptr || from == nullptr || to == nullptr) {
     return false;
   }
@@ -592,12 +600,23 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
     return true;
   }
 
-  return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, {}, {});
+  return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, {}, {},
+                                       &movedAtoms);
 }
 
 bool CIPMol::hasConstitutionalAutomorphism(
     Atom *root, Atom *from, Atom *to, std::span<const std::uint64_t> fixedAtoms,
     std::span<const unsigned int> addedFixedAtoms) const {
+  std::vector<unsigned int> movedAtoms;
+  return hasConstitutionalAutomorphism(root, from, to, fixedAtoms,
+                                       addedFixedAtoms, movedAtoms);
+}
+
+bool CIPMol::hasConstitutionalAutomorphism(
+    Atom *root, Atom *from, Atom *to, std::span<const std::uint64_t> fixedAtoms,
+    std::span<const unsigned int> addedFixedAtoms,
+    std::vector<unsigned int> &movedAtoms) const {
+  movedAtoms.clear();
   if (root == nullptr || from == nullptr || to == nullptr) {
     return false;
   }
@@ -618,7 +637,7 @@ bool CIPMol::hasConstitutionalAutomorphism(
   }
 
   return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, fixedAtoms,
-                                       addedFixedAtoms);
+                                       addedFixedAtoms, &movedAtoms);
 }
 
 bool CIPMol::isInSameComponent(Atom *first, Atom *second) const {
@@ -699,16 +718,15 @@ CIPMol::ConstitutionalAutomorphismEvidence &CIPMol::getAutomorphismEvidence(
 std::optional<bool> CIPMol::findAutomorphismEvidence(
     const ConstitutionalAutomorphismEvidence &evidence,
     std::span<const std::uint64_t> fixedAtoms,
-    std::span<const unsigned int> addedFixedAtoms) {
-  if (fixedAtoms.empty() && addedFixedAtoms.empty() &&
-      !evidence.movedAtomSets.empty()) {
-    return true;
-  }
-  if (std::ranges::any_of(evidence.movedAtomSets, [&](const auto &movedAtoms) {
-        return atomSetIsDisjointFromMask(movedAtoms, fixedAtoms,
-                                         addedFixedAtoms);
-      })) {
-    return true;
+    std::span<const unsigned int> addedFixedAtoms,
+    std::vector<unsigned int> *movedAtomsOut) {
+  for (const auto &candidate : evidence.movedAtomSets) {
+    if (atomSetIsDisjointFromMask(candidate, fixedAtoms, addedFixedAtoms)) {
+      if (movedAtomsOut != nullptr) {
+        *movedAtomsOut = candidate;
+      }
+      return true;
+    }
   }
   if (evidence.searchDisabled) {
     return false;
@@ -795,7 +813,8 @@ void CIPMol::addAutomorphismFailure(
 bool CIPMol::hasConstitutionalAutomorphism(
     unsigned int rootIdx, unsigned int fromIdx, unsigned int toIdx,
     std::span<const std::uint64_t> fixedAtoms,
-    std::span<const unsigned int> addedFixedAtoms) const {
+    std::span<const unsigned int> addedFixedAtoms,
+    std::vector<unsigned int> *movedAtomsOut) const {
   initConstitutionalAutomorphismData();
   const auto component = d_component_ids[rootIdx];
   if (d_component_ids[fromIdx] != component ||
@@ -821,8 +840,8 @@ bool CIPMol::hasConstitutionalAutomorphism(
 
   const ConstitutionalAutomorphismKey key{rootIdx, fromIdx, toIdx};
   auto &evidence = getAutomorphismEvidence(key);
-  if (const auto cached =
-          findAutomorphismEvidence(evidence, fixedAtoms, addedFixedAtoms)) {
+  if (const auto cached = findAutomorphismEvidence(
+          evidence, fixedAtoms, addedFixedAtoms, movedAtomsOut)) {
     return *cached;
   }
 
@@ -1047,13 +1066,16 @@ bool CIPMol::hasConstitutionalAutomorphism(
     return false;
   }
 
-  std::vector<unsigned int> movedAtoms;
+  std::vector<unsigned int> witnessMovedAtoms;
   for (const auto atomIdx : componentAtoms) {
     if (componentMapping[d_component_local_indices[atomIdx]] != atomIdx) {
-      movedAtoms.push_back(atomIdx);
+      witnessMovedAtoms.push_back(atomIdx);
     }
   }
-  addAutomorphismWitness(evidence, std::move(movedAtoms));
+  if (movedAtomsOut != nullptr) {
+    *movedAtomsOut = witnessMovedAtoms;
+  }
+  addAutomorphismWitness(evidence, std::move(witnessMovedAtoms));
   return true;
 }
 
