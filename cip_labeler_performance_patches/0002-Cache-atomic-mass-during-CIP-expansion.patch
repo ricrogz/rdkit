@@ -1,0 +1,95 @@
+From f679b8c9ebbf65802cc74e693434aaabdbd442af Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:29:28 -0400
+Subject: [PATCH 2/7] Cache atomic mass during CIP expansion
+
+---
+ Code/GraphMol/CIPLabeler/CIPMol.cpp | 12 ++++++++++++
+ Code/GraphMol/CIPLabeler/CIPMol.h   |  7 ++++++-
+ Code/GraphMol/CIPLabeler/Node.cpp   | 13 +++----------
+ 3 files changed, 21 insertions(+), 11 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+index 5b6ec22ad..23f78915a 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+@@ -19,6 +19,8 @@ namespace CIPLabeler {
+ CIPMol::CIPMol(ROMol &mol) : d_mol{mol} {
+   d_bonds.reserve(mol.getNumBonds());
+   std::ranges::copy(mol.bonds(), std::back_inserter(d_bonds));
++  d_atomic_masses.resize(mol.getNumAtoms());
++  d_atomic_mass_cached.resize(mol.getNumAtoms());
+ }
+ 
+ const FractionalAtomicNum &CIPMol::getFractionalAtomicNum(Atom *atom) const {
+@@ -116,5 +118,15 @@ int CIPMol::getBondOrder(Bond *bond) const {
+   }
+ };
+ 
++double CIPMol::getAtomicMass(Atom *atom) const {
++  PRECONDITION(atom, "bad atom")
++  const auto index = atom->getIdx();
++  if (!d_atomic_mass_cached.at(index)) {
++    d_atomic_masses[index] = atom->getMass();
++    d_atomic_mass_cached[index] = true;
++  }
++  return d_atomic_masses[index];
++}
++
+ }  // namespace CIPLabeler
+ }  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.h b/Code/GraphMol/CIPLabeler/CIPMol.h
+index 8d103692e..3ab162d60 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.h
++++ b/Code/GraphMol/CIPLabeler/CIPMol.h
+@@ -11,6 +11,7 @@
+ #pragma once
+ 
+ #include <memory>
++#include <vector>
+ 
+ #include <GraphMol/RDKitBase.h>
+ 
+@@ -93,11 +94,15 @@ class CIPMol {
+   // Dative bonds get bond order 0.
+   int getBondOrder(Bond *bond) const;
+ 
++  double getAtomicMass(Atom *atom) const;
++
+  private:
+   ROMol &d_mol;
+   std::vector<RDKit::Bond::BondType> d_kekulized_bonds;
+   std::vector<FractionalAtomicNum> d_atomnums;
+-  std::vector<RDKit::Bond* > d_bonds;
++  std::vector<RDKit::Bond *> d_bonds;
++  mutable std::vector<double> d_atomic_masses;
++  mutable std::vector<unsigned char> d_atomic_mass_cached;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/Node.cpp b/Code/GraphMol/CIPLabeler/Node.cpp
+index 6c9a823f4..28088b0b8 100644
+--- a/Code/GraphMol/CIPLabeler/Node.cpp
++++ b/Code/GraphMol/CIPLabeler/Node.cpp
+@@ -46,18 +46,11 @@ Node::Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
+   if (d_flags & DUPLICATE) {
+     d_edges.reserve(4);
+     d_atomic_mass = 0.;
++  } else if (dp_atom != nullptr) {
++    d_atomic_mass = dp_g->getMol().getAtomicMass(dp_atom);
+   } else {
+     const auto &table = RDKit::PeriodicTable::getTable();
+-    auto atomic_number = getAtomicNum();
+-    auto isotope = getMassNum();
+-    if (isotope == 0u) {
+-      d_atomic_mass = table->getAtomicWeight(atomic_number);
+-    } else {
+-      d_atomic_mass = table->getMassForIsotope(atomic_number, isotope);
+-      if (atomic_number != 0 && d_atomic_mass == 0.0) {
+-        d_atomic_mass = isotope;
+-      }
+-    }
++    d_atomic_mass = table->getAtomicWeight(1);
+   }
+   if (d_visit.empty() || d_flags & DUPLICATE) {
+     d_flags |= EXPANDED;

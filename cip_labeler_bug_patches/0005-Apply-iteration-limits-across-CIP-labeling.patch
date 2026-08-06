@@ -1,0 +1,249 @@
+From 665245cb9181f34da1de9c9ef9f8da55c6e0e470 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:25:21 -0400
+Subject: [PATCH 05/14] Apply iteration limits across CIP labeling
+
+---
+ Code/GraphMol/CIPLabeler/CIPLabeler.cpp       | 75 ++++++++++++++++---
+ Code/GraphMol/CIPLabeler/CIPLabeler.h         | 27 ++++---
+ .../GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp | 10 ++-
+ Code/GraphMol/CIPLabeler/catch_tests.cpp      | 24 +++++-
+ 4 files changed, 108 insertions(+), 28 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+index 7bad406c5..ffd2eb2dc 100644
+--- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+@@ -169,16 +169,75 @@ bool labelAux(std::vector<std::unique_ptr<Configuration>> &configs,
+   return true;
+ }
+ 
+-thread_local unsigned int remainingCallCount = 0;
+-
+ // The chiral centers in current rdkit examples that can be resolved using only
+ // the constitutional rules average about 8 iterations (the highest count is
+ // 1039, in one of the examples in the CIP validation suite). We use 2000 as
+ // threshold to allow some margin.
+ constexpr unsigned int constitutionalRuleTimeout = 2000;
+ 
++struct IterationBudget {
++  void reset(unsigned int maxRecursiveIterations) {
++    hasGlobalLimit = maxRecursiveIterations != 0;
++    remainingGlobal = maxRecursiveIterations;
++    inPreliminaryPass = false;
++    remainingPreliminary = 0;
++  }
++
++  void beginPreliminaryPass() {
++    inPreliminaryPass = true;
++    remainingPreliminary = constitutionalRuleTimeout;
++  }
++
++  void endPreliminaryPass() {
++    inPreliminaryPass = false;
++    remainingPreliminary = 0;
++  }
++
++  bool consume() {
++    if ((inPreliminaryPass && remainingPreliminary == 0) ||
++        (hasGlobalLimit && remainingGlobal == 0)) {
++      return false;
++    }
++    if (inPreliminaryPass) {
++      --remainingPreliminary;
++    }
++    if (hasGlobalLimit) {
++      --remainingGlobal;
++    }
++    return true;
++  }
++
++  bool hasGlobalLimit = false;
++  unsigned int remainingGlobal = 0;
++  bool inPreliminaryPass = false;
++  unsigned int remainingPreliminary = 0;
++};
++
++thread_local IterationBudget iterationBudget;
++
++class ScopedIterationBudget {
++ public:
++  explicit ScopedIterationBudget(unsigned int maxRecursiveIterations)
++      : d_previous{iterationBudget} {
++    iterationBudget.reset(maxRecursiveIterations);
++  }
++
++  ~ScopedIterationBudget() { iterationBudget = d_previous; }
++
++ private:
++  IterationBudget d_previous;
++};
++
++class ScopedPreliminaryBudget {
++ public:
++  ScopedPreliminaryBudget() { iterationBudget.beginPreliminaryPass(); }
++  ~ScopedPreliminaryBudget() { iterationBudget.endPreliminaryPass(); }
++};
++
+ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+            unsigned int maxRecursiveIterations) {
++  const ScopedIterationBudget callBudget(maxRecursiveIterations);
++
+   // First, if the specified number of iterations allows it, run all centers
+   // through a fast pass with the constitutional rules allow easy stuff to be
+   // resolved.
+@@ -186,8 +245,8 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+     // Make sure this stereo center has no label
+     conf->resetPrimaryLabel();
+ 
+-    remainingCallCount = constitutionalRuleTimeout;
+     try {
++      const ScopedPreliminaryBudget preliminaryBudget;
+       auto desc = conf->label(constitutional_rules);
+       if (desc != Descriptor::UNKNOWN) {
+         conf->setPrimaryLabel(desc);
+@@ -196,14 +255,6 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+     }
+   }
+ 
+-  // Now, retry everything that hasn't been solved with a more generous
+-  // threshold
+-  if (maxRecursiveIterations != 0) {
+-    remainingCallCount = maxRecursiveIterations;
+-  } else {
+-    remainingCallCount = UINT_MAX;  // really big - will never be hit
+-  }
+-
+   // try again on everything that hasn't been resolved yet
+   for (const auto &conf : configs) {
+     if (conf->hasPrimaryLabel()) {
+@@ -265,7 +316,7 @@ void assignCIPLabels(ROMol &mol, unsigned int maxRecursiveIterations) {
+ namespace CIPLabeler_detail {
+ 
+ bool decrementRemainingCallCountAndCheck() {
+-  return (--CIPLabeler::remainingCallCount) > 0;
++  return CIPLabeler::iterationBudget.consume();
+ }
+ 
+ }  // namespace CIPLabeler_detail
+diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.h b/Code/GraphMol/CIPLabeler/CIPLabeler.h
+index 6a1342b94..c689484aa 100644
+--- a/Code/GraphMol/CIPLabeler/CIPLabeler.h
++++ b/Code/GraphMol/CIPLabeler/CIPLabeler.h
+@@ -27,19 +27,19 @@ RDKIT_CIPLABELER_EXPORT bool decrementRemainingCallCountAndCheck();
+ namespace CIPLabeler {
+ 
+ /*
+-  Some very symmetrical mols can cause pseudo infinite processing
+-  (e.g. dodecahedrane)
+-  To avoid this a maxinum number of iterations can be set by the caller as a
+-  parameter to assignCIPLabels.
+-  If that maximum value is exceeded, the following error is thrown
++  Some very symmetrical mols can cause pseudo-infinite processing
++  (e.g. dodecahedrane). To avoid this, the caller can limit the total number
++  of recursive comparisons performed by assignCIPLabels. The limit applies
++  across both the preliminary and full labeling passes. If the limit is
++  exhausted, the following error is thrown.
+ */
+ 
+ class RDKIT_CIPLABELER_EXPORT MaxIterationsExceeded
+     : public std::runtime_error {
+  public:
+   explicit MaxIterationsExceeded()
+-      : std::runtime_error("Max Iterations Exceeded in CIP label calculation") {
+-        };
++      : std::runtime_error(
++            "Max Iterations Exceeded in CIP label calculation"){};
+ };
+ 
+ /**
+@@ -61,6 +61,9 @@ class RDKIT_CIPLABELER_EXPORT MaxIterationsExceeded
+  *          bond directions will be labelled.
+  *   \note Labels will be stored under the common_properties::_CIPCode
+  *          property of the relevant atoms/bonds.
++ *   \param maxRecursiveIterations - maximum total number of recursive
++ *          comparisons across all labeling passes; zero means no
++ *          caller-specified limit.
+  */
+ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+     ROMol &mol, unsigned int maxRecursiveIterations = 0);
+@@ -74,10 +77,12 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+  *
+  *   \param bonds - bitset with the bond indexes to be labeled.
+  *
+- *   \param maxRecursiveIterations - maximum number of iterations
+- *      A value of 1,250,000 take about 1 second.  Most structures requires
+- *      less than 10,000 iterations. A peptide with MW~3000 took about
+- *      100 iterations, and a 20,000 mw protein took about 600 iterations.
++ *   \param maxRecursiveIterations - maximum total number of recursive
++ *      comparisons across the preliminary and full labeling passes. A value
++ *      of zero means no caller-specified limit. A value of 1,250,000 takes
++ *      about 1 second. Most structures require fewer than 10,000 comparisons.
++ *      A peptide with MW~3000 took about 100 comparisons, and a 20,000 MW
++ *      protein took about 600 comparisons.
+  *
+  */
+ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+diff --git a/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp b/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp
+index fe3c4cc4f..04f15c0f4 100644
+--- a/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp
++++ b/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp
+@@ -72,10 +72,12 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
+       " - atomsToLabel: (optional) list of atoms to label\n"
+       " - bondsToLabel: (optional) list of bonds to label\n"
+       " - maxRecursiveIterations: (optional) protects against pseudo-infinite\n"
+-      "recursion for highly symmetrical structures.\n A value of 1,250,000 take"
+-      " about 1 second.  Most structures requires less than 10,000"
+-      "iterations.\n A peptide with MW~3000 took about 100 iterations, and a "
+-      "20,000 mw protein took about 600 iterations\n(0 = default - no limit)\n";
++      "recursion for highly symmetrical structures. The limit is shared by "
++      "the preliminary and full labeling passes.\n A value of 1,250,000 takes"
++      " about 1 second. Most structures require fewer than 10,000 recursive "
++      "comparisons.\n A peptide with MW~3000 took about 100 comparisons, and a "
++      "20,000 MW protein took about 600 comparisons\n(0 = default - no "
++      "limit)\n";
+ 
+   python::def(
+       "AssignCIPLabels", assignCIPLabelsWrapHelper,
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 63b37a763..437565cf2 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -286,6 +286,26 @@ $$$$
+   }
+ }
+ 
++TEST_CASE("Iteration limit includes the preliminary pass",
++          "[bug][accurateCIP]") {
++  auto mol = "C[C@H](F)Cl"_smiles;
++  REQUIRE(mol);
++
++  CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 1),
++                  CIPLabeler::MaxIterationsExceeded);
++
++  // A bounded call must not leave the thread-local budget exhausted for
++  // standalone rule comparisons on the same thread.
++  auto comparisonMol = "COC"_smiles;
++  REQUIRE(comparisonMol);
++  CIPLabeler::CIPMol cipmol(*comparisonMol);
++  Digraph digraph(cipmol, cipmol.getAtom(1));
++  auto origin = digraph.getOriginalRoot();
++  auto edges = origin->getEdges();
++  Rule1a rule;
++  CHECK_NOTHROW(rule.getSorter()->prioritize(origin, edges));
++}
++
+ void check_incoming_edge_count(Node *root) {
+   auto queue = std::list<Node *>({root});
+ 
+@@ -1589,7 +1609,9 @@ $$$$
+   auto mol = v2::FileParsers::MolFromMolBlock(molBlock, params);
+ 
+   REQUIRE(mol);
+-  REQUIRE_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 1000),
++  // Leave enough of the global budget for the preliminary pass to visit the
++  // easy center before the difficult centers exhaust the remaining budget.
++  REQUIRE_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 100000),
+                     CIPLabeler::MaxIterationsExceeded);
+ 
+   auto at = mol->getAtomWithIdx(22);

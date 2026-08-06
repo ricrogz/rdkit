@@ -1,0 +1,69 @@
+From 29d802d45c4bba6e0ebf88891b01a5a9ed0c2cd8 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:29:38 -0400
+Subject: [PATCH 3/7] Skip kekulization for nonaromatic CIP molecules
+
+---
+ Code/GraphMol/CIPLabeler/CIPMol.cpp | 41 +++++++++++++++++++----------
+ 1 file changed, 27 insertions(+), 14 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+index 23f78915a..e8c5c1768 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+@@ -9,6 +9,8 @@
+ //  of the RDKit source tree.
+ //
+ 
++#include <algorithm>
++
+ #include <GraphMol/MolOps.h>
+ 
+ #include "CIPMol.h"
+@@ -67,21 +69,32 @@ bool CIPMol::isInRing(Bond *bond) const {
+ int CIPMol::getBondOrder(Bond *bond) const {
+   PRECONDITION(bond, "bad bond")
+   if (d_kekulized_bonds.empty()) {
+-    RWMol tmp{d_mol};
+-    const ROMol *bond_source = &tmp;
+-    try {
+-      MolOps::Kekulize(tmp);
+-    } catch (const MolSanitizeException &) {
+-      // Kekulize() may have changed some bonds before discovering that no
+-      // valid assignment exists. Fall back to the untouched input instead of
+-      // caching that partial assignment.
+-      bond_source = &d_mol;
+-    }
+-    auto &bonds = const_cast<std::vector<RDKit::Bond::BondType> &>(
+-        d_kekulized_bonds);
++    auto &bonds =
++        const_cast<std::vector<RDKit::Bond::BondType> &>(d_kekulized_bonds);
+     bonds.reserve(d_mol.getNumBonds());
+-    for (const auto &b : bond_source->bonds()) {
+-      bonds.push_back(b->getBondType());
++
++    const bool hasAromaticBond =
++        std::ranges::any_of(d_bonds, [](const Bond *candidate) {
++          return candidate->getBondType() == Bond::AROMATIC;
++        });
++    if (hasAromaticBond) {
++      RWMol tmp{d_mol};
++      const ROMol *bond_source = &tmp;
++      try {
++        MolOps::Kekulize(tmp);
++      } catch (const MolSanitizeException &) {
++        // Kekulize() may have changed some bonds before discovering that no
++        // valid assignment exists. Fall back to the untouched input instead
++        // of caching that partial assignment.
++        bond_source = &d_mol;
++      }
++      for (const auto candidate : bond_source->bonds()) {
++        bonds.push_back(candidate->getBondType());
++      }
++    } else {
++      for (const auto candidate : d_bonds) {
++        bonds.push_back(candidate->getBondType());
++      }
+     }
+   }
+ 

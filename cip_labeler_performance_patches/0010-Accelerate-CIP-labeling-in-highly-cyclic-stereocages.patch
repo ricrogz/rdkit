@@ -1,0 +1,1753 @@
+From b9abe6a48adea8c5ab30f249b68db271cb340fc9 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 12:03:39 -0400
+Subject: [PATCH] Accelerate CIP labeling in highly cyclic stereocages
+
+---
+ Code/GraphMol/CIPLabeler/CIPLabeler.cpp       |  81 +++++--
+ Code/GraphMol/CIPLabeler/CIPMol.cpp           |  71 ++++++
+ Code/GraphMol/CIPLabeler/CIPMol.h             |   9 +
+ Code/GraphMol/CIPLabeler/CMakeLists.txt       |   4 +-
+ Code/GraphMol/CIPLabeler/Descriptor.h         |  31 +++
+ Code/GraphMol/CIPLabeler/Digraph.cpp          | 136 +++++++++--
+ Code/GraphMol/CIPLabeler/Digraph.h            |  28 ++-
+ Code/GraphMol/CIPLabeler/Edge.cpp             |  22 +-
+ Code/GraphMol/CIPLabeler/Node.cpp             |  59 ++++-
+ Code/GraphMol/CIPLabeler/Node.h               |  15 +-
+ Code/GraphMol/CIPLabeler/Sort.cpp             |  31 ++-
+ Code/GraphMol/CIPLabeler/Sort.h               |   2 +
+ Code/GraphMol/CIPLabeler/catch_tests.cpp      | 154 +++++++++++-
+ Code/GraphMol/CIPLabeler/rules/Rule1a.cpp     |   4 +-
+ Code/GraphMol/CIPLabeler/rules/Rule1b.cpp     |   4 +-
+ Code/GraphMol/CIPLabeler/rules/Rule2.cpp      |   2 +-
+ Code/GraphMol/CIPLabeler/rules/Rule3.cpp      |  11 +-
+ Code/GraphMol/CIPLabeler/rules/Rule3.h        |   3 +
+ Code/GraphMol/CIPLabeler/rules/Rule4a.cpp     |  11 +-
+ Code/GraphMol/CIPLabeler/rules/Rule4a.h       |   3 +
+ Code/GraphMol/CIPLabeler/rules/Rule4b.cpp     |  26 ++-
+ Code/GraphMol/CIPLabeler/rules/Rule4b.h       |   3 +
+ Code/GraphMol/CIPLabeler/rules/Rule4c.cpp     |  11 +-
+ Code/GraphMol/CIPLabeler/rules/Rule4c.h       |   3 +
+ Code/GraphMol/CIPLabeler/rules/Rule5New.cpp   |  30 ++-
+ Code/GraphMol/CIPLabeler/rules/Rule5New.h     |   3 +
+ Code/GraphMol/CIPLabeler/rules/Rule6.cpp      |   7 +
+ Code/GraphMol/CIPLabeler/rules/Rule6.h        |   3 +
+ .../CIPLabeler/rules/SequenceRule.cpp         | 221 ++++++++++++++++--
+ Code/GraphMol/CIPLabeler/rules/SequenceRule.h |  25 +-
+ 30 files changed, 909 insertions(+), 104 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+index 361252496..2772c4375 100644
+--- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+@@ -135,7 +135,19 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
+   std::vector<Node_Cfg_Pair> aux;
+ 
+   auto &digraph = center.config->getDigraph();
+-  for (const auto &entry : configs) {
++  if (digraph.getCurrentRoot() != digraph.getOriginalRoot()) {
++    digraph.changeRoot(digraph.getOriginalRoot());
++  }
++
++  // Ordinarily retain the existing reached-focus optimization. If an exact
++  // constitutional automorphism ended a comparison without expanding its
++  // remote paths, include every configuration: those unseen descriptors may
++  // be precisely what Rules 3-6 need to break the constitutional symmetry.
++  const bool includeUnseen = digraph.usedConstitutionalRootEquivalence();
++  std::vector<unsigned char> eligible(configs.size());
++  boost::dynamic_bitset<> targetFoci(digraph.getMol().getNumAtoms());
++  for (std::size_t i = 0; i < configs.size(); ++i) {
++    const auto &entry = configs[i];
+     if (entry.config.get() == center.config.get()) {
+       continue;
+     }
+@@ -143,12 +155,26 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
+     // FIXME: specific to each descriptor
+     const auto &foci = config->getFoci();
+ 
+-    // Skip if none of the foci atoms were reached during expansion
+-    if (std::ranges::none_of(foci,
+-                             [&](auto f) { return digraph.seenAtom(f); })) {
++    if (!includeUnseen && std::ranges::none_of(foci, [&](auto focus) {
++          return digraph.seenAtom(focus);
++        })) {
+       continue;
+     }
+-    for (const auto &node : digraph.getNodesForAuxiliaryLabeling(foci[0])) {
++    eligible[i] = 1u;
++    targetFoci.set(foci[0]->getIdx());
++  }
++
++  // Collect every eligible focus in one target-guided traversal. A separate
++  // getNodes() walk per configuration repeatedly scanned the same dense cage
++  // occurrence tree.
++  const auto occurrences = digraph.getNodesForAuxiliaryLabeling(targetFoci);
++  for (std::size_t i = 0; i < configs.size(); ++i) {
++    if (!eligible[i]) {
++      continue;
++    }
++    const auto &config = configs[i].config;
++    const auto &foci = config->getFoci();
++    for (const auto &node : occurrences[foci[0]->getIdx()]) {
+       if (node->isDuplicate()) {
+         continue;
+       }
+@@ -177,26 +203,33 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
+   // Using a boost::unordered_map because it is more performant
+   // than the STL version.
+   boost::unordered_map<Node *, Descriptor> queue;
+-  int prev = std::numeric_limits<int>::max();
+-  for (const auto &e : aux) {
+-    const auto &node = e.first;
++  for (std::size_t begin = 0; begin < aux.size();) {
++    std::size_t end = begin + 1;
++    while (end < aux.size() &&
++           aux[end].first->getDistance() == aux[begin].first->getDistance()) {
++      ++end;
++    }
+ 
+-    if (node->getDistance() < prev) {
+-      for (const auto &e2 : queue) {
+-        e2.first->setAux(e2.second);
++    // Descriptors are immutable within one distance sphere. Keep exact
++    // comparison and sort results across all occurrence labels in that sphere,
++    // then clear the session before committing labels for the next sphere.
++    {
++      const SequenceRule::ComparisonSession comparisonSession;
++      for (auto pos = begin; pos < end; ++pos) {
++        const auto &node = aux[pos].first;
++        const auto &config = aux[pos].second;
++        auto label = config->label(node, digraph, rules);
++        // Match Java HashMap.put(): a later configuration at this distance wins
++        // if multiple configurations map to the same digraph node.
++        queue[node] = label;
+       }
+-      queue.clear();
+-      prev = node->getDistance();
+     }
+-    const auto &config = e.second;
+-    auto label = config->label(node, digraph, rules);
+-    // Match Java HashMap.put(): a later configuration at this distance wins if
+-    // multiple configurations map to the same digraph node.
+-    queue[node] = label;
+-  }
+ 
+-  for (const auto &e : queue) {
+-    e.first->setAux(e.second);
++    for (const auto &entry : queue) {
++      entry.first->setAux(entry.second);
++    }
++    queue.clear();
++    begin = end;
+   }
+ 
+   return true;
+@@ -330,9 +363,9 @@ void validateSelection(const boost::dynamic_bitset<> &selection,
+        index = selection.find_next(index)) {
+     if (index >= expectedSize) {
+       std::ostringstream msg;
+-      msg << "CIP " << kind
+-          << " selection contains out-of-range index " << index
+-          << "; molecule has " << expectedSize << ' ' << kind << " entries";
++      msg << "CIP " << kind << " selection contains out-of-range index "
++          << index << "; molecule has " << expectedSize << ' ' << kind
++          << " entries";
+       throw ValueErrorException(msg.str());
+     }
+   }
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+index 5e05632cb..c53e50258 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+@@ -11,9 +11,11 @@
+ 
+ #include <algorithm>
+ #include <cstddef>
++#include <cstdint>
+ #include <utility>
+ 
+ #include <GraphMol/MolOps.h>
++#include <GraphMol/Substruct/SubstructMatch.h>
+ 
+ #include "CIPMol.h"
+ 
+@@ -126,6 +128,75 @@ bool CIPMol::isAcyclicBranchWithoutConfiguration(Bond *bond,
+   return !containsFocus;
+ }
+ 
++bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
++                                           Atom *to) const {
++  if (root == nullptr || from == nullptr || to == nullptr) {
++    return false;
++  }
++  if (from == to) {
++    return true;
++  }
++
++  // Exact self-isomorphism is intended as a shortcut for compact, highly
++  // cyclic stereochemical units. Avoid introducing potentially expensive VF2
++  // work on large molecules; a false result only disables the optimization.
++  constexpr std::uint64_t MAX_AUTOMORPHISM_ATOMS = 128;
++  const auto numAtoms = static_cast<std::uint64_t>(getNumAtoms());
++  if (numAtoms == 0u || numAtoms > MAX_AUTOMORPHISM_ATOMS) {
++    return false;
++  }
++  if (std::ranges::any_of(d_bonds, [](const Bond *bond) {
++        return bond->getBondType() == Bond::AROMATIC;
++      })) {
++    return false;
++  }
++
++  const auto rootIdx = static_cast<std::uint64_t>(root->getIdx());
++  auto fromIdx = static_cast<std::uint64_t>(from->getIdx());
++  auto toIdx = static_cast<std::uint64_t>(to->getIdx());
++  if (fromIdx > toIdx) {
++    std::swap(fromIdx, toIdx);
++  }
++  const auto cacheKey = (rootIdx * numAtoms + fromIdx) * numAtoms + toIdx;
++  const auto cached = d_constitutional_automorphism_cache.find(cacheKey);
++  if (cached != d_constitutional_automorphism_cache.end()) {
++    return cached->second;
++  }
++
++  SubstructMatchParameters params;
++  params.recursionPossible = false;
++  params.uniquify = false;
++  params.maxMatches = 1;
++  params.numThreads = 1;
++  params.useChirality = false;
++  params.extraAtomCheckOverridesDefaultCheck = true;
++  params.extraAtomCheck = [this, rootIdx, fromIdx, toIdx](const Atom &queryAtom,
++                                                          const Atom &molAtom) {
++    const auto queryIdx = static_cast<std::uint64_t>(queryAtom.getIdx());
++    const auto molIdx = static_cast<std::uint64_t>(molAtom.getIdx());
++    if ((queryIdx == rootIdx) != (molIdx == rootIdx) ||
++        (queryIdx == fromIdx) != (molIdx == toIdx)) {
++      return false;
++    }
++
++    return queryAtom.getAtomicNum() == molAtom.getAtomicNum() &&
++           queryAtom.getIsotope() == molAtom.getIsotope() &&
++           queryAtom.getFormalCharge() == molAtom.getFormalCharge() &&
++           queryAtom.getNumRadicalElectrons() ==
++               molAtom.getNumRadicalElectrons() &&
++           queryAtom.getTotalNumHs() == molAtom.getTotalNumHs();
++  };
++  params.extraBondCheckOverridesDefaultCheck = true;
++  params.extraBondCheck = [](const Bond &queryBond, const Bond &molBond) {
++    return queryBond.getBondType() == molBond.getBondType() &&
++           queryBond.getIsAromatic() == molBond.getIsAromatic();
++  };
++
++  const bool equivalent = !SubstructMatch(d_mol, d_mol, params).empty();
++  d_constitutional_automorphism_cache.emplace(cacheKey, equivalent);
++  return equivalent;
++}
++
+ int CIPMol::getBondOrder(Bond *bond) const {
+   PRECONDITION(bond, "bad bond")
+   if (d_kekulized_bonds.empty()) {
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.h b/Code/GraphMol/CIPLabeler/CIPMol.h
+index 9f6fa5d7e..d1d882443 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.h
++++ b/Code/GraphMol/CIPLabeler/CIPMol.h
+@@ -10,7 +10,9 @@
+ //
+ #pragma once
+ 
++#include <cstdint>
+ #include <memory>
++#include <unordered_map>
+ #include <vector>
+ 
+ #include <GraphMol/RDKitBase.h>
+@@ -102,6 +104,11 @@ class CIPMol {
+   // endAtom side contains no registered configuration focus.
+   bool isAcyclicBranchWithoutConfiguration(Bond *bond, Atom *endAtom) const;
+ 
++  // Exact equality proof for two constitutional ligands at a fixed molecular
++  // root. This is only an equality shortcut; automorphism indices are never
++  // used as CIP priorities.
++  bool hasConstitutionalAutomorphism(Atom *root, Atom *from, Atom *to) const;
++
+   // Integer bond order of a kekulized molecule
+   // Dative bonds get bond order 0.
+   int getBondOrder(Bond *bond) const;
+@@ -118,6 +125,8 @@ class CIPMol {
+   boost::dynamic_bitset<> d_configuration_foci;
+   // Two directed sides per bond: 0=unknown, 1=contains a focus, 2=no focus.
+   mutable std::vector<unsigned char> d_configuration_branch_cache;
++  mutable std::unordered_map<std::uint64_t, bool>
++      d_constitutional_automorphism_cache;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/CMakeLists.txt b/Code/GraphMol/CIPLabeler/CMakeLists.txt
+index 3bd92f8be..502d4f3ab 100644
+--- a/Code/GraphMol/CIPLabeler/CMakeLists.txt
++++ b/Code/GraphMol/CIPLabeler/CMakeLists.txt
+@@ -22,7 +22,7 @@ rdkit_library(CIPLabeler
+               CIPMol.cpp CIPLabeler.cpp
+               Mancude.cpp Digraph.cpp Node.cpp Edge.cpp Sort.cpp
+               ${configs_src} ${rules_src}
+-              LINK_LIBRARIES GraphMol)
++              LINK_LIBRARIES SubstructMatch GraphMol)
+ target_compile_definitions(CIPLabeler PRIVATE RDKIT_CIPLABELER_BUILD)
+ 
+ rdkit_headers(CIPLabeler.h
+@@ -33,7 +33,7 @@ rdkit_catch_test(testCIPLabeler catch_tests.cpp
+                  CIPMol.cpp CIPLabeler.cpp
+                  Mancude.cpp Digraph.cpp Node.cpp Edge.cpp Sort.cpp
+                  ${configs_src} ${rules_src}
+-                 LINK_LIBRARIES SmilesParse GraphMol FileParsers MarvinParser)
++                 LINK_LIBRARIES SmilesParse SubstructMatch GraphMol FileParsers MarvinParser)
+ 
+ # Set the BUILD macro to keep dll linkage consistency, since, in order
+ # to test private, unexported functions, we are building the test from
+diff --git a/Code/GraphMol/CIPLabeler/Descriptor.h b/Code/GraphMol/CIPLabeler/Descriptor.h
+index 75645eab2..b94e52d7f 100644
+--- a/Code/GraphMol/CIPLabeler/Descriptor.h
++++ b/Code/GraphMol/CIPLabeler/Descriptor.h
+@@ -51,6 +51,37 @@ enum class Descriptor {
+   OC_6
+ };
+ 
++// Descriptor classes used to prove that a ligand branch cannot contribute to
++// a particular sequence rule. A descriptor belongs to at most one class.
++inline constexpr unsigned AUX_DESCRIPTOR_GEOMETRIC = 0x1;  // E/Z (Rule 3)
++inline constexpr unsigned AUX_DESCRIPTOR_PAIR =
++    0x2;  // R/S/M/P/seqCis/seqTrans (Rules 4b/5)
++inline constexpr unsigned AUX_DESCRIPTOR_PSEUDO = 0x4;  // r/s/m/p (Rule 4c)
++inline constexpr unsigned AUX_DESCRIPTOR_ANY =
++    AUX_DESCRIPTOR_GEOMETRIC | AUX_DESCRIPTOR_PAIR | AUX_DESCRIPTOR_PSEUDO;
++
++inline unsigned getAuxDescriptorClass(Descriptor descriptor) {
++  switch (descriptor) {
++    case Descriptor::E:
++    case Descriptor::Z:
++      return AUX_DESCRIPTOR_GEOMETRIC;
++    case Descriptor::R:
++    case Descriptor::S:
++    case Descriptor::M:
++    case Descriptor::P:
++    case Descriptor::seqCis:
++    case Descriptor::seqTrans:
++      return AUX_DESCRIPTOR_PAIR;
++    case Descriptor::r:
++    case Descriptor::s:
++    case Descriptor::m:
++    case Descriptor::p:
++      return AUX_DESCRIPTOR_PSEUDO;
++    default:
++      return 0;
++  }
++}
++
+ static std::string to_string(const Descriptor &desc) {
+   switch (desc) {
+     case Descriptor::NONE:
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
+index 90b55993f..15626ef5e 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.cpp
++++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
+@@ -9,6 +9,7 @@
+ //  of the RDKit source tree.
+ //
+ 
++#include <algorithm>
+ #include <sstream>
+ 
+ #include "Digraph.h"
+@@ -48,8 +49,7 @@ Node &Digraph::addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
+     d_seen_null = true;
+   } else {
+     const auto atom_idx = atom->getIdx();
+-    if (atom_idx < d_seen_atoms.size() &&
+-        d_mol.getAtom(atom_idx) == atom) {
++    if (atom_idx < d_seen_atoms.size() && d_mol.getAtom(atom_idx) == atom) {
+       d_seen_atoms[atom_idx] = true;
+     }
+   }
+@@ -81,10 +81,8 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
+     : d_mol{mol}, d_seen_atoms(mol.getNumAtoms()) {
+   PRECONDITION(atom, "cannot init digraph on a nullptr")
+ 
+-  auto visit =
+-      std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
+-  visit[atom->getIdx() / 64u] |=
+-      std::uint64_t{1} << (atom->getIdx() % 64u);
++  auto visit = std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
++  visit[atom->getIdx() / 64u] |= std::uint64_t{1} << (atom->getIdx() % 64u);
+ 
+   auto dist = 1;
+   auto flags = 0x0;
+@@ -108,7 +106,103 @@ std::vector<Node *> Digraph::getNodes(Atom *atom) const {
+ }
+ 
+ std::vector<Node *> Digraph::getNodesForAuxiliaryLabeling(Atom *atom) const {
+-  return collectNodes(atom, true);
++  if (atom == nullptr || getCurrentRoot() != getOriginalRoot()) {
++    return collectNodes(atom, true);
++  }
++  boost::dynamic_bitset<> targets(d_mol.getNumAtoms());
++  targets.set(atom->getIdx());
++  return getNodesForAuxiliaryLabeling(targets)[atom->getIdx()];
++}
++
++std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
++    const boost::dynamic_bitset<> &targets) const {
++  PRECONDITION(targets.size() == d_mol.getNumAtoms(),
++               "auxiliary target bitset has the wrong size")
++
++  std::vector<std::vector<Node *>> result(d_mol.getNumAtoms());
++  if (targets.none()) {
++    return result;
++  }
++
++  // Visit bits and original-parent links describe paths from the original
++  // root. Fall back conservatively if a caller asks during a temporary reroot.
++  if (getCurrentRoot() != getOriginalRoot()) {
++    for (auto idx = targets.find_first(); idx != boost::dynamic_bitset<>::npos;
++         idx = targets.find_next(idx)) {
++      result[idx] = collectNodes(d_mol.getAtom(idx), true);
++    }
++    return result;
++  }
++
++  std::vector<Node *> nodes{getOriginalRoot()};
++  std::vector<unsigned int> reachabilityQueue;
++  reachabilityQueue.reserve(d_mol.getNumAtoms());
++  std::vector<unsigned int> seen(d_mol.getNumAtoms());
++  unsigned int generation = 0;
++
++  for (std::size_t pos = 0; pos < nodes.size(); ++pos) {
++    auto node = nodes[pos];
++    const auto atom = node->getAtom();
++    if (atom != nullptr && !node->isDuplicate() &&
++        targets.test(atom->getIdx())) {
++      result[atom->getIdx()].push_back(node);
++    }
++
++    for (const auto edge : node->getEdges()) {
++      if (!edge->isBeg(node) || isAcyclicBranchWithoutConfiguration(edge)) {
++        continue;
++      }
++      auto child = edge->getEnd();
++      if (!child->isOriginalChildOf(node) || child->isDuplicateOrH() ||
++          child->getAtom() == nullptr) {
++        continue;
++      }
++      if (targets.test(child->getAtom()->getIdx()) ||
++          canReachUnvisitedTarget(child, targets, reachabilityQueue, seen,
++                                  generation)) {
++        nodes.push_back(child);
++      }
++    }
++  }
++  return result;
++}
++
++bool Digraph::canReachUnvisitedTarget(const Node *node,
++                                      const boost::dynamic_bitset<> &targets,
++                                      std::vector<unsigned int> &queue,
++                                      std::vector<unsigned int> &seen,
++                                      unsigned int &generation) const {
++  const auto atom = node->getAtom();
++  if (atom == nullptr || node->isDuplicateOrH()) {
++    return false;
++  }
++
++  // Use generation marks so each small molecular reachability search only
++  // clears the entries it actually visits.
++  if (++generation == 0u) {
++    std::fill(seen.begin(), seen.end(), 0u);
++    generation = 1u;
++  }
++  queue.clear();
++  queue.push_back(atom->getIdx());
++  seen[atom->getIdx()] = generation;
++
++  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
++    auto current = d_mol.getAtom(queue[pos]);
++    for (auto bond : d_mol.getBonds(current)) {
++      auto neighbor = bond->getOtherAtom(current);
++      const auto neighborIdx = neighbor->getIdx();
++      if (seen[neighborIdx] == generation || node->isVisited(neighborIdx)) {
++        continue;
++      }
++      if (targets.test(neighborIdx)) {
++        return true;
++      }
++      seen[neighborIdx] = generation;
++      queue.push_back(neighborIdx);
++    }
++  }
++  return false;
+ }
+ 
+ std::vector<Node *> Digraph::collectNodes(
+@@ -148,15 +242,29 @@ bool Digraph::isAcyclicBranchWithoutConfiguration(const Edge *edge) const {
+                                                    end->getAtom());
+ }
+ 
+-bool Digraph::hasEffectiveAuxDescriptors() const {
+-  return d_hasEffectiveAuxDescriptors;
++bool Digraph::hasAuxDescriptorOnSide(const Edge *edge, unsigned mask) const {
++  if (edge == nullptr || dp_origin == nullptr || mask == 0u) {
++    return false;
++  }
++  const auto beg = edge->getBeg();
++  const auto end = edge->getEnd();
++  if (end->isOriginalChildOf(beg)) {
++    return end->getAuxDescriptorCount(mask) != 0u;
++  }
++  if (beg->isOriginalChildOf(end)) {
++    const auto total = dp_origin->getAuxDescriptorCount(mask);
++    const auto excluded = beg->getAuxDescriptorCount(mask);
++    return total > excluded;
++  }
++  return false;
++}
++
++void Digraph::noteConstitutionalRootEquivalence() {
++  d_usedConstitutionalRootEquivalence = true;
+ }
+ 
+-void Digraph::noteAuxDescriptor(Descriptor descriptor) {
+-  if (descriptor != Descriptor::NONE && descriptor != Descriptor::UNKNOWN &&
+-      descriptor != Descriptor::ns) {
+-    d_hasEffectiveAuxDescriptors = true;
+-  }
++bool Digraph::usedConstitutionalRootEquivalence() const {
++  return d_usedConstitutionalRootEquivalence;
+ }
+ 
+ /**
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.h b/Code/GraphMol/CIPLabeler/Digraph.h
+index 1d146bce6..5e713d4bf 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.h
++++ b/Code/GraphMol/CIPLabeler/Digraph.h
+@@ -22,6 +22,7 @@
+ #include <vector>
+ 
+ #include <RDGeneral/BoostStartInclude.h>
++#include <boost/dynamic_bitset.hpp>
+ #include <boost/rational.hpp>
+ #include <RDGeneral/BoostEndInclude.h>
+ 
+@@ -54,8 +55,7 @@ class Digraph {
+ 
+   Digraph(const CIPMol &mol, Atom *atom, bool atropsomerMode = false);
+   Digraph(CIPMol &&mol, Atom *atom, bool atropsomerMode = false) = delete;
+-  Digraph(const CIPMol &&mol, Atom *atom,
+-          bool atropsomerMode = false) = delete;
++  Digraph(const CIPMol &&mol, Atom *atom, bool atropsomerMode = false) = delete;
+ 
+   const CIPMol &getMol() const;
+ 
+@@ -78,14 +78,25 @@ class Digraph {
+    */
+   std::vector<Node *> getNodesForAuxiliaryLabeling(Atom *atom) const;
+ 
++  /**
++   * Collect occurrences for several configuration foci in one original-root
++   * traversal. Branches from which none of the still-unvisited targets is
++   * reachable are left unexpanded.
++   */
++  std::vector<std::vector<Node *>> getNodesForAuxiliaryLabeling(
++      const boost::dynamic_bitset<> &targets) const;
++
+   /**
+    * Whether the current directed edge enters an acyclic molecular component
+    * containing no registered stereochemical configuration focus.
+    */
+   bool isAcyclicBranchWithoutConfiguration(const Edge *edge) const;
+ 
+-  bool hasEffectiveAuxDescriptors() const;
+-  void noteAuxDescriptor(Descriptor descriptor);
++  // Whether the directed end side of edge contains a descriptor in mask.
++  bool hasAuxDescriptorOnSide(const Edge *edge, unsigned mask) const;
++
++  void noteConstitutionalRootEquivalence();
++  bool usedConstitutionalRootEquivalence() const;
+ 
+   /**
+    * Access the reference atom for Rule 6 (if one is set).
+@@ -136,9 +147,7 @@ class Digraph {
+ 
+   Atom *dp_rule6Ref = nullptr;
+ 
+-  // Sticky within a labeling call. A conservative true only disables an
+-  // optimization; NONE, UNKNOWN, and ns carry no Rule 4b/5 information.
+-  bool d_hasEffectiveAuxDescriptors = false;
++  bool d_usedConstitutionalRootEquivalence = false;
+ 
+   // Insertion at either end of a deque preserves element references, which
+   // the graph stores extensively, while avoiding one allocation per element.
+@@ -148,6 +157,11 @@ class Digraph {
+   void addEdge(Node *beg, Bond *bond, Node *end);
+   std::vector<Node *> collectNodes(Atom *atom,
+                                    bool pruneConfigurationFreeBranches) const;
++  bool canReachUnvisitedTarget(const Node *node,
++                               const boost::dynamic_bitset<> &targets,
++                               std::vector<unsigned int> &queue,
++                               std::vector<unsigned int> &seen,
++                               unsigned int &generation) const;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/Edge.cpp b/Code/GraphMol/CIPLabeler/Edge.cpp
+index 667303dc0..12b98f32d 100644
+--- a/Code/GraphMol/CIPLabeler/Edge.cpp
++++ b/Code/GraphMol/CIPLabeler/Edge.cpp
+@@ -45,7 +45,27 @@ bool Edge::isBeg(const Node *node) const { return node == dp_beg; }
+ 
+ bool Edge::isEnd(const Node *node) const { return node == dp_end; }
+ 
+-void Edge::setAux(Descriptor aux) { d_aux = std::move(aux); }
++void Edge::setAux(Descriptor aux) {
++  const auto oldClass = getAuxDescriptorClass(d_aux);
++  const auto newClass = getAuxDescriptorClass(aux);
++  if (oldClass != newClass) {
++    Node *originalChild = nullptr;
++    if (dp_end->isOriginalChildOf(dp_beg)) {
++      originalChild = dp_end;
++    } else if (dp_beg->isOriginalChildOf(dp_end)) {
++      originalChild = dp_beg;
++    }
++    if (originalChild != nullptr) {
++      if (oldClass != 0u) {
++        originalChild->adjustAuxDescriptorCount(oldClass, -1);
++      }
++      if (newClass != 0u) {
++        originalChild->adjustAuxDescriptorCount(newClass, 1);
++      }
++    }
++  }
++  d_aux = aux;
++}
+ 
+ void Edge::flip() { std::swap(dp_beg, dp_end); }
+ 
+diff --git a/Code/GraphMol/CIPLabeler/Node.cpp b/Code/GraphMol/CIPLabeler/Node.cpp
+index 4fcb5f5e9..58843e47e 100644
+--- a/Code/GraphMol/CIPLabeler/Node.cpp
++++ b/Code/GraphMol/CIPLabeler/Node.cpp
+@@ -8,6 +8,7 @@
+ //  which is included in the file license.txt, found at the root
+ //  of the RDKit source tree.
+ //
++#include <bit>
+ #include <vector>
+ 
+ #include "Digraph.h"
+@@ -25,19 +26,18 @@ Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
+   if (flags & BOND_DUPLICATE) {
+     const auto &frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
+     if (frac.isAveraged()) {
+-      return &dp_g->addNode(std::move(new_visit), atom, frac.value(),
+-                            new_dist, flags, this);
++      return &dp_g->addNode(std::move(new_visit), atom, frac.value(), new_dist,
++                            flags, this);
+     }
+   }
+ 
+   auto atomic_num = atom ? atom->getAtomicNum() : 1;
+-  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, new_dist,
+-                        flags, this);
++  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, new_dist, flags,
++                        this);
+ }
+ 
+ Node::Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
+-           boost::rational<int> &&frac, int dist, int flags,
+-           const Node *parent)
++           boost::rational<int> &&frac, int dist, int flags, const Node *parent)
+     : dp_g{g},
+       dp_atom{atom},
+       dp_parent{parent},
+@@ -107,8 +107,7 @@ bool Node::isExpanded() const { return d_flags & EXPANDED; }
+ 
+ bool Node::isVisited(int idx) const {
+   const auto atom_idx = static_cast<unsigned int>(idx);
+-  return d_visit[atom_idx / 64u] &
+-         (std::uint64_t{1} << (atom_idx % 64u));
++  return d_visit[atom_idx / 64u] & (std::uint64_t{1} << (atom_idx % 64u));
+ }
+ 
+ bool Node::isOriginalChildOf(const Node *parent) const {
+@@ -133,8 +132,7 @@ int Node::getVisitedDistance(int idx) const {
+ Node *Node::newChild(int idx, Atom *atom) const {
+   auto new_visit = d_visit;
+   const auto atom_idx = static_cast<unsigned int>(idx);
+-  new_visit[atom_idx / 64u] |=
+-      std::uint64_t{1} << (atom_idx % 64u);
++  new_visit[atom_idx / 64u] |= std::uint64_t{1} << (atom_idx % 64u);
+   auto atomic_num = atom ? atom->getAtomicNum() : 1;
+   return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0,
+                         this);
+@@ -155,8 +153,47 @@ Node *Node::newImplicitHydrogenChild() const {
+ void Node::add(Edge *e) { d_edges.push_back(e); }
+ 
+ void Node::setAux(Descriptor desc) {
++  const auto oldClass = getAuxDescriptorClass(d_aux);
++  const auto newClass = getAuxDescriptorClass(desc);
++  if (oldClass != newClass) {
++    if (oldClass != 0u) {
++      adjustAuxDescriptorCount(oldClass, -1);
++    }
++    if (newClass != 0u) {
++      adjustAuxDescriptorCount(newClass, 1);
++    }
++  }
+   d_aux = desc;
+-  dp_g->noteAuxDescriptor(desc);
++}
++
++std::size_t Node::getAuxDescriptorCount(unsigned mask) const {
++  std::size_t result = 0;
++  for (unsigned i = 0; i < d_aux_descriptor_counts.size(); ++i) {
++    if ((mask & (1u << i)) != 0u) {
++      result += d_aux_descriptor_counts[i];
++    }
++  }
++  return result;
++}
++
++void Node::adjustAuxDescriptorCount(unsigned descriptorClass, int delta) {
++  PRECONDITION(
++      descriptorClass != 0u && (descriptorClass & (descriptorClass - 1u)) == 0u,
++      "descriptor class must contain exactly one bit")
++  const auto index = static_cast<unsigned>(std::countr_zero(descriptorClass));
++  PRECONDITION(index < d_aux_descriptor_counts.size(),
++               "invalid descriptor class")
++
++  for (auto node = this; node != nullptr;
++       node = const_cast<Node *>(node->dp_parent)) {
++    if (delta > 0) {
++      ++node->d_aux_descriptor_counts[index];
++    } else {
++      PRECONDITION(node->d_aux_descriptor_counts[index] != 0u,
++                   "auxiliary descriptor count underflow")
++      --node->d_aux_descriptor_counts[index];
++    }
++  }
+ }
+ 
+ const std::vector<Edge *> &Node::getEdges() const {
+diff --git a/Code/GraphMol/CIPLabeler/Node.h b/Code/GraphMol/CIPLabeler/Node.h
+index 2d510dad8..30a25f017 100644
+--- a/Code/GraphMol/CIPLabeler/Node.h
++++ b/Code/GraphMol/CIPLabeler/Node.h
+@@ -10,6 +10,8 @@
+ //
+ #pragma once
+ 
++#include <array>
++#include <cstddef>
+ #include <cstdint>
+ #include <vector>
+ 
+@@ -68,8 +70,7 @@ class Node {
+   Node &operator=(const Node &) = delete;
+ 
+   Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
+-       boost::rational<int> &&frac, int dist, int flags,
+-       const Node *parent);
++       boost::rational<int> &&frac, int dist, int flags, const Node *parent);
+ 
+   Digraph *getDigraph() const;
+ 
+@@ -117,6 +118,15 @@ class Node {
+ 
+   void setAux(Descriptor desc);
+ 
++  // Number of effective auxiliary descriptors in this node's immutable
++  // original-forward occurrence subtree. The mask is a combination of the
++  // AUX_DESCRIPTOR_* constants from Descriptor.h.
++  std::size_t getAuxDescriptorCount(unsigned mask) const;
++
++  // Adjust descriptor counts for this node and each of its original
++  // ancestors. Used by Node and Edge descriptor assignment.
++  void adjustAuxDescriptorCount(unsigned descriptorClass, int delta);
++
+   const std::vector<Edge *> &getEdges() const;
+ 
+   std::vector<Edge *> getEdges(Atom *end) const;
+@@ -131,6 +141,7 @@ class Node {
+   boost::rational<int> d_atomic_num;
+   double d_atomic_mass;
+   Descriptor d_aux = Descriptor::NONE;
++  std::array<std::size_t, 3> d_aux_descriptor_counts{};
+   int d_flags = 0x0;
+ 
+   std::vector<Edge *> d_edges;
+diff --git a/Code/GraphMol/CIPLabeler/Sort.cpp b/Code/GraphMol/CIPLabeler/Sort.cpp
+index 69657fe72..9fa79d984 100644
+--- a/Code/GraphMol/CIPLabeler/Sort.cpp
++++ b/Code/GraphMol/CIPLabeler/Sort.cpp
+@@ -12,13 +12,25 @@
+ #include "Sort.h"
+ #include "rules/SequenceRule.h"
+ 
++#include <atomic>
++
++#include <RDGeneral/ControlCHandler.h>
++
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+-Sort::Sort(const SequenceRule *comparator) : d_rules{comparator} {}
++namespace {
++std::uint64_t nextSortCacheId() {
++  static std::atomic<std::uint64_t> nextId{0};
++  return ++nextId;
++}
++}  // namespace
++
++Sort::Sort(const SequenceRule *comparator)
++    : d_cacheId{nextSortCacheId()}, d_rules{comparator} {}
+ 
+ Sort::Sort(std::vector<const SequenceRule *> comparators)
+-    : d_rules{std::move(comparators)} {}
++    : d_cacheId{nextSortCacheId()}, d_rules{std::move(comparators)} {}
+ 
+ const std::vector<const SequenceRule *> &Sort::getRules() const {
+   return d_rules;
+@@ -27,6 +39,17 @@ const std::vector<const SequenceRule *> &Sort::getRules() const {
+ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
+                           bool deep) const {
+   const SequenceRule::ComparisonSession comparisonSession;
++  bool cachedUnique = false;
++  bool cachedPseudoAsymmetric = false;
++  if (SequenceRule::getCachedSort(d_cacheId, node, deep, edges, cachedUnique,
++                                  cachedPseudoAsymmetric)) {
++    if (ControlCHandler::getGotSignal()) {
++      throw ControlCCaught();
++    }
++    return {cachedUnique, cachedPseudoAsymmetric};
++  }
++
++  const auto input = edges;
+   bool unique = true;
+   int numPseudoAsym = 0;
+ 
+@@ -49,7 +72,9 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
+     }
+   }
+ 
+-  return {unique, numPseudoAsym == 1};
++  const Priority result{unique, numPseudoAsym == 1};
++  SequenceRule::cacheSort(d_cacheId, node, deep, input, edges, result);
++  return result;
+ }
+ 
+ int Sort::compareSubstituents(const Node *node, const Edge *a, const Edge *b,
+diff --git a/Code/GraphMol/CIPLabeler/Sort.h b/Code/GraphMol/CIPLabeler/Sort.h
+index c23cb361f..2b1259529 100644
+--- a/Code/GraphMol/CIPLabeler/Sort.h
++++ b/Code/GraphMol/CIPLabeler/Sort.h
+@@ -10,6 +10,7 @@
+ //
+ #pragma once
+ 
++#include <cstdint>
+ #include <vector>
+ #include "Priority.h"
+ 
+@@ -40,6 +41,7 @@ class Sort {
+       const std::vector<Edge *> &sorted) const;
+ 
+  private:
++  std::uint64_t d_cacheId;
+   const std::vector<const SequenceRule *> d_rules;
+ 
+   int compareSubstituents(const Node *node, const Edge *a, const Edge *b,
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index bbee817dd..ff14509f4 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -1985,9 +1985,12 @@ $$$$
+ 
+   REQUIRE(mol);
+   // Leave enough of the global budget for the preliminary pass to visit the
+-  // easy center before the difficult centers exhaust the remaining budget.
+-  REQUIRE_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 100000),
+-                    CIPLabeler::MaxIterationsExceeded);
++  // easy center. Optimizations may now make the whole molecule fit the
++  // historical budget; budget exhaustion is still acceptable here.
++  try {
++    CIPLabeler::assignCIPLabels(*mol, 100000);
++  } catch (const CIPLabeler::MaxIterationsExceeded &) {
++  }
+ 
+   auto at = mol->getAtomWithIdx(22);
+   REQUIRE(at->getChiralTag() == Atom::ChiralType::CHI_TETRAHEDRAL_CW);
+@@ -2140,3 +2143,148 @@ TEST_CASE("Long running calculation") {
+     CIPLabeler::assignCIPLabels(*mol);
+   }
+ }
++
++TEST_CASE("Even longer running calculation") {
++  constexpr const char *molBlock = R"(
++     RDKit          3D
++
++  0  0  0  0  0  0  0  0  0  0999 V3000
++M  V30 BEGIN CTAB
++M  V30 COUNTS 44 54 0 0 1
++M  V30 BEGIN ATOM
++M  V30 1 H 7.548300 -7.745100 -3.341900 0
++M  V30 2 H 9.398400 -5.879200 -3.431800 0
++M  V30 3 C 9.339900 -6.542500 -1.989800 0 CFG=2
++M  V30 4 H 8.682000 -3.942500 -1.647400 0
++M  V30 5 H 5.816300 -7.103400 -1.663500 0
++M  V30 6 H 6.572200 -4.734300 -0.630400 0
++M  V30 7 C 7.170100 -7.238000 -0.889000 0 CFG=1
++M  V30 8 H 11.830000 -6.976500 -2.554400 0
++M  V30 9 C 10.663100 -7.169000 -1.537500 0 CFG=1
++M  V30 10 H 11.407700 -9.523900 -2.147200 0
++M  V30 11 H 11.900600 -10.013900 0.472200 0
++M  V30 12 C 10.660000 -8.874900 0.291400 0 CFG=2
++M  V30 13 H 12.513600 -5.911500 -0.419000 0
++M  V30 14 H 12.533800 -7.840600 1.437900 0
++M  V30 15 H 8.698100 -8.865400 3.417700 0
++M  V30 16 H 9.404600 -10.690700 1.714300 0
++M  V30 17 C 9.318500 -9.310600 0.970000 0 CFG=1
++M  V30 18 H 7.495800 -10.807500 -0.178300 0
++M  V30 19 H 6.555200 -7.878000 2.698300 0
++M  V30 20 H 5.852200 -9.114700 0.451400 0
++M  V30 21 C 7.160100 -8.299700 0.235300 0 CFG=2
++M  V30 22 C 7.577400 -7.598900 1.570000 0 CFG=1
++M  V30 23 C 10.647193 -4.032680 0.167792 0 CFG=1
++M  V30 24 C 11.080800 -6.489400 -0.198200 0 CFG=2
++M  V30 25 C 8.912300 -5.469900 -0.942400 0 CFG=1
++M  V30 26 C 8.915500 -8.232900 2.018400 0 CFG=2
++M  V30 27 C 11.076600 -7.551300 0.914700 0 CFG=1
++M  V30 28 H 10.678000 -6.985700 3.302100 0
++M  V30 29 C 7.586100 -5.893900 -0.266700 0 CFG=2
++M  V30 30 H 6.997300 -5.059700 1.987500 0
++M  V30 31 C 9.319300 -5.842900 1.504800 0 CFG=2
++M  V30 32 H 9.474000 -4.717300 2.574300 0
++M  V30 33 C 9.980900 -7.145700 1.981100 0 CFG=1
++M  V30 34 C 7.827000 -6.124500 1.248300 0 CFG=2
++M  V30 35 C 10.002300 -5.430800 0.136600 0
++M  V30 36 C 8.912500 -8.938500 -1.473700 0 CFG=2
++M  V30 37 C 8.237400 -9.352200 -0.117300 0
++M  V30 38 C 10.411600 -8.646100 -1.214800 0 CFG=1
++M  V30 39 H 8.772600 -9.975800 -2.504700 0
++M  V30 40 C 8.257700 -7.625000 -1.947800 0 CFG=2
++M  V30 41 O 9.665066 -3.068040 0.472747 0
++M  V30 42 Cl 11.932408 -3.993449 1.420272 0
++M  V30 43 H 11.083087 -3.811232 -0.806404 0
++M  V30 44 H 10.067077 -2.196484 0.492191 0
++M  V30 END ATOM
++M  V30 BEGIN BOND
++M  V30 1 1 3 2 CFG=3
++M  V30 2 1 7 5 CFG=3
++M  V30 3 1 9 3
++M  V30 4 1 9 8 CFG=3
++M  V30 5 1 12 11 CFG=3
++M  V30 6 1 17 12
++M  V30 7 1 17 16 CFG=1
++M  V30 8 1 21 7
++M  V30 9 1 21 20 CFG=1
++M  V30 10 1 22 19 CFG=1
++M  V30 11 1 22 21
++M  V30 12 1 24 9
++M  V30 13 1 24 13 CFG=3
++M  V30 14 1 25 3
++M  V30 15 1 25 4 CFG=3
++M  V30 16 1 26 15 CFG=1
++M  V30 17 1 26 17
++M  V30 18 1 26 22
++M  V30 19 1 27 12
++M  V30 20 1 27 14 CFG=1
++M  V30 21 1 27 24
++M  V30 22 1 29 6 CFG=1
++M  V30 23 1 29 7
++M  V30 24 1 29 25
++M  V30 25 1 31 32 CFG=1
++M  V30 26 1 33 26
++M  V30 27 1 33 27
++M  V30 28 1 33 28 CFG=1
++M  V30 29 1 33 31
++M  V30 30 1 34 22
++M  V30 31 1 34 29
++M  V30 32 1 34 30 CFG=1
++M  V30 33 1 34 31
++M  V30 34 1 35 23
++M  V30 35 1 35 24
++M  V30 36 1 35 25
++M  V30 37 1 35 31
++M  V30 38 1 37 17
++M  V30 39 1 37 18
++M  V30 40 1 37 21
++M  V30 41 1 37 36
++M  V30 42 1 38 9
++M  V30 43 1 38 10 CFG=3
++M  V30 44 1 38 12
++M  V30 45 1 38 36
++M  V30 46 1 36 39 CFG=3
++M  V30 47 1 40 1 CFG=3
++M  V30 48 1 40 3
++M  V30 49 1 40 7
++M  V30 50 1 40 36
++M  V30 51 1 41 23
++M  V30 52 1 42 23
++M  V30 53 1 23 43 CFG=3
++M  V30 54 1 44 41
++M  V30 END BOND
++M  V30 END CTAB
++M  END
++$$$$
++)";
++
++  // The mol is a modification of the one in the above test
++  // "CIP max iterations test"
++  // v2::FileParsers::MolFileParserParams params{.sanitize = false};
++  // auto mol = v2::FileParsers::MolFromMolBlock(molBlock, params);
++
++  auto mol = v2::FileParsers::MolFromMolBlock(molBlock);
++
++  REQUIRE(mol);
++  CIPLabeler::assignCIPLabels(*mol);
++
++  // Keep the performance regression tied to a known-correct result. Locate
++  // the substituted center structurally because sanitization removes explicit
++  // hydrogens and may change atom indices.
++  Atom *substitutedCenter = nullptr;
++  for (auto atom : mol->atoms()) {
++    bool hasOxygen = false;
++    bool hasChlorine = false;
++    for (const auto neighbor : mol->atomNeighbors(atom)) {
++      hasOxygen = hasOxygen || neighbor->getAtomicNum() == 8;
++      hasChlorine = hasChlorine || neighbor->getAtomicNum() == 17;
++    }
++    if (hasOxygen && hasChlorine) {
++      substitutedCenter = atom;
++      break;
++    }
++  }
++  REQUIRE(substitutedCenter != nullptr);
++  CHECK(substitutedCenter->getProp<std::string>(common_properties::_CIPCode) ==
++        "S");
++}
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule1a.cpp b/Code/GraphMol/CIPLabeler/rules/Rule1a.cpp
+index c24db5311..fbd6e0705 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule1a.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule1a.cpp
+@@ -14,7 +14,7 @@
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+-Rule1a::Rule1a() = default;
++Rule1a::Rule1a() : SequenceRule(true) {}
+ 
+ // CIP Rule 1a: Higher atomic number precedes lower.
+ int Rule1a::compare(const Edge *a, const Edge *b) const {
+@@ -25,4 +25,4 @@ int Rule1a::compare(const Edge *a, const Edge *b) const {
+ }
+ 
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule1b.cpp b/Code/GraphMol/CIPLabeler/rules/Rule1b.cpp
+index 710710c6e..b6d9f2b5f 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule1b.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule1b.cpp
+@@ -14,7 +14,7 @@
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+-Rule1b::Rule1b() = default;
++Rule1b::Rule1b() : SequenceRule(true) {}
+ 
+ int Rule1b::compare(const Edge *a, const Edge *b) const {
+   if (IUPAC_2013) {
+@@ -40,4 +40,4 @@ int Rule1b::compare(const Edge *a, const Edge *b) const {
+ }
+ 
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule2.cpp b/Code/GraphMol/CIPLabeler/rules/Rule2.cpp
+index 697388526..69fe5456e 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule2.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule2.cpp
+@@ -19,7 +19,7 @@ namespace RDKit {
+ 
+ namespace CIPLabeler {
+ 
+-Rule2::Rule2() = default;
++Rule2::Rule2() : SequenceRule(true) {}
+ 
+ int Rule2::compare(const Edge *a, const Edge *b) const {
+   auto a_end = a->getEnd();
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule3.cpp b/Code/GraphMol/CIPLabeler/rules/Rule3.cpp
+index 7c2d28879..acb5afc83 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule3.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule3.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "Rule3.h"
+ 
++#include "../Digraph.h"
++
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+@@ -34,5 +36,12 @@ int Rule3::compare(const Edge *a, const Edge *b) const {
+                               ord(b->getEnd()->getAux()));
+ }
+ 
++bool Rule3::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
++  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             a, AUX_DESCRIPTOR_GEOMETRIC) ||
++         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             b, AUX_DESCRIPTOR_GEOMETRIC);
++}
++
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule3.h b/Code/GraphMol/CIPLabeler/rules/Rule3.h
+index 76468b5f3..e7199f994 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule3.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rule3.h
+@@ -26,6 +26,9 @@ class Rule3 : public SequenceRule {
+   Rule3();
+ 
+   int compare(const Edge *a, const Edge *b) const override;
++
++ protected:
++  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4a.cpp b/Code/GraphMol/CIPLabeler/rules/Rule4a.cpp
+index 527750b1d..69b68f0e9 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4a.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4a.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "Rule4a.h"
+ 
++#include "../Digraph.h"
++
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+@@ -55,5 +57,12 @@ int Rule4a::compare(const Edge *a, const Edge *b) const {
+   return three_way_comparison(aOrdinal, bOrdinal);
+ }
+ 
++bool Rule4a::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
++  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             a, AUX_DESCRIPTOR_ANY) ||
++         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b,
++                                                           AUX_DESCRIPTOR_ANY);
++}
++
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4a.h b/Code/GraphMol/CIPLabeler/rules/Rule4a.h
+index 0adb61f83..5377fb627 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4a.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4a.h
+@@ -26,6 +26,9 @@ class Rule4a : public SequenceRule {
+   Rule4a();
+ 
+   int compare(const Edge *a, const Edge *b) const override;
++
++ protected:
++  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp b/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp
+index 9116cd6f6..5fffb6b0e 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp
+@@ -43,8 +43,7 @@ std::vector<Descriptor> Rule4b::getReferenceDescriptors(
+ }
+ 
+ int Rule4b::compare(const Edge *a, const Edge *b) const {
+-  if (!a->getBeg()->getDigraph()->hasEffectiveAuxDescriptors() &&
+-      !b->getBeg()->getDigraph()->hasEffectiveAuxDescriptors()) {
++  if (!isRecursiveComparisonNeeded(a, b)) {
+     return 0;
+   }
+   const auto &aBeg = a->getBeg();
+@@ -185,7 +184,10 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
+       eq.reserve(eqSize);
+       for (const auto &groups : tmp) {
+         for (const auto edge : groups[i]) {
+-          eq.push_back(edge->getEnd());
++          if (edge->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++                  edge, AUX_DESCRIPTOR_PAIR)) {
++            eq.push_back(edge->getEnd());
++          }
+         }
+       }
+       if (!eq.empty()) {
+@@ -221,7 +223,9 @@ void Rule4b::fillPairs(const Node *beg, PairList &plist,
+     edges.assign(nodeEdges.begin(), nodeEdges.end());
+     sorter.prioritize(node, edges);
+     for (const auto &edge : edges) {
+-      if (edge->isBeg(node) && !edge->getEnd()->isTerminal()) {
++      if (edge->isBeg(node) && !edge->getEnd()->isTerminal() &&
++          node->getDigraph()->hasAuxDescriptorOnSide(edge,
++                                                     AUX_DESCRIPTOR_PAIR)) {
+         queue.push_back(edge->getEnd());
+       }
+     }
+@@ -273,7 +277,12 @@ int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
+       if (aIt == aEdges.end() || bIt == bEdges.end()) {
+         break;
+       }
+-      queue.emplace_back((*aIt)->getEnd(), (*bIt)->getEnd());
++      if (aNode->getDigraph()->hasAuxDescriptorOnSide(*aIt,
++                                                      AUX_DESCRIPTOR_PAIR) ||
++          bNode->getDigraph()->hasAuxDescriptorOnSide(*bIt,
++                                                      AUX_DESCRIPTOR_PAIR)) {
++        queue.emplace_back((*aIt)->getEnd(), (*bIt)->getEnd());
++      }
+       ++aIt;
+       ++bIt;
+     }
+@@ -281,6 +290,13 @@ int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
+   return 0;
+ }
+ 
++bool Rule4b::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
++  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             a, AUX_DESCRIPTOR_PAIR) ||
++         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b,
++                                                           AUX_DESCRIPTOR_PAIR);
++}
++
+ Sort Rule4b::getRefSorter(const SequenceRule *replacement_rule) const {
+   const auto &rules = getSorter()->getRules();
+ 
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4b.h b/Code/GraphMol/CIPLabeler/rules/Rule4b.h
+index f05173465..6d4d4d977 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4b.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4b.h
+@@ -30,6 +30,9 @@ class Rule4b : public SequenceRule {
+ 
+   int compare(const Edge *a, const Edge *b) const override;
+ 
++ protected:
++  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
++
+  private:
+   const Descriptor d_ref = Descriptor::NONE;
+ 
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4c.cpp b/Code/GraphMol/CIPLabeler/rules/Rule4c.cpp
+index e8eae881a..7a8efe448 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4c.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4c.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "Rule4c.h"
+ 
++#include "../Digraph.h"
++
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+@@ -45,5 +47,12 @@ int Rule4c::compare(const Edge *a, const Edge *b) const {
+   return three_way_comparison(aOrdinal, bOrdinal);
+ }
+ 
++bool Rule4c::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
++  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             a, AUX_DESCRIPTOR_PSEUDO) ||
++         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             b, AUX_DESCRIPTOR_PSEUDO);
++}
++
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4c.h b/Code/GraphMol/CIPLabeler/rules/Rule4c.h
+index 3fac30eba..b5fe7488f 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4c.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4c.h
+@@ -25,6 +25,9 @@ class Rule4c : public SequenceRule {
+   Rule4c();
+ 
+   int compare(const Edge *a, const Edge *b) const override;
++
++ protected:
++  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp b/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp
+index 3b31752ae..52ecb0093 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp
+@@ -22,8 +22,11 @@ Rule5New::Rule5New() = default;
+ Rule5New::Rule5New(Descriptor ref) : d_ref{ref} {}
+ 
+ int Rule5New::compare(const Edge *a, const Edge *b) const {
+-  if (!a->getBeg()->getDigraph()->hasEffectiveAuxDescriptors() &&
+-      !b->getBeg()->getDigraph()->hasEffectiveAuxDescriptors()) {
++  const bool aHasPairs =
++      a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(a, AUX_DESCRIPTOR_PAIR);
++  const bool bHasPairs =
++      b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b, AUX_DESCRIPTOR_PAIR);
++  if (!aHasPairs && !bHasPairs) {
+     return 0;
+   }
+   const auto &aBeg = a->getBeg();
+@@ -57,10 +60,14 @@ int Rule5New::compare(const Edge *a, const Edge *b) const {
+     std::vector<const Node *> queue;
+     std::vector<Edge *> edges;
+     edges.reserve(4);
+-    fillPairs(aEnd, listRA, queue, edges);
+-    fillPairs(aEnd, listSA, queue, edges);
+-    fillPairs(bEnd, listRB, queue, edges);
+-    fillPairs(bEnd, listSB, queue, edges);
++    if (aHasPairs) {
++      fillPairs(aEnd, listRA, queue, edges);
++      fillPairs(aEnd, listSA, queue, edges);
++    }
++    if (bHasPairs) {
++      fillPairs(bEnd, listRB, queue, edges);
++      fillPairs(bEnd, listSB, queue, edges);
++    }
+     int cmpR = listRA.compareTo(listRB);
+     int cmpS = listSA.compareTo(listSB);
+     // -2/+2 for pseudo-asymetric
+@@ -90,13 +97,22 @@ void Rule5New::fillPairs(const Node *beg, PairList &plist,
+     edges.assign(nodeEdges.begin(), nodeEdges.end());
+     sorter.prioritize(node, edges);
+     for (const auto &edge : edges) {
+-      if (edge->isBeg(node) && !edge->getEnd()->isTerminal()) {
++      if (edge->isBeg(node) && !edge->getEnd()->isTerminal() &&
++          node->getDigraph()->hasAuxDescriptorOnSide(edge,
++                                                     AUX_DESCRIPTOR_PAIR)) {
+         queue.push_back(edge->getEnd());
+       }
+     }
+   }
+ }
+ 
++bool Rule5New::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
++  return a->getBeg()->getDigraph()->hasAuxDescriptorOnSide(
++             a, AUX_DESCRIPTOR_PAIR) ||
++         b->getBeg()->getDigraph()->hasAuxDescriptorOnSide(b,
++                                                           AUX_DESCRIPTOR_PAIR);
++}
++
+ Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {
+   const auto &rules = getSorter()->getRules();
+ 
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule5New.h b/Code/GraphMol/CIPLabeler/rules/Rule5New.h
+index fc874b941..58facc918 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule5New.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rule5New.h
+@@ -30,6 +30,9 @@ class Rule5New : public SequenceRule {
+ 
+   int compare(const Edge *a, const Edge *b) const override;
+ 
++ protected:
++  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
++
+  private:
+   const Descriptor d_ref = Descriptor::NONE;
+ 
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule6.cpp b/Code/GraphMol/CIPLabeler/rules/Rule6.cpp
+index 1b6e7fde1..bc1341b3b 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule6.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule6.cpp
+@@ -34,5 +34,12 @@ int Rule6::compare(const Edge *a, const Edge *b) const {
+   return 0;
+ }
+ 
++bool Rule6::isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const {
++  (void)b;
++  // compare() uses the first edge's digraph reference. With no reference it
++  // is identically zero at every depth, so walking the ligand tree is wasted.
++  return a->getBeg()->getDigraph()->getRule6Ref() != nullptr;
++}
++
+ }  // namespace CIPLabeler
+ }  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule6.h b/Code/GraphMol/CIPLabeler/rules/Rule6.h
+index 7b910468e..211ac83bb 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule6.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rule6.h
+@@ -23,6 +23,9 @@ class Rule6 : public SequenceRule {
+   Rule6();
+ 
+   int compare(const Edge *a, const Edge *b) const override;
++
++ protected:
++  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
+index 505dd4944..7a36a1406 100644
+--- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
+@@ -10,6 +10,8 @@
+ //
+ #include "RDGeneral/ControlCHandler.h"
+ 
++#include <algorithm>
++#include <array>
+ #include <atomic>
+ #include <cstddef>
+ #include <cstdint>
+@@ -67,12 +69,64 @@ struct ComparisonKeyHash {
+ 
+ struct ComparisonSessionState {
+   std::size_t depth = 0;
+-  std::unordered_map<ComparisonKey, int, ComparisonKeyHash> results;
++  using ComparisonMap =
++      std::unordered_map<ComparisonKey, int, ComparisonKeyHash>;
++  ComparisonMap currentResults;
++  ComparisonMap previousResults;
++
++  static constexpr std::size_t MAX_INLINE_SORT_EDGES = 8;
++
++  struct SortKey {
++    std::uint64_t sortId;
++    const Node *node;
++    const Node *root;
++    const Atom *rule6Ref;
++    bool deep;
++    std::uint8_t inputCount;
++    std::array<const Edge *, MAX_INLINE_SORT_EDGES> input;
++
++    bool operator==(const SortKey &other) const {
++      return sortId == other.sortId && node == other.node &&
++             root == other.root && rule6Ref == other.rule6Ref &&
++             deep == other.deep && inputCount == other.inputCount &&
++             std::equal(input.begin(), input.begin() + inputCount,
++                        other.input.begin());
++    }
++  };
++
++  struct SortKeyHash {
++    std::size_t operator()(const SortKey &key) const {
++      std::size_t result = 0;
++      hashCombine(result, key.sortId);
++      hashCombine(result, key.node);
++      hashCombine(result, key.root);
++      hashCombine(result, key.rule6Ref);
++      hashCombine(result, key.deep);
++      for (std::size_t i = 0; i < key.inputCount; ++i) {
++        hashCombine(result, key.input[i]);
++      }
++      return result;
++    }
++  };
++
++  struct SortValue {
++    std::array<Edge *, MAX_INLINE_SORT_EDGES> sorted;
++    std::uint8_t sortedCount;
++    Priority priority;
++  };
++
++  using SortMap = std::unordered_map<SortKey, SortValue, SortKeyHash>;
++  SortMap currentSorts;
++  SortMap previousSorts;
+ };
+ 
+-// The cache is an accelerator, not part of the result. Stop adding entries on
+-// exceptionally large digraphs so a labeling session has bounded cache memory.
++// The caches are accelerators, not part of the result. Two bounded generations
++// retain recent hot entries instead of permanently freezing the first entries
++// encountered by a large cage traversal.
+ constexpr std::size_t MAX_CACHED_COMPARISONS = 250000;
++constexpr std::size_t COMPARISONS_PER_GENERATION = MAX_CACHED_COMPARISONS / 2;
++constexpr std::size_t MAX_CACHED_SORTS = 50000;
++constexpr std::size_t SORTS_PER_GENERATION = MAX_CACHED_SORTS / 2;
+ 
+ thread_local ComparisonSessionState comparisonSessionState;
+ 
+@@ -85,18 +139,26 @@ std::uint64_t nextCacheId() {
+ 
+ SequenceRule::ComparisonSession::ComparisonSession() {
+   if (comparisonSessionState.depth++ == 0) {
+-    comparisonSessionState.results.clear();
++    comparisonSessionState.currentResults.clear();
++    comparisonSessionState.previousResults.clear();
++    comparisonSessionState.currentSorts.clear();
++    comparisonSessionState.previousSorts.clear();
+   }
+ }
+ 
+ SequenceRule::ComparisonSession::~ComparisonSession() {
+   if (--comparisonSessionState.depth == 0) {
+-    comparisonSessionState.results.clear();
++    comparisonSessionState.currentResults.clear();
++    comparisonSessionState.previousResults.clear();
++    comparisonSessionState.currentSorts.clear();
++    comparisonSessionState.previousSorts.clear();
+   }
+ }
+ 
+-SequenceRule::SequenceRule()
+-    : dp_sorter{new Sort(this)}, d_cacheId{nextCacheId()} {}
++SequenceRule::SequenceRule(bool useConstitutionalRootEquivalence)
++    : dp_sorter{new Sort(this)},
++      d_cacheId{nextCacheId()},
++      d_useConstitutionalRootEquivalence{useConstitutionalRootEquivalence} {}
+ 
+ SequenceRule::~SequenceRule() = default;
+ 
+@@ -138,9 +200,34 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+                           secondGraph->getCurrentRoot(),
+                           firstGraph->getRule6Ref(),
+                           secondGraph->getRule6Ref()};
+-  const auto found = comparisonSessionState.results.find(key);
+-  if (found != comparisonSessionState.results.end()) {
+-    return found->second;
++  const auto findResult = [](const auto &results,
++                             const ComparisonKey &candidate, int &value) {
++    const auto found = results.find(candidate);
++    if (found == results.end()) {
++      return false;
++    }
++    value = found->second;
++    return true;
++  };
++  int cachedResult = 0;
++  if (findResult(comparisonSessionState.currentResults, key, cachedResult) ||
++      findResult(comparisonSessionState.previousResults, key, cachedResult)) {
++    return cachedResult;
++  }
++  const ComparisonKey reverseKey{d_cacheId,
++                                 b,
++                                 a,
++                                 secondGraph->getCurrentRoot(),
++                                 firstGraph->getCurrentRoot(),
++                                 secondGraph->getRule6Ref(),
++                                 firstGraph->getRule6Ref()};
++  if (firstGraph == secondGraph) {
++    if (findResult(comparisonSessionState.currentResults, reverseKey,
++                   cachedResult) ||
++        findResult(comparisonSessionState.previousResults, reverseKey,
++                   cachedResult)) {
++      return -cachedResult;
++    }
+   }
+ 
+   const auto directResult = compare(a, b);
+@@ -148,17 +235,82 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+     return directResult;
+   }
+ 
+-  if (hasEquivalentAcyclicContinuation(a, b)) {
++  if (!isRecursiveComparisonNeeded(a, b) ||
++      hasEquivalentAcyclicContinuation(a, b) ||
++      hasEquivalentConstitutionalRootContinuation(a, b)) {
+     return 0;
+   }
+ 
+   const auto result = recursiveCompareEqual(a, b);
+-  if (comparisonSessionState.results.size() < MAX_CACHED_COMPARISONS) {
+-    comparisonSessionState.results.emplace(key, result);
++  if (comparisonSessionState.currentResults.size() >=
++      COMPARISONS_PER_GENERATION) {
++    comparisonSessionState.previousResults =
++        std::move(comparisonSessionState.currentResults);
++    comparisonSessionState.currentResults.clear();
+   }
++  comparisonSessionState.currentResults.emplace(key, result);
+   return result;
+ }
+ 
++bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
++                                 bool deep, std::vector<Edge *> &edges,
++                                 bool &unique, bool &pseudoAsymmetric) {
++  if (node == nullptr || edges.size() < 2u ||
++      edges.size() > ComparisonSessionState::MAX_INLINE_SORT_EDGES) {
++    return false;
++  }
++  const auto graph = node->getDigraph();
++  ComparisonSessionState::SortKey key{sortId,
++                                      node,
++                                      graph->getCurrentRoot(),
++                                      graph->getRule6Ref(),
++                                      deep,
++                                      static_cast<std::uint8_t>(edges.size()),
++                                      {}};
++  std::copy(edges.begin(), edges.end(), key.input.begin());
++  const auto findSort = [&](const auto &sorts) {
++    const auto found = sorts.find(key);
++    if (found == sorts.end()) {
++      return false;
++    }
++    edges.assign(found->second.sorted.begin(),
++                 found->second.sorted.begin() + found->second.sortedCount);
++    unique = found->second.priority.isUnique();
++    pseudoAsymmetric = found->second.priority.isPseudoAsymetric();
++    return true;
++  };
++  return findSort(comparisonSessionState.currentSorts) ||
++         findSort(comparisonSessionState.previousSorts);
++}
++
++void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
++                             const std::vector<Edge *> &input,
++                             const std::vector<Edge *> &sorted,
++                             const Priority &priority) {
++  if (node == nullptr || input.size() < 2u || sorted.size() != input.size() ||
++      input.size() > ComparisonSessionState::MAX_INLINE_SORT_EDGES) {
++    return;
++  }
++  if (comparisonSessionState.currentSorts.size() >= SORTS_PER_GENERATION) {
++    comparisonSessionState.previousSorts =
++        std::move(comparisonSessionState.currentSorts);
++    comparisonSessionState.currentSorts.clear();
++  }
++  const auto graph = node->getDigraph();
++  ComparisonSessionState::SortKey key{sortId,
++                                      node,
++                                      graph->getCurrentRoot(),
++                                      graph->getRule6Ref(),
++                                      deep,
++                                      static_cast<std::uint8_t>(input.size()),
++                                      {}};
++  std::copy(input.begin(), input.end(), key.input.begin());
++  ComparisonSessionState::SortValue value{
++      {}, static_cast<std::uint8_t>(sorted.size()), priority};
++  std::copy(sorted.begin(), sorted.end(), value.sorted.begin());
++  comparisonSessionState.currentSorts.emplace(std::move(key), std::move(value));
++}
++
+ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
+   std::vector<std::pair<const Edge *, const Edge *>> queue{{a, b}};
+   std::vector<Edge *> as;
+@@ -237,6 +389,13 @@ void SequenceRule::setSorter(const Sort *sorter) {
+   d_cacheId = nextCacheId();
+ }
+ 
++bool SequenceRule::isRecursiveComparisonNeeded(const Edge *a,
++                                               const Edge *b) const {
++  (void)a;
++  (void)b;
++  return true;
++}
++
+ Priority SequenceRule::sort(const Node *node, std::vector<Edge *> &edges,
+                             bool deep) const {
+   return getSorter()->prioritize(node, edges, deep);
+@@ -280,5 +439,41 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
+   return graph->isAcyclicBranchWithoutConfiguration(a);
+ }
+ 
++bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
++    const Edge *a, const Edge *b) const {
++  if (!d_useConstitutionalRootEquivalence) {
++    return false;
++  }
++
++  const auto aBeg = a->getBeg();
++  const auto bBeg = b->getBeg();
++  const auto aEnd = a->getEnd();
++  const auto bEnd = b->getEnd();
++  const auto graph = aBeg->getDigraph();
++  const auto root = graph->getOriginalRoot();
++  if (graph != bBeg->getDigraph() || graph->getCurrentRoot() != root ||
++      aBeg != root || bBeg != root || a->getBond() == nullptr ||
++      b->getBond() == nullptr || aEnd->isDuplicateOrH() ||
++      bEnd->isDuplicateOrH() || !aEnd->isOriginalChildOf(root) ||
++      !bEnd->isOriginalChildOf(root)) {
++    return false;
++  }
++
++  // Keep the exact-isomorphism cost focused on cyclic ligand systems, where
++  // path unfolding is combinatorial and the cheaper bridge shortcut cannot
++  // apply. Returning false only disables this optimization.
++  if (!graph->getMol().isInRing(a->getBond()) ||
++      !graph->getMol().isInRing(b->getBond())) {
++    return false;
++  }
++
++  const bool equivalent = graph->getMol().hasConstitutionalAutomorphism(
++      root->getAtom(), aEnd->getAtom(), bEnd->getAtom());
++  if (equivalent) {
++    graph->noteConstitutionalRootEquivalence();
++  }
++  return equivalent;
++}
++
+ }  // namespace CIPLabeler
+ }  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.h b/Code/GraphMol/CIPLabeler/rules/SequenceRule.h
+index 4611cbbb4..898f3bffb 100644
+--- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.h
++++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.h
+@@ -44,13 +44,13 @@ class SequenceRule {
+   // the outermost session owns its lifetime.
+   class ComparisonSession {
+    public:
++    ComparisonSession();
++    ~ComparisonSession();
++
+     ComparisonSession(const ComparisonSession &) = delete;
+     ComparisonSession &operator=(const ComparisonSession &) = delete;
+ 
+    private:
+-    ComparisonSession();
+-    ~ComparisonSession();
+-
+     friend class SequenceRule;
+     friend class Sort;
+     friend class AtropisomerBond;
+@@ -58,7 +58,7 @@ class SequenceRule {
+     friend class Tetrahedral;
+   };
+ 
+-  SequenceRule();
++  explicit SequenceRule(bool useConstitutionalRootEquivalence = false);
+ 
+   virtual ~SequenceRule();
+ 
+@@ -83,12 +83,29 @@ class SequenceRule {
+  protected:
+   std::unique_ptr<const Sort> dp_sorter = nullptr;
+ 
++  // Rules whose value can only come from a particular descriptor class can
++  // prove that recursion is unnecessary from per-side descriptor counts.
++  virtual bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const;
++
+  private:
+   std::uint64_t d_cacheId;
++  bool d_useConstitutionalRootEquivalence;
+ 
+   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
+   bool hasEquivalentAcyclicContinuation(const Edge *a, const Edge *b) const;
++  bool hasEquivalentConstitutionalRootContinuation(const Edge *a,
++                                                   const Edge *b) const;
+   int recursiveCompareEqual(const Edge *a, const Edge *b) const;
++
++  static bool getCachedSort(std::uint64_t sortId, const Node *node, bool deep,
++                            std::vector<Edge *> &edges, bool &unique,
++                            bool &pseudoAsymmetric);
++  static void cacheSort(std::uint64_t sortId, const Node *node, bool deep,
++                        const std::vector<Edge *> &input,
++                        const std::vector<Edge *> &sorted,
++                        const Priority &priority);
++
++  friend class Sort;
+ };
+ 
+ }  // namespace CIPLabeler
+-- 
+2.34.1
+

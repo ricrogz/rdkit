@@ -1,0 +1,128 @@
+From 734031e87d63f3f7d392528d3432f5991188864a Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:26:08 -0400
+Subject: [PATCH 4/7] Use contiguous queues in CIP traversals
+
+---
+ Code/GraphMol/CIPLabeler/Digraph.cpp        | 6 +++---
+ Code/GraphMol/CIPLabeler/Mancude.cpp        | 9 ++++-----
+ Code/GraphMol/CIPLabeler/rules/Rule4b.cpp   | 6 +++---
+ Code/GraphMol/CIPLabeler/rules/Rule5New.cpp | 9 ++++-----
+ 4 files changed, 14 insertions(+), 16 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
+index fb564c8ed..52860bb79 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.cpp
++++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
+@@ -9,7 +9,6 @@
+ //  of the RDKit source tree.
+ //
+ 
+-#include <list>
+ #include <sstream>
+ 
+ #include "Digraph.h"
+@@ -121,8 +120,9 @@ void Digraph::setRule6Ref(Atom *ref) { dp_rule6Ref = ref; }
+  */
+ void Digraph::changeRoot(Node *newroot) {
+   std::vector<Edge *> toflip;
+-  auto queue = std::list<Node *>({newroot});
+-  for (const auto &node : queue) {
++  std::vector<Node *> queue{newroot};
++  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
++    const auto node = queue[pos];
+     for (const auto &e : node->getEdges()) {
+       if (e->isEnd(node)) {
+         toflip.push_back(e);
+diff --git a/Code/GraphMol/CIPLabeler/Mancude.cpp b/Code/GraphMol/CIPLabeler/Mancude.cpp
+index 0df8c8443..9fa5b6914 100644
+--- a/Code/GraphMol/CIPLabeler/Mancude.cpp
++++ b/Code/GraphMol/CIPLabeler/Mancude.cpp
+@@ -17,7 +17,6 @@
+ /// are always resolved in the same way
+ ///
+ 
+-#include <list>
+ #include <vector>
+ 
+ #include "Mancude.h"
+@@ -100,7 +99,8 @@ bool SeedTypes(std::vector<Type> &types, const CIPMol &mol) {
+ // but cannot be part of a mancude system (more than one
+ // typed neighbor is required for resonance to be possible)
+ void RelaxTypes(std::vector<Type> &types, const CIPMol &mol) {
+-  std::list<Atom *> queue;
++  std::vector<Atom *> queue;
++  queue.reserve(mol.getNumAtoms());
+   auto counts = std::vector<int>(mol.getNumAtoms());
+   for (auto atom : mol.atoms()) {
+     const auto aidx = atom->getIdx();
+@@ -122,9 +122,8 @@ void RelaxTypes(std::vector<Type> &types, const CIPMol &mol) {
+     }
+   }
+ 
+-  while (!queue.empty()) {
+-    const auto atom = queue.front();
+-    queue.pop_front();
++  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
++    const auto atom = queue[pos];
+     const auto aidx = atom->getIdx();
+     if (types[aidx] != Type::Other) {
+       types[aidx] = Type::Other;
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp b/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp
+index a222ed2ed..259d3048a 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule4b.cpp
+@@ -10,7 +10,6 @@
+ //
+ 
+ #include <algorithm>
+-#include <list>
+ 
+ #include <RDGeneral/Invariant.h>
+ 
+@@ -224,9 +223,10 @@ std::vector<PairList> Rule4b::newPairLists(
+ void Rule4b::fillPairs(const Node *beg, PairList &plist) const {
+   const Rule4b replacement_rule(plist.getRefDescriptor());
+   const auto &sorter = getRefSorter(&replacement_rule);
+-  auto queue = std::list<const Node *>({beg});
++  std::vector<const Node *> queue{beg};
+ 
+-  for (const auto &node : queue) {
++  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
++    const auto node = queue[pos];
+     plist.add(node->getAux());
+     auto edges = node->getEdges();
+     sorter.prioritize(node, edges);
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp b/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp
+index 8e469a9f5..e33855cd2 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule5New.cpp
+@@ -8,8 +8,6 @@
+ //  which is included in the file license.txt, found at the root
+ //  of the RDKit source tree.
+ //
+-#include <list>
+-
+ #include <RDGeneral/Invariant.h>
+ 
+ #include "Rule5New.h"
+@@ -73,9 +71,10 @@ int Rule5New::compare(const Edge *a, const Edge *b) const {
+ void Rule5New::fillPairs(const Node *beg, PairList &plist) const {
+   const Rule5New replacement_rule(plist.getRefDescriptor());
+   const auto &sorter = getRefSorter(&replacement_rule);
+-  auto queue = std::list<const Node *>({beg});
++  std::vector<const Node *> queue{beg};
+ 
+-  for (const auto &node : queue) {
++  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
++    const auto node = queue[pos];
+     plist.add(node->getAux());
+     auto edges = node->getEdges();
+     sorter.prioritize(node, edges);
+@@ -105,4 +104,4 @@ Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {
+ }
+ 
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit

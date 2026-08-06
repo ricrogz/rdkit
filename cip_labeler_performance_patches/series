@@ -1,0 +1,12 @@
+0001-Reduce-repeated-CIP-configuration-work.patch
+0002-Cache-atomic-mass-during-CIP-expansion.patch
+0003-Skip-kekulization-for-nonaromatic-CIP-molecules.patch
+0004-Use-contiguous-queues-in-CIP-traversals.patch
+0005-Reuse-scratch-storage-in-CIP-rule-traversals.patch
+0006-Compact-CIP-digraph-visit-state.patch
+0007-Optimize-CIP-digraph-storage-and-lookups.patch
+0008-Memoize-nested-CIP-recursive-comparisons.patch
+0009-Avoid-exponential-CIP-work-in-symmetric-ring-chains.patch
+0010-Accelerate-CIP-labeling-in-highly-cyclic-stereocages.patch
+0011-Reuse-CIP-work-across-auxiliary-reroots.patch
+0012-Generalize-CIP-acceleration-for-symmetric-ring-syste.patch

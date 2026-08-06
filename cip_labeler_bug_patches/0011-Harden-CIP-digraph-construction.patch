@@ -1,0 +1,228 @@
+From 321f881627b89cc7d8c44b0ddee35e5355aa5378 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:33:12 -0400
+Subject: [PATCH 11/14] Harden CIP digraph construction
+
+---
+ Code/GraphMol/CIPLabeler/Digraph.cpp     | 19 +++++-----
+ Code/GraphMol/CIPLabeler/Digraph.h       |  6 +++-
+ Code/GraphMol/CIPLabeler/Node.cpp        |  6 ++--
+ Code/GraphMol/CIPLabeler/Node.h          |  5 +--
+ Code/GraphMol/CIPLabeler/catch_tests.cpp | 46 ++++++++++++++++++++++++
+ 5 files changed, 66 insertions(+), 16 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
+index 03bac8135..fb564c8ed 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.cpp
++++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
+@@ -26,7 +26,7 @@ namespace {
+  * Upper limit on the size of the digraph, stops out of memory error with a
+  * more graceful failure. 0=Infinite
+  */
+-const int MAX_NODE_COUNT = 100000;
++constexpr std::size_t MAX_NODE_COUNT = 100000;
+ 
+ /**
+  * Used for debugging only, 0=Infinite
+@@ -34,8 +34,14 @@ const int MAX_NODE_COUNT = 100000;
+ const int MAX_NODE_DIST = 0;
+ }  // namespace
+ 
+-Node &Digraph::addNode(std::vector<char> &&visit, Atom *atom,
++Node &Digraph::addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
+                        boost::rational<int> &&frac, int dist, int flags) {
++  if (MAX_NODE_COUNT > 0 && d_nodes.size() >= MAX_NODE_COUNT) {
++    std::stringstream errmsg;
++    errmsg << "Digraph generation failed: more than " << MAX_NODE_COUNT
++           << "nodes found.";
++    throw TooManyNodesException(errmsg.str());
++  }
+   d_nodes.emplace_back(this, std::move(visit), atom, std::move(frac), dist,
+                        flags);
+   return d_nodes.back();
+@@ -57,7 +63,7 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
+     : d_mol{mol} {
+   PRECONDITION(atom, "cannot init digraph on a nullptr")
+ 
+-  auto visit = std::vector<char>(d_mol.getNumAtoms());
++  auto visit = std::vector<std::uint32_t>(d_mol.getNumAtoms());
+   visit[atom->getIdx()] = 1;
+ 
+   auto dist = 1;
+@@ -139,13 +145,6 @@ void Digraph::expand(Node *beg) {
+   if (MAX_NODE_DIST > 0 && beg->getDistance() > MAX_NODE_DIST) {
+     return;
+   }
+-  if (MAX_NODE_COUNT > 0 && d_nodes.size() >= MAX_NODE_COUNT) {
+-    std::stringstream errmsg;
+-    errmsg << "Digraph generation failed: more than " << MAX_NODE_COUNT
+-           << "nodes found.";
+-    throw TooManyNodesException(errmsg.str());
+-  }
+-
+   // create 'explicit' nodes
+   for (const auto &bond : d_mol.getBonds(atom)) {
+     const auto &nbr = bond->getOtherAtom(atom);
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.h b/Code/GraphMol/CIPLabeler/Digraph.h
+index e6c6a1594..b01e9fd25 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.h
++++ b/Code/GraphMol/CIPLabeler/Digraph.h
+@@ -17,6 +17,7 @@
+ //
+ #pragma once
+ 
++#include <cstdint>
+ #include <list>
+ #include <vector>
+ 
+@@ -52,6 +53,9 @@ class Digraph {
+   Digraph &operator=(const Digraph &) = delete;
+ 
+   Digraph(const CIPMol &mol, Atom *atom, bool atropsomerMode = false);
++  Digraph(CIPMol &&mol, Atom *atom, bool atropsomerMode = false) = delete;
++  Digraph(const CIPMol &&mol, Atom *atom,
++          bool atropsomerMode = false) = delete;
+ 
+   const CIPMol &getMol() const;
+ 
+@@ -91,7 +95,7 @@ class Digraph {
+ 
+   void expand(Node *beg);
+ 
+-  Node &addNode(std::vector<char> &&visit, Atom *atom,
++  Node &addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
+                 boost::rational<int> &&frac, int dist, int flags);
+ 
+   // Has `atom` been seen yet?
+diff --git a/Code/GraphMol/CIPLabeler/Node.cpp b/Code/GraphMol/CIPLabeler/Node.cpp
+index a10da9d5b..6c9a823f4 100644
+--- a/Code/GraphMol/CIPLabeler/Node.cpp
++++ b/Code/GraphMol/CIPLabeler/Node.cpp
+@@ -20,7 +20,7 @@ namespace CIPLabeler {
+ 
+ Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
+   int new_dist = flags & DUPLICATE ? d_visit[idx] : d_dist + 1;
+-  std::vector<char> new_visit;
++  std::vector<std::uint32_t> new_visit;
+ 
+   if (flags & BOND_DUPLICATE) {
+     const auto &frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
+@@ -35,7 +35,7 @@ Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
+                         flags);
+ }
+ 
+-Node::Node(Digraph *g, std::vector<char> &&visit, Atom *atom,
++Node::Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
+            boost::rational<int> &&frac, int dist, int flags)
+     : dp_g{g},
+       dp_atom{atom},
+@@ -114,7 +114,7 @@ bool Node::isVisited(int idx) const { return d_visit[idx] != 0; }
+ 
+ Node *Node::newChild(int idx, Atom *atom) const {
+   auto new_visit = d_visit;
+-  new_visit[idx] = static_cast<char>(d_dist + 1);
++  new_visit[idx] = d_dist + 1;
+   auto atomic_num = atom ? atom->getAtomicNum() : 1;
+   return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0);
+ }
+diff --git a/Code/GraphMol/CIPLabeler/Node.h b/Code/GraphMol/CIPLabeler/Node.h
+index 82521c52a..8d30cfc5d 100644
+--- a/Code/GraphMol/CIPLabeler/Node.h
++++ b/Code/GraphMol/CIPLabeler/Node.h
+@@ -10,6 +10,7 @@
+ //
+ #pragma once
+ 
++#include <cstdint>
+ #include <vector>
+ 
+ #include "Descriptor.h"
+@@ -66,7 +67,7 @@ class Node {
+   Node(const Node &) = delete;
+   Node &operator=(const Node &) = delete;
+ 
+-  Node(Digraph *g, std::vector<char> &&visit, Atom *atom,
++  Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
+        boost::rational<int> &&frac, int dist, int flags);
+ 
+   Digraph *getDigraph() const;
+@@ -128,7 +129,7 @@ class Node {
+ 
+   std::vector<Edge *> d_edges;
+ 
+-  std::vector<char> d_visit;
++  std::vector<std::uint32_t> d_visit;
+ 
+   Node *newTerminalChild(int idx, Atom *atom, int flags) const;
+ };
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index c72c232f4..852bce6d7 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -13,6 +13,7 @@
+ #include <list>
+ #include <limits>
+ #include <string>
++#include <type_traits>
+ #include <vector>
+ 
+ #include <strstream>
+@@ -54,6 +55,10 @@
+ using namespace RDKit;
+ using namespace RDKit::CIPLabeler;
+ 
++static_assert(std::is_constructible_v<Digraph, const CIPMol &, Atom *>);
++static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
++static_assert(!std::is_constructible_v<Digraph, const CIPMol &&, Atom *>);
++
+ TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
+   const Rules rules({new Rule1a});
+ 
+@@ -386,6 +391,47 @@ TEST_CASE("Digraph", "[accurateCIP]") {
+   check_incoming_edge_count(current_root);
+ }
+ 
++TEST_CASE("Digraph safety limits", "[accurateCIP]") {
++  SECTION("visit distances do not wrap on long paths") {
++    RWMol mol;
++    constexpr auto chain_length = 260u;
++    for (auto i = 0u; i < chain_length; ++i) {
++      auto atom = new Atom(6);
++      atom->setNoImplicit(true);
++      mol.addAtom(atom, true, true);
++      if (i != 0u) {
++        mol.addBond(i - 1, i, Bond::SINGLE);
++      }
++    }
++
++    CIPLabeler::CIPMol cipmol(mol);
++    Digraph graph(cipmol, cipmol.getAtom(0));
++    expandAll(graph);
++
++    CHECK(graph.getNumNodes() == chain_length);
++    const auto terminal_nodes = graph.getNodes(cipmol.getAtom(chain_length - 1));
++    REQUIRE(terminal_nodes.size() == 1);
++    CHECK(terminal_nodes.front()->getDistance() == chain_length);
++  }
++
++  SECTION("node cap applies to each insertion") {
++    auto mol = "C"_smiles;
++    CIPLabeler::CIPMol cipmol(*mol);
++    Digraph graph(cipmol, cipmol.getAtom(0));
++
++    constexpr auto max_node_count = 100000;
++    for (auto i = 1; i < max_node_count; ++i) {
++      graph.addNode({}, nullptr, boost::rational<int>(1), 1,
++                    Node::IMPL_HYDROGEN);
++    }
++    CHECK(graph.getNumNodes() == max_node_count);
++    CHECK_THROWS_AS(graph.addNode({}, nullptr, boost::rational<int>(1), 1,
++                                  Node::IMPL_HYDROGEN),
++                    TooManyNodesException);
++    CHECK(graph.getNumNodes() == max_node_count);
++  }
++}
++
+ TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {
+   SECTION("negative resonance component gets one final fraction") {
+     auto mol = "[CH-]1C=CC=C1"_smiles;

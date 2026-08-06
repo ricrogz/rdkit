@@ -1,0 +1,92 @@
+From b4982688c0d4b75289e9d2abfeb77968a9cbadc5 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:20:23 -0400
+Subject: [PATCH 02/14] Mark Rule 6 comparisons as pseudoasymmetric
+
+---
+ Code/GraphMol/CIPLabeler/catch_tests.cpp | 36 ++++++++++++++++++++++++
+ Code/GraphMol/CIPLabeler/rules/Rule6.cpp |  6 ++--
+ 2 files changed, 39 insertions(+), 3 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 132b5305d..8b34a27f5 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -8,6 +8,7 @@
+ //  of the RDKit source tree.
+ //
+ 
++#include <algorithm>
+ #include <bitset>
+ #include <list>
+ #include <string>
+@@ -43,6 +44,7 @@
+ #include "rules/Pairlist.h"
+ #include "rules/Rule1a.h"
+ #include "rules/Rule2.h"
++#include "rules/Rule6.h"
+ #include "rules/Rules.h"
+ 
+ #include "CIPMol.h"
+@@ -165,6 +167,40 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
+   }
+ }
+ 
++TEST_CASE("Rule 6 decisions mark pseudoasymmetry", "[accurateCIP]") {
++  auto mol = "C(C)(F)Cl"_smiles;
++  REQUIRE(mol);
++
++  CIPMol cipmol(*mol);
++  Digraph digraph(cipmol, mol->getAtomWithIdx(0));
++  auto root = digraph.getCurrentRoot();
++  auto edges = root->getEdges();
++
++  const auto findEdgeTo = [&](unsigned int atomIdx) {
++    const auto atom = mol->getAtomWithIdx(atomIdx);
++    const auto iter = std::find_if(
++        edges.begin(), edges.end(),
++        [atom](auto edge) { return edge->getEnd()->getAtom() == atom; });
++    REQUIRE(iter != edges.end());
++    return *iter;
++  };
++
++  const auto refEdge = findEdgeTo(1);
++  const auto otherEdge = findEdgeTo(2);
++  digraph.setRule6Ref(refEdge->getEnd()->getAtom());
++
++  const Rule6 rule;
++  CHECK(rule.compare(refEdge, otherEdge) == +2);
++  CHECK(rule.compare(otherEdge, refEdge) == -2);
++
++  Sort sorter(&rule);
++  std::vector<Edge *> toSort{otherEdge, refEdge};
++  const auto priority = sorter.prioritize(root, toSort, false);
++  CHECK(priority.isUnique());
++  CHECK(priority.isPseudoAsymetric());
++  CHECK(toSort == std::vector<Edge *>{refEdge, otherEdge});
++}
++
+ void check_incoming_edge_count(Node *root) {
+   auto queue = std::list<Node *>({root});
+ 
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rule6.cpp b/Code/GraphMol/CIPLabeler/rules/Rule6.cpp
+index 2d205be3f..1b6e7fde1 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rule6.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/Rule6.cpp
+@@ -27,12 +27,12 @@ int Rule6::compare(const Edge *a, const Edge *b) const {
+   const auto &aAtom = a->getEnd()->getAtom();
+   const auto &bAtom = b->getEnd()->getAtom();
+   if (ref == aAtom && ref != bAtom) {
+-    return +1;  // a is ref (has priority)
++    return +2;  // a is ref (has priority and Rule 6 follows Rule 5)
+   } else if (ref != aAtom && ref == bAtom) {
+-    return -1;  // b is ref (has priority)
++    return -2;  // b is ref (has priority and Rule 6 follows Rule 5)
+   }
+   return 0;
+ }
+ 
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit

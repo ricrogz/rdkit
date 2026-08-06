@@ -1,0 +1,176 @@
+From 36760f55bc65a8d5ee5e017ec7a3dbbb278f3822 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:26:18 -0400
+Subject: [PATCH 07/14] Harden CIP configuration labeling
+
+---
+ Code/GraphMol/CIPLabeler/Node.cpp             |  3 +++
+ .../CIPLabeler/configs/AtropisomerBond.cpp    | 12 +++++++++---
+ Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp  | 12 +++++++++++-
+ .../CIPLabeler/configs/Tetrahedral.cpp        | 19 +++++++++++++------
+ 4 files changed, 36 insertions(+), 10 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/Node.cpp b/Code/GraphMol/CIPLabeler/Node.cpp
+index 231036f1b..d39b16c56 100644
+--- a/Code/GraphMol/CIPLabeler/Node.cpp
++++ b/Code/GraphMol/CIPLabeler/Node.cpp
+@@ -54,6 +54,9 @@ Node::Node(Digraph *g, std::vector<char> &&visit, Atom *atom,
+       d_atomic_mass = table->getAtomicWeight(atomic_number);
+     } else {
+       d_atomic_mass = table->getMassForIsotope(atomic_number, isotope);
++      if (atomic_number != 0 && d_atomic_mass == 0.0) {
++        d_atomic_mass = isotope;
++      }
+     }
+   }
+   if (d_visit.empty() || d_flags & DUPLICATE) {
+diff --git a/Code/GraphMol/CIPLabeler/configs/AtropisomerBond.cpp b/Code/GraphMol/CIPLabeler/configs/AtropisomerBond.cpp
+index 2a19c72a0..cb4b34f37 100644
+--- a/Code/GraphMol/CIPLabeler/configs/AtropisomerBond.cpp
++++ b/Code/GraphMol/CIPLabeler/configs/AtropisomerBond.cpp
+@@ -29,7 +29,8 @@ AtropisomerBond::AtropisomerBond(const CIPMol &mol, Bond *bond, Atom *startAtom,
+ 
+   Atropisomers::AtropAtomAndBondVec atomAndBondVecs[2];
+   if (!Atropisomers::getAtropisomerAtomsAndBonds(bond, atomAndBondVecs,
+-                                                 bond->getOwningMol())) {
++                                                 bond->getOwningMol()) ||
++      atomAndBondVecs[0].second.empty() || atomAndBondVecs[1].second.empty()) {
+     return;  // not an atropisomer
+   }
+   auto atom1 = mol.getAtom(atomAndBondVecs[0].second[0]->getOtherAtomIdx(
+@@ -77,6 +78,7 @@ bool AtropisomerBond::hasPrimaryLabel() const {
+ 
+ void AtropisomerBond::resetPrimaryLabel() const {
+   dp_bond->clearProp(common_properties::_CIPCode);
++  dp_bond->clearProp(common_properties::_CIPNeighborOrder);
+ }
+ 
+ Descriptor AtropisomerBond::label(const Rules &comp) {
+@@ -112,6 +114,10 @@ Descriptor AtropisomerBond::label(Node *root1, Digraph &digraph,
+   removeDuplicatesAndHs(edges1);
+   removeDuplicatesAndHs(edges2);
+ 
++  if (getCarriers().size() != 2 || edges1.empty() || edges2.empty()) {
++    return Descriptor::UNKNOWN;
++  }
++
+   auto carriers = std::vector<Atom *>(getCarriers());
+   auto config = d_cfg;
+ 
+@@ -170,13 +176,13 @@ Descriptor AtropisomerBond::label(Node *root1, Digraph &digraph,
+     }
+   }
+   if (config == Bond::STEREOATROPCCW) {
+-    if (priority1.isPseudoAsymetric() || priority2.isPseudoAsymetric()) {
++    if (priority1.isPseudoAsymetric() != priority2.isPseudoAsymetric()) {
+       return Descriptor::m;
+     } else {
+       return Descriptor::M;
+     }
+   } else if (config == Bond::STEREOATROPCW) {
+-    if (priority1.isPseudoAsymetric() || priority2.isPseudoAsymetric()) {
++    if (priority1.isPseudoAsymetric() != priority2.isPseudoAsymetric()) {
+       return Descriptor::p;
+     } else {
+       return Descriptor::P;
+diff --git a/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp b/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp
+index ae2acf536..05e0824ab 100644
+--- a/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp
++++ b/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp
+@@ -25,8 +25,13 @@ Sp2Bond::Sp2Bond(const CIPMol &mol, Bond *bond, Atom *startAtom, Atom *endAtom,
+   CHECK_INVARIANT(d_cfg == Bond::STEREOTRANS || d_cfg == Bond::STEREOCIS,
+                   "bad config")
+ 
++  if (bond->getBondType() != Bond::DOUBLE) {
++    return;
++  }
+   auto stereo_atoms = Chirality::findStereoAtoms(bond);
+-  CHECK_INVARIANT(stereo_atoms.size() == 2, "incorrect number of stereo atoms")
++  if (stereo_atoms.size() != 2) {
++    return;
++  }
+ 
+   std::vector<Atom *> anchors{
+       {mol.getAtom(stereo_atoms[0]), mol.getAtom(stereo_atoms[1])}};
+@@ -72,6 +77,7 @@ bool Sp2Bond::hasPrimaryLabel() const {
+ 
+ void Sp2Bond::resetPrimaryLabel() const {
+   dp_bond->clearProp(common_properties::_CIPCode);
++  dp_bond->clearProp(common_properties::_CIPNeighborOrder);
+ }
+ 
+ Descriptor Sp2Bond::label(const Rules &comp) {
+@@ -103,6 +109,10 @@ Descriptor Sp2Bond::label(Node *root1, Digraph &digraph, const Rules &comp) {
+   removeInternalEdges(edges1, focus1, focus2);
+   removeInternalEdges(edges2, focus1, focus2);
+ 
++  if (getCarriers().size() != 2 || edges1.empty() || edges2.empty()) {
++    return Descriptor::UNKNOWN;
++  }
++
+   auto carriers = std::vector<Atom *>(getCarriers());
+   auto config = d_cfg;
+ 
+diff --git a/Code/GraphMol/CIPLabeler/configs/Tetrahedral.cpp b/Code/GraphMol/CIPLabeler/configs/Tetrahedral.cpp
+index 493f45ced..1269f56b9 100644
+--- a/Code/GraphMol/CIPLabeler/configs/Tetrahedral.cpp
++++ b/Code/GraphMol/CIPLabeler/configs/Tetrahedral.cpp
+@@ -28,6 +28,9 @@ Tetrahedral::Tetrahedral(const CIPMol &mol, Atom *focus)
+   for (auto &nbr : mol.getNeighbors(focus)) {
+     carriers.push_back(nbr);
+   }
++  if (carriers.size() < 2 || carriers.size() > 4) {
++    return;
++  }
+   if (carriers.size() < 4) {
+     // Implicit H -- use the central atom instead of a dummy H
+     carriers.push_back(focus);
+@@ -38,9 +41,9 @@ Tetrahedral::Tetrahedral(const CIPMol &mol, Atom *focus)
+     // than the implicit H.
+     carriers.push_back(nullptr);
+   }
+-  POSTCONDITION(carriers.size() == 4, "configuration must have 4 carriers");
+-
+-  setCarriers(std::move(carriers));
++  if (carriers.size() == 4) {
++    setCarriers(std::move(carriers));
++  }
+ };
+ 
+ void Tetrahedral::setPrimaryLabel(Descriptor desc) {
+@@ -79,6 +82,7 @@ bool Tetrahedral::hasPrimaryLabel() const {
+ 
+ void Tetrahedral::resetPrimaryLabel() const {
+   getFocus()->clearProp(common_properties::_CIPCode);
++  getFocus()->clearProp(common_properties::_CIPNeighborOrder);
+ }
+ 
+ Descriptor Tetrahedral::label(const Rules &comp) {
+@@ -104,8 +108,8 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
+   d_ranked_anchors.clear();
+ 
+   // something not right!?! bad creation
+-  if (edges.size() < 3) {
+-    return Descriptor::ns;
++  if (getCarriers().size() != 4 || edges.size() < 3) {
++    return Descriptor::UNKNOWN;
+   }
+ 
+   auto priority = comp.sort(node, edges);
+@@ -151,6 +155,9 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
+       continue;
+     }
+ 
++    if (idx < 0 || static_cast<size_t>(idx) >= ordered.size()) {
++      return Descriptor::UNKNOWN;
++    }
+     auto atom = edge->getEnd()->getAtom();
+     ordered[idx] = atom;
+ 
+@@ -205,4 +212,4 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
+ }
+ 
+ }  // namespace CIPLabeler
+-}  // namespace RDKit
+\ No newline at end of file
++}  // namespace RDKit

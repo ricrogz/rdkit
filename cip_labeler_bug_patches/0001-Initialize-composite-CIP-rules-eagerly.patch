@@ -1,0 +1,95 @@
+From 553dd54c5db8d7540609b586cfd760256121930a Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:19:57 -0400
+Subject: [PATCH 01/14] Initialize composite CIP rules eagerly
+
+---
+ Code/GraphMol/CIPLabeler/catch_tests.cpp | 31 ++++++++++++++++++++++++
+ Code/GraphMol/CIPLabeler/rules/Rules.h   | 12 ++++-----
+ 2 files changed, 37 insertions(+), 6 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 99ed7bd34..132b5305d 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -16,6 +16,7 @@
+ #include <strstream>
+ 
+ #ifdef RDK_TEST_MULTITHREADED
++#include <atomic>
+ #include <csignal>
+ #include <thread>
+ #include <chrono>
+@@ -42,12 +43,42 @@
+ #include "rules/Pairlist.h"
+ #include "rules/Rule1a.h"
+ #include "rules/Rule2.h"
++#include "rules/Rules.h"
+ 
+ #include "CIPMol.h"
+ 
+ using namespace RDKit;
+ using namespace RDKit::CIPLabeler;
+ 
++TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
++  const Rules rules({new Rule1a});
++
++#ifdef RDK_TEST_MULTITHREADED
++  std::atomic<bool> start{false};
++  std::vector<const Sort *> sorters(8);
++  std::vector<std::thread> threads;
++  threads.reserve(sorters.size());
++  for (auto i = 0u; i < sorters.size(); ++i) {
++    threads.emplace_back([&, i]() {
++      while (!start.load(std::memory_order_acquire)) {
++      }
++      sorters[i] = rules.getSorter();
++    });
++  }
++  start.store(true, std::memory_order_release);
++  for (auto &thread : threads) {
++    thread.join();
++  }
++  for (const auto sorter : sorters) {
++    CHECK(sorter == rules.getSorter());
++  }
++#endif
++
++  REQUIRE(rules.getSorter());
++  CHECK(rules.getSorter()->getRules() ==
++        std::vector<const SequenceRule *>{&rules});
++}
++
+ std::string toBinaryString(PairList::pairing_t value) {
+   return std::bitset<PairList::numPairingBits>(value).to_string();
+ }
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rules.h b/Code/GraphMol/CIPLabeler/rules/Rules.h
+index 1d75c8d70..3c4ee2532 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rules.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rules.h
+@@ -27,6 +27,11 @@ class Rules : public SequenceRule {
+     for (auto &rule : rules) {
+       add(rule);
+     }
++    // Rules instances are shared globally by the labeler, so their sorter must
++    // be fully initialized before construction of a const Rules object ends.
++    // The Sort stores this composite comparator and will therefore continue to
++    // see rules added later through add().
++    setSorter(new Sort(this));
+   }
+ 
+   ~Rules() override {
+@@ -45,12 +50,7 @@ class Rules : public SequenceRule {
+ 
+   int getNumSubRules() const { return d_rules.size(); }
+ 
+-  const Sort *getSorter() const override {
+-    if (dp_sorter == nullptr) {
+-      const_cast<Rules *>(this)->setSorter(new Sort(this));
+-    }
+-    return dp_sorter.get();
+-  }
++  const Sort *getSorter() const override { return dp_sorter.get(); }
+ 
+   int compare(const Edge *o1, const Edge *o2) const override {
+     // Try using each rules. The rules will expand the search exhaustively

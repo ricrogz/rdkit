@@ -1,0 +1,128 @@
+From 86de04e77db37fdeb396218de37a0b07b94901f3 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:42:53 -0400
+Subject: [PATCH 14/14] Validate selected CIP indexes without requiring mask
+ size
+
+---
+ Code/GraphMol/CIPLabeler/CIPLabeler.cpp  | 22 ++++++++++++--------
+ Code/GraphMol/CIPLabeler/CIPLabeler.h    | 14 +++++++------
+ Code/GraphMol/CIPLabeler/catch_tests.cpp | 26 ++++++++++++++++++++++--
+ 3 files changed, 46 insertions(+), 16 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+index f8e85c169..0e5e3535c 100644
+--- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+@@ -56,7 +56,7 @@ struct ConfigEntry {
+ using ConfigList = std::vector<ConfigEntry>;
+ 
+ bool isSelected(const boost::dynamic_bitset<> &selection, size_t index) {
+-  return !selection.empty() && selection.test(index);
++  return index < selection.size() && selection.test(index);
+ }
+ 
+ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
+@@ -310,18 +310,24 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
+ 
+ void validateSelection(const boost::dynamic_bitset<> &selection,
+                        size_t expectedSize, const char *kind) {
+-  // Empty bitsets intentionally select none and are part of the public API.
+-  if (!selection.empty() && selection.size() != expectedSize) {
+-    std::ostringstream msg;
+-    msg << "CIP " << kind << " selection bitset has size " << selection.size()
+-        << "; expected " << expectedSize;
+-    throw ValueErrorException(msg.str());
++  for (auto index = selection.find_first();
++       index != boost::dynamic_bitset<>::npos;
++       index = selection.find_next(index)) {
++    if (index >= expectedSize) {
++      std::ostringstream msg;
++      msg << "CIP " << kind
++          << " selection contains out-of-range index " << index
++          << "; molecule has " << expectedSize << ' ' << kind << " entries";
++      throw ValueErrorException(msg.str());
++    }
+   }
+ }
+ 
+ bool isFullSelection(const boost::dynamic_bitset<> &selection,
+                      size_t expectedSize) {
+-  return selection.size() == expectedSize && selection.all();
++  // validateSelection() guarantees that every set bit denotes a molecule
++  // object, so selecting expectedSize objects means that all are selected.
++  return selection.count() == expectedSize;
+ }
+ 
+ template <typename T>
+diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.h b/Code/GraphMol/CIPLabeler/CIPLabeler.h
+index 1574bffb5..a6e1a93af 100644
+--- a/Code/GraphMol/CIPLabeler/CIPLabeler.h
++++ b/Code/GraphMol/CIPLabeler/CIPLabeler.h
+@@ -74,14 +74,16 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+  *   \param mol - the molecule to be labelled.
+  *
+  *   \param atoms - bitset with the atom indexes to be labeled.
+- *      A nonempty bitset must have mol.getNumAtoms() bits. Unselected atom
+- *      configurations may still be used as auxiliary stereochemical
+- *      dependencies, but their primary labels are not written.
++ *      Missing high-order bits are treated as unselected; extra bits are
++ *      permitted only when they are clear. Unselected atom configurations
++ *      may still be used as auxiliary stereochemical dependencies, but their
++ *      primary labels are not written.
+  *
+  *   \param bonds - bitset with the bond indexes to be labeled.
+- *      A nonempty bitset must have mol.getNumBonds() bits. Unselected bond
+- *      configurations may still be used as auxiliary stereochemical
+- *      dependencies, but their primary labels are not written.
++ *      Missing high-order bits are treated as unselected; extra bits are
++ *      permitted only when they are clear. Unselected bond configurations
++ *      may still be used as auxiliary stereochemical dependencies, but their
++ *      primary labels are not written.
+  *
+  *   \param maxRecursiveIterations - maximum total number of recursive
+  *      comparisons across the preliminary and full labeling passes. A value
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 5d657877d..0d6ed92a6 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -800,15 +800,37 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
+ 
+     boost::dynamic_bitset<> noBonds;
+     boost::dynamic_bitset<> wrongAtoms(mol->getNumAtoms() + 1);
+-    wrongAtoms.set(1);
++    wrongAtoms.set(mol->getNumAtoms());
+     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, wrongAtoms, noBonds),
+                     ValueErrorException);
+ 
+     boost::dynamic_bitset<> noAtoms;
+     boost::dynamic_bitset<> wrongBonds(mol->getNumBonds() + 1);
+-    wrongBonds.set(0);
++    wrongBonds.set(mol->getNumBonds());
+     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, noAtoms, wrongBonds),
+                     ValueErrorException);
++
++    auto center = mol->getAtomWithIdx(1);
++    center->clearProp(common_properties::_CIPCode);
++    mol->clearProp(common_properties::_CIPComputed);
++    boost::dynamic_bitset<> shortAtoms(2);
++    shortAtoms.set(1);
++    CHECK_NOTHROW(
++        CIPLabeler::assignCIPLabels(*mol, shortAtoms, noBonds));
++    CHECK(center->hasProp(common_properties::_CIPCode));
++    CHECK(!mol->hasProp(common_properties::_CIPComputed));
++
++    boost::dynamic_bitset<> paddedAtoms(mol->getNumAtoms() + 1);
++    boost::dynamic_bitset<> paddedBonds(mol->getNumBonds() + 1);
++    for (size_t i = 0; i < mol->getNumAtoms(); ++i) {
++      paddedAtoms.set(i);
++    }
++    for (size_t i = 0; i < mol->getNumBonds(); ++i) {
++      paddedBonds.set(i);
++    }
++    CHECK_NOTHROW(
++        CIPLabeler::assignCIPLabels(*mol, paddedAtoms, paddedBonds));
++    CHECK(mol->hasProp(common_properties::_CIPComputed));
+   }
+ }
+ 
