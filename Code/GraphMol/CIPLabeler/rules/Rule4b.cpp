@@ -10,6 +10,7 @@
 //
 
 #include <algorithm>
+#include <utility>
 
 #include <RDGeneral/Invariant.h>
 
@@ -28,6 +29,7 @@ Rule4b::Rule4b(Descriptor ref) : d_ref{ref} {}
 std::vector<Descriptor> Rule4b::getReferenceDescriptors(
     const Node *node) const {
   std::vector<Descriptor> result;
+  result.reserve(2);
   auto prev = initialLevel(node);
   while (!prev.empty()) {
     for (const auto &nodes : prev) {
@@ -77,11 +79,14 @@ int Rule4b::compare(const Edge *a, const Edge *b) const {
       return comparePairs(aEnd, bEnd, list1[0].getRefDescriptor(),
                           list2[0].getRefDescriptor());
     } else if (list1.size() > 1) {
+      std::vector<const Node *> queue;
+      std::vector<Edge *> edges;
+      edges.reserve(4);
       for (auto &plist : list1) {
-        fillPairs(aEnd, plist);
+        fillPairs(aEnd, plist, queue, edges);
       }
       for (auto &plist : list2) {
-        fillPairs(bEnd, plist);
+        fillPairs(bEnd, plist, queue, edges);
       }
 
       std::sort(list1.rbegin(), list1.rend());
@@ -96,26 +101,6 @@ int Rule4b::compare(const Edge *a, const Edge *b) const {
     }
     return 0;
   }
-}
-
-bool Rule4b::hasDescriptors(const Node *node) const {
-  auto queue = std::list<const Node *>({node});
-
-  for (const auto &node : queue) {
-    if (node->getAux() != Descriptor::NONE) {
-      return true;
-    }
-    for (const auto &e : node->getEdges()) {
-      if (e->getEnd() == node) {
-        continue;
-      }
-      if (getBondLabel(e) != Descriptor::NONE) {
-        return true;
-      }
-      queue.push_back(e->getEnd());
-    }
-  }
-  return false;
 }
 
 bool Rule4b::getReference(const std::vector<const Node *> &nodes,
@@ -168,6 +153,7 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
 
   for (const auto &prev : prevLevel) {
     std::vector<std::vector<std::vector<Edge *>>> tmp;
+    tmp.reserve(prev.size());
     for (const auto &node : prev) {
       auto edges = node->getNonTerminalOutEdges();
       sort(node, edges);
@@ -188,9 +174,15 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
 
     for (std::size_t i = 0; i < size; ++i) {
       std::vector<const Node *> eq;
-      for (const auto &aTmp : tmp) {
-        auto tmpNodes = toNodeList(aTmp[i]);
-        eq.insert(eq.end(), tmpNodes.begin(), tmpNodes.end());
+      std::size_t eqSize = 0;
+      for (const auto &groups : tmp) {
+        eqSize += groups[i].size();
+      }
+      eq.reserve(eqSize);
+      for (const auto &groups : tmp) {
+        for (const auto edge : groups[i]) {
+          eq.push_back(edge->getEnd());
+        }
       }
       if (!eq.empty()) {
         nextLevel.push_back(eq);
@@ -198,16 +190,6 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
     }
   }
   return nextLevel;
-}
-
-std::vector<const Node *> Rule4b::toNodeList(
-    const std::vector<Edge *> &eqEdges) const {
-  std::vector<const Node *> eqNodes;
-  eqNodes.reserve(eqEdges.size());
-  for (const auto &edge : eqEdges) {
-    eqNodes.push_back(edge->getEnd());
-  }
-  return eqNodes;
 }
 
 std::vector<PairList> Rule4b::newPairLists(
@@ -220,15 +202,19 @@ std::vector<PairList> Rule4b::newPairLists(
   return pairs;
 }
 
-void Rule4b::fillPairs(const Node *beg, PairList &plist) const {
+void Rule4b::fillPairs(const Node *beg, PairList &plist,
+                       std::vector<const Node *> &queue,
+                       std::vector<Edge *> &edges) const {
   const Rule4b replacement_rule(plist.getRefDescriptor());
   const auto &sorter = getRefSorter(&replacement_rule);
-  std::vector<const Node *> queue{beg};
+  queue.clear();
+  queue.push_back(beg);
 
   for (std::size_t pos = 0; pos < queue.size(); ++pos) {
     const auto node = queue[pos];
     plist.add(node->getAux());
-    auto edges = node->getEdges();
+    const auto &nodeEdges = node->getEdges();
+    edges.assign(nodeEdges.begin(), nodeEdges.end());
     sorter.prioritize(node, edges);
     for (const auto &edge : edges) {
       if (edge->isBeg(node) && !edge->getEnd()->isTerminal()) {
@@ -244,12 +230,14 @@ int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
   const Rule4b replacementB(refB);
   const auto &aSorter = getRefSorter(&replacementA);
   const auto &bSorter = getRefSorter(&replacementB);
-  auto aQueue = std::vector<const Node *>({a});
-  auto bQueue = std::vector<const Node *>({b});
+  std::vector<std::pair<const Node *, const Node *>> queue{{a, b}};
+  std::vector<Edge *> aEdges;
+  std::vector<Edge *> bEdges;
+  aEdges.reserve(4);
+  bEdges.reserve(4);
 
-  for (auto pos = 0u; pos < aQueue.size() && pos < bQueue.size(); ++pos) {
-    const auto aNode = aQueue[pos];
-    const auto bNode = bQueue[pos];
+  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+    const auto [aNode, bNode] = queue[pos];
 
     const auto &desA = PairList::ref(aNode->getAux());
     const auto &desB = PairList::ref(bNode->getAux());
@@ -260,20 +248,30 @@ int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
       return -1;
     }
 
-    auto edges = aNode->getEdges();
-    aSorter.prioritize(aNode, edges);
-    for (const auto &edge : edges) {
-      if (edge->isBeg(aNode) && !edge->getEnd()->isTerminal()) {
-        aQueue.push_back(edge->getEnd());
-      }
-    }
+    const auto &aNodeEdges = aNode->getEdges();
+    const auto &bNodeEdges = bNode->getEdges();
+    aEdges.assign(aNodeEdges.begin(), aNodeEdges.end());
+    bEdges.assign(bNodeEdges.begin(), bNodeEdges.end());
+    aSorter.prioritize(aNode, aEdges);
+    bSorter.prioritize(bNode, bEdges);
 
-    edges = bNode->getEdges();
-    bSorter.prioritize(bNode, edges);
-    for (const auto &edge : edges) {
-      if (edge->isBeg(bNode) && !edge->getEnd()->isTerminal()) {
-        bQueue.push_back(edge->getEnd());
+    auto aIt = aEdges.begin();
+    auto bIt = bEdges.begin();
+    while (aIt != aEdges.end() && bIt != bEdges.end()) {
+      while (aIt != aEdges.end() &&
+             (!(*aIt)->isBeg(aNode) || (*aIt)->getEnd()->isTerminal())) {
+        ++aIt;
       }
+      while (bIt != bEdges.end() &&
+             (!(*bIt)->isBeg(bNode) || (*bIt)->getEnd()->isTerminal())) {
+        ++bIt;
+      }
+      if (aIt == aEdges.end() || bIt == bEdges.end()) {
+        break;
+      }
+      queue.emplace_back((*aIt)->getEnd(), (*bIt)->getEnd());
+      ++aIt;
+      ++bIt;
     }
   }
   return 0;

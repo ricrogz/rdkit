@@ -10,6 +10,8 @@
 //
 #include "RDGeneral/ControlCHandler.h"
 
+#include <utility>
+
 #include "SequenceRule.h"
 
 #include "../CIPMol.h"
@@ -26,11 +28,7 @@ Descriptor SequenceRule::getBondLabel(const Edge *edge) const {
   if (bond == nullptr) {
     return Descriptor::NONE;
   }
-  Descriptor label = edge->getAux();
-  if (label != Descriptor::NONE) {
-    return label;
-  }
-  return label;
+  return edge->getAux();
 }
 
 int SequenceRule::getComparision(const Edge *a, const Edge *b) const {
@@ -57,28 +55,31 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     return cmp;
   }
 
-  auto aQueue = std::vector<const Edge *>({a});
-  auto bQueue = std::vector<const Edge *>({b});
+  std::vector<std::pair<const Edge *, const Edge *>> queue{{a, b}};
+  std::vector<Edge *> as;
+  std::vector<Edge *> bs;
+  as.reserve(4);
+  bs.reserve(4);
 
-  for (auto pos = 0u; pos < aQueue.size() && pos < bQueue.size(); ++pos) {
-    a = aQueue[pos];
-    b = bQueue[pos];
-    auto as = a->getEnd()->getEdges();
-    auto bs = b->getEnd()->getEdges();
+  for (std::size_t pos = 0; pos < queue.size(); ++pos) {
+    const auto [aParent, bParent] = queue[pos];
+    auto aNode = aParent->getEnd();
+    auto bNode = bParent->getEnd();
+    const auto &aNodeEdges = aNode->getEdges();
+    const auto &bNodeEdges = bNode->getEdges();
+    as.assign(aNodeEdges.begin(), aNodeEdges.end());
+    bs.assign(bNodeEdges.begin(), bNodeEdges.end());
 
     // shallow sort first of all
-    sort(a->getEnd(), as, false);
-    sort(b->getEnd(), bs, false);
+    sort(aNode, as, false);
+    sort(bNode, bs, false);
 
-    int sizediff = three_way_comparison(static_cast<int>(as.size()),
-                                        static_cast<int>(bs.size()));
+    int sizediff = three_way_comparison(as.size(), bs.size());
 
     {
       auto aIt = as.begin();
       auto bIt = bs.begin();
       for (; aIt != as.end() && bIt != bs.end(); ++aIt, ++bIt) {
-        Node *aNode = a->getEnd();
-        Node *bNode = b->getEnd();
         Edge *aEdge = *aIt;
         Edge *bEdge = *bIt;
 
@@ -97,15 +98,13 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
       return sizediff;
     }
 
-    sort(a->getEnd(), as);
-    sort(b->getEnd(), bs);
+    sort(aNode, as);
+    sort(bNode, bs);
 
     {
       auto aIt = as.begin();
       auto bIt = bs.begin();
       for (; aIt != as.end() && bIt != bs.end(); ++aIt, ++bIt) {
-        Node *aNode = a->getEnd();
-        Node *bNode = b->getEnd();
         Edge *aEdge = *aIt;
         Edge *bEdge = *bIt;
 
@@ -118,8 +117,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
           return cmp;
         }
 
-        aQueue.push_back(aEdge);
-        bQueue.push_back(bEdge);
+        queue.emplace_back(aEdge, bEdge);
       }
     }
   }
