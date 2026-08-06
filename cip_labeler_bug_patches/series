@@ -1,0 +1,15 @@
+0001-Initialize-composite-CIP-rules-eagerly.patch
+0002-Mark-Rule-6-comparisons-as-pseudoasymmetric.patch
+0003-Harden-CIP-descriptor-pair-lists.patch
+0004-Validate-all-Rule-4b-priority-groups.patch
+0005-Apply-iteration-limits-across-CIP-labeling.patch
+0006-Fix-selective-CIP-labeling-semantics.patch
+0007-Harden-CIP-configuration-labeling.patch
+0008-Add-CIP-labeling-regression-coverage.patch
+0009-Fix-Mancude-resonance-bookkeeping.patch
+0010-Avoid-caching-partial-kekulization-results.patch
+0011-Harden-CIP-digraph-construction.patch
+0012-Initialize-every-CIP-rule-sorter-eagerly.patch
+0013-Validate-double-bond-CIP-carriers.patch
+0014-Validate-selected-CIP-indexes-without-requiring-mask.patch
+0015-Preserve-interrupts-across-nested-control-handlers.patch

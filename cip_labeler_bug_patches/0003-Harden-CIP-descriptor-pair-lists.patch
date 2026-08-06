@@ -1,0 +1,119 @@
+From 461280f71f68028202ee224067516f9874da42e1 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:21:04 -0400
+Subject: [PATCH 03/14] Harden CIP descriptor pair lists
+
+---
+ Code/GraphMol/CIPLabeler/catch_tests.cpp  | 21 +++++++++++++++++++++
+ Code/GraphMol/CIPLabeler/rules/Pairlist.h | 21 ++++++++++++++++-----
+ 2 files changed, 37 insertions(+), 5 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 8b34a27f5..565ba92a3 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -11,6 +11,7 @@
+ #include <algorithm>
+ #include <bitset>
+ #include <list>
++#include <limits>
+ #include <string>
+ #include <vector>
+ 
+@@ -100,6 +101,10 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
+     CHECK(descriptors.add(Descriptor::R));
+     CHECK(descriptors.add(Descriptor::S));
+   }
++  SECTION("EmptyLists") {
++    CHECK_THROWS_AS(descriptors.getRefDescriptor(), std::runtime_error);
++    CHECK(descriptors.compareTo(PairList()) == 0);
++  }
+   SECTION("Pairing") {
+     REQUIRE(descriptors.getPairing() == 0);
+ 
+@@ -165,6 +170,22 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
+     CHECK(list1.toString() == "R:llu");
+     CHECK(list2.toString() == "R:uul");
+   }
++  SECTION("PairingNormalizesDescriptorFamilies") {
++    descriptors.add(Descriptor::R);
++    descriptors.add(Descriptor::M);
++    descriptors.add(Descriptor::seqCis);
++    const auto expected =
++        (PairList::pairing_t{1} << (PairList::numPairingBits - 2)) |
++        (PairList::pairing_t{1} << (PairList::numPairingBits - 3));
++    CHECK(descriptors.getPairing() == expected);
++  }
++  SECTION("PairingIsBoundedByItsStorage") {
++    for (std::size_t i = 0; i < 2 * PairList::numPairingBits; ++i) {
++      descriptors.add(Descriptor::R);
++    }
++    CHECK(descriptors.getPairing() ==
++          std::numeric_limits<PairList::pairing_t>::max() >> 1);
++  }
+ }
+ 
+ TEST_CASE("Rule 6 decisions mark pseudoasymmetry", "[accurateCIP]") {
+diff --git a/Code/GraphMol/CIPLabeler/rules/Pairlist.h b/Code/GraphMol/CIPLabeler/rules/Pairlist.h
+index 7c8b57f53..5fcafa34f 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Pairlist.h
++++ b/Code/GraphMol/CIPLabeler/rules/Pairlist.h
+@@ -10,8 +10,10 @@
+ //
+ #pragma once
+ 
++#include <cstddef>
+ #include <cstdint>
+ #include <sstream>
++#include <stdexcept>
+ #include <string>
+ #include <vector>
+ 
+@@ -32,7 +34,7 @@ namespace CIPLabeler {
+ class PairList {
+  public:
+   using pairing_t = std::uint64_t;
+-  static constexpr int numPairingBits = sizeof(pairing_t) * 8;
++  static constexpr std::size_t numPairingBits = sizeof(pairing_t) * 8;
+ 
+   static Descriptor ref(Descriptor descriptor) {
+     switch (descriptor) {
+@@ -68,7 +70,12 @@ class PairList {
+     addAll(tail.d_descriptors);
+   }
+ 
+-  Descriptor getRefDescriptor() const { return ref(d_descriptors[0]); }
++  Descriptor getRefDescriptor() const {
++    if (d_descriptors.empty()) {
++      throw std::runtime_error("Cannot get a reference from an empty PairList");
++    }
++    return ref(d_descriptors[0]);
++  }
+ 
+   /**
+    * Adds a descriptor to the descriptor list. If the provided descriptor is
+@@ -120,6 +127,9 @@ class PairList {
+     if (d_descriptors.size() != that.d_descriptors.size()) {
+       throw std::runtime_error("Descriptor lists should be the same length!");
+     }
++    if (d_descriptors.empty()) {
++      return 0;
++    }
+     Descriptor thisRef = d_descriptors[0];
+     Descriptor thatRef = that.d_descriptors[0];
+     for (auto i = 1u; i < d_descriptors.size(); ++i) {
+@@ -169,10 +179,11 @@ class PairList {
+    */
+   void addAndPair(Descriptor descriptor) {
+     // if this isn't the first descriptor - check the pairing
+-    if (!d_descriptors.empty() && d_descriptors[0] == descriptor) {
++    if (!d_descriptors.empty() && d_descriptors[0] == ref(descriptor) &&
++        d_descriptors.size() < numPairingBits) {
+       // set the bit to indicate a pair
+-      d_pairing |= static_cast<pairing_t>(1)
+-                   << (numPairingBits - 1 - d_descriptors.size());
++      const auto shift = numPairingBits - 1 - d_descriptors.size();
++      d_pairing |= pairing_t{1} << shift;
+     }
+     d_descriptors.push_back(ref(descriptor));
+   }

@@ -1,0 +1,70 @@
+From 2dfedf73edb4975e7ddc32b953661c23924f6fdc Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:41:17 -0400
+Subject: [PATCH 13/14] Validate double-bond CIP carriers
+
+---
+ Code/GraphMol/CIPLabeler/catch_tests.cpp     | 17 ++++++++++++++++
+ Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp | 21 ++++++++++++++++++++
+ 2 files changed, 38 insertions(+)
+
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index ed93d5557..5d657877d 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -912,6 +912,23 @@ TEST_CASE("Malformed stereo markers are ignored safely", "[accurateCIP]") {
+     CHECK(!bond->hasProp(common_properties::_CIPNeighborOrder));
+   }
+ 
++  SECTION("Double bond with invalid stereo atom indexes") {
++    auto mol = "FC=CCl"_smiles;
++    REQUIRE(mol);
++    auto bond = mol->getBondWithIdx(1);
++    REQUIRE(bond->getBondType() == Bond::DOUBLE);
++    auto &stereoAtoms = bond->getStereoAtoms();
++    stereoAtoms.clear();
++    stereoAtoms.push_back(mol->getNumAtoms() + 1);
++    stereoAtoms.push_back(3);
++    bond->setStereo(Bond::STEREOCIS);
++    bond->setProp(common_properties::_CIPCode, std::string("stale"));
++
++    CHECK_NOTHROW(CIPLabeler::assignCIPLabels(*mol));
++    CHECK(!bond->hasProp(common_properties::_CIPCode));
++    CHECK(!bond->hasProp(common_properties::_CIPNeighborOrder));
++  }
++
+   SECTION("Invalid atropisomer marker") {
+     auto mol = "CC"_smiles;
+     REQUIRE(mol);
+diff --git a/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp b/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp
+index 05e0824ab..987d4dd6b 100644
+--- a/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp
++++ b/Code/GraphMol/CIPLabeler/configs/Sp2Bond.cpp
+@@ -33,6 +33,27 @@ Sp2Bond::Sp2Bond(const CIPMol &mol, Bond *bond, Atom *startAtom, Atom *endAtom,
+     return;
+   }
+ 
++  const auto isValidCarrier = [&mol](Atom *focus, Atom *otherFocus,
++                                     int carrierIdx) {
++    if (carrierIdx < 0 ||
++        static_cast<unsigned int>(carrierIdx) >= mol.getNumAtoms() ||
++        carrierIdx == static_cast<int>(focus->getIdx()) ||
++        carrierIdx == static_cast<int>(otherFocus->getIdx())) {
++      return false;
++    }
++    for (const auto neighbor : mol.getNeighbors(focus)) {
++      if (neighbor->getIdx() == static_cast<unsigned int>(carrierIdx)) {
++        return true;
++      }
++    }
++    return false;
++  };
++  if (stereo_atoms[0] == stereo_atoms[1] ||
++      !isValidCarrier(startAtom, endAtom, stereo_atoms[0]) ||
++      !isValidCarrier(endAtom, startAtom, stereo_atoms[1])) {
++    return;
++  }
++
+   std::vector<Atom *> anchors{
+       {mol.getAtom(stereo_atoms[0]), mol.getAtom(stereo_atoms[1])}};
+ 

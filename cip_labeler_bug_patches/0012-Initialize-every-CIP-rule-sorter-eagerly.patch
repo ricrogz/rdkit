@@ -1,0 +1,72 @@
+From 956091f441625d2c7a7ad642fd1f9020fe0aa3dd Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:40:51 -0400
+Subject: [PATCH 12/14] Initialize every CIP rule sorter eagerly
+
+---
+ Code/GraphMol/CIPLabeler/catch_tests.cpp        | 5 +++++
+ Code/GraphMol/CIPLabeler/rules/Rules.h          | 7 ++-----
+ Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp | 9 ++-------
+ 3 files changed, 9 insertions(+), 12 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 852bce6d7..ed93d5557 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -60,6 +60,11 @@ static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
+ static_assert(!std::is_constructible_v<Digraph, const CIPMol &&, Atom *>);
+ 
+ TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
++  const Rule1a standaloneRule;
++  REQUIRE(standaloneRule.getSorter());
++  CHECK(standaloneRule.getSorter()->getRules() ==
++        std::vector<const SequenceRule *>{&standaloneRule});
++
+   const Rules rules({new Rule1a});
+ 
+ #ifdef RDK_TEST_MULTITHREADED
+diff --git a/Code/GraphMol/CIPLabeler/rules/Rules.h b/Code/GraphMol/CIPLabeler/rules/Rules.h
+index 3c4ee2532..cb8cf0bfe 100644
+--- a/Code/GraphMol/CIPLabeler/rules/Rules.h
++++ b/Code/GraphMol/CIPLabeler/rules/Rules.h
+@@ -27,11 +27,8 @@ class Rules : public SequenceRule {
+     for (auto &rule : rules) {
+       add(rule);
+     }
+-    // Rules instances are shared globally by the labeler, so their sorter must
+-    // be fully initialized before construction of a const Rules object ends.
+-    // The Sort stores this composite comparator and will therefore continue to
+-    // see rules added later through add().
+-    setSorter(new Sort(this));
++    // SequenceRule's eagerly constructed sorter stores this composite
++    // comparator and will therefore continue to see rules added through add().
+   }
+ 
+   ~Rules() override {
+diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
+index 7b6276d34..3fa1c592a 100644
+--- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
+@@ -17,7 +17,7 @@
+ namespace RDKit {
+ namespace CIPLabeler {
+ 
+-SequenceRule::SequenceRule() = default;
++SequenceRule::SequenceRule() : dp_sorter{new Sort(this)} {}
+ 
+ SequenceRule::~SequenceRule() = default;
+ 
+@@ -42,12 +42,7 @@ int SequenceRule::getComparision(const Edge *a, const Edge *b,
+   return deep ? recursiveCompare(a, b) : compare(a, b);
+ }
+ 
+-const Sort *SequenceRule::getSorter() const {
+-  if (dp_sorter == nullptr) {
+-    const_cast<SequenceRule *>(this)->setSorter(new Sort(this));
+-  }
+-  return dp_sorter.get();
+-}
++const Sort *SequenceRule::getSorter() const { return dp_sorter.get(); }
+ 
+ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+   if (!CIPLabeler_detail::decrementRemainingCallCountAndCheck()) {

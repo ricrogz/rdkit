@@ -1,0 +1,371 @@
+From 7551960631e8836d13fbc6a6c01433bb415a2e05 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:31:28 -0400
+Subject: [PATCH 09/14] Fix Mancude resonance bookkeeping
+
+---
+ Code/GraphMol/CIPLabeler/CIPMol.cpp      |   2 +-
+ Code/GraphMol/CIPLabeler/CIPMol.h        |   4 +-
+ Code/GraphMol/CIPLabeler/Digraph.cpp     |   4 +-
+ Code/GraphMol/CIPLabeler/Mancude.cpp     | 103 ++++++++++++-----------
+ Code/GraphMol/CIPLabeler/Mancude.h       |  25 +++++-
+ Code/GraphMol/CIPLabeler/Node.cpp        |   6 +-
+ Code/GraphMol/CIPLabeler/catch_tests.cpp |  62 ++++++++++++++
+ 7 files changed, 149 insertions(+), 57 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+index 043b65cb1..0317d1e4f 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+@@ -21,7 +21,7 @@ CIPMol::CIPMol(ROMol &mol) : d_mol{mol} {
+   std::ranges::copy(mol.bonds(), std::back_inserter(d_bonds));
+ }
+ 
+-boost::rational<int> CIPMol::getFractionalAtomicNum(Atom *atom) const {
++const FractionalAtomicNum &CIPMol::getFractionalAtomicNum(Atom *atom) const {
+   PRECONDITION(atom, "bad atom")
+   if (d_atomnums.empty()) {
+     const_cast<CIPMol *>(this)->d_atomnums = calcFracAtomNums(*this);
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.h b/Code/GraphMol/CIPLabeler/CIPMol.h
+index bedd335a2..8d103692e 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.h
++++ b/Code/GraphMol/CIPLabeler/CIPMol.h
+@@ -71,7 +71,7 @@ class CIPMol {
+ 
+   // Average atomic number with other atoms that are in an
+   // aromatic ring with this one.
+-  boost::rational<int> getFractionalAtomicNum(Atom *atom) const;
++  const FractionalAtomicNum &getFractionalAtomicNum(Atom *atom) const;
+ 
+   unsigned getNumAtoms() const;
+ 
+@@ -96,7 +96,7 @@ class CIPMol {
+  private:
+   ROMol &d_mol;
+   std::vector<RDKit::Bond::BondType> d_kekulized_bonds;
+-  std::vector<boost::rational<int>> d_atomnums;
++  std::vector<FractionalAtomicNum> d_atomnums;
+   std::vector<RDKit::Bond* > d_bonds;
+ };
+ 
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
+index 1fe98ce5f..03bac8135 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.cpp
++++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
+@@ -161,7 +161,7 @@ void Digraph::expand(Node *beg) {
+       // for example >S=O
+       if (dp_origin != beg || d_atropisomerMode) {
+         if (atom->getFormalCharge() < 0 &&
+-            d_mol.getFractionalAtomicNum(atom).denominator() > 1) {
++            d_mol.getFractionalAtomicNum(atom).isAveraged()) {
+           end = beg->newBondDuplicateChild(nbrIdx, nbr);
+           addEdge(beg, bond, end);
+         } else {
+@@ -183,7 +183,7 @@ void Digraph::expand(Node *beg) {
+       addEdge(beg, bond, end);
+ 
+       if (atom->getFormalCharge() < 0 &&
+-          d_mol.getFractionalAtomicNum(atom).denominator() > 1) {
++          d_mol.getFractionalAtomicNum(atom).isAveraged()) {
+         end = beg->newBondDuplicateChild(nbrIdx, nbr);
+         addEdge(beg, bond, end);
+       } else {
+diff --git a/Code/GraphMol/CIPLabeler/Mancude.cpp b/Code/GraphMol/CIPLabeler/Mancude.cpp
+index beae32a1c..0df8c8443 100644
+--- a/Code/GraphMol/CIPLabeler/Mancude.cpp
++++ b/Code/GraphMol/CIPLabeler/Mancude.cpp
+@@ -104,24 +104,40 @@ void RelaxTypes(std::vector<Type> &types, const CIPMol &mol) {
+   auto counts = std::vector<int>(mol.getNumAtoms());
+   for (auto atom : mol.atoms()) {
+     const auto aidx = atom->getIdx();
+-    for (const auto &nbr : mol.getNeighbors(atom)) {
++    if (types[aidx] == Type::Other) {
++      continue;
++    }
++    for (const auto &bond : mol.getBonds(atom)) {
++      if (!mol.isInRing(bond)) {
++        continue;
++      }
++      const auto nbr = bond->getOtherAtom(atom);
+       if (types[nbr->getIdx()] != Type::Other) {
+         ++counts[aidx];
+       }
+     }
+ 
+-    if (counts[aidx] == 1) {
++    if (counts[aidx] <= 1) {
+       queue.push_back(atom);
+     }
+   }
+ 
+-  for (const auto &atom : queue) {
++  while (!queue.empty()) {
++    const auto atom = queue.front();
++    queue.pop_front();
+     const auto aidx = atom->getIdx();
+     if (types[aidx] != Type::Other) {
+       types[aidx] = Type::Other;
+ 
+-      for (auto &nbr : mol.getNeighbors(atom)) {
+-        auto nbridx = nbr->getIdx();
++      for (const auto &bond : mol.getBonds(atom)) {
++        if (!mol.isInRing(bond)) {
++          continue;
++        }
++        const auto nbr = bond->getOtherAtom(atom);
++        const auto nbridx = nbr->getIdx();
++        if (types[nbridx] == Type::Other) {
++          continue;
++        }
+         --counts[nbridx];
+         if (counts[nbridx] == 1) {
+           queue.push_back(nbr);
+@@ -174,9 +190,9 @@ int VisitParts(std::vector<int> &parts, const std::vector<Type> &types,
+ 
+ }  // namespace
+ 
+-std::vector<boost::rational<int>> calcFracAtomNums(const CIPMol &mol) {
++std::vector<FractionalAtomicNum> calcFracAtomNums(const CIPMol &mol) {
+   const auto num_atoms = mol.getNumAtoms();
+-  std::vector<boost::rational<int>> fractions;
++  std::vector<FractionalAtomicNum> fractions;
+   fractions.reserve(num_atoms);
+   for (const auto &atom : mol.atoms()) {
+     fractions.emplace_back(atom->getAtomicNum(), 1);
+@@ -194,8 +210,7 @@ std::vector<boost::rational<int>> calcFracAtomNums(const CIPMol &mol) {
+     auto parts = std::vector<int>(num_atoms);
+     int numparts = VisitParts(parts, types, mol);
+ 
+-    auto resparts = std::vector<int>(numparts);
+-    int numres = 0;
++    auto resonance_parts = std::vector<bool>(numparts + 1);
+ 
+     if (numparts > 0) {
+       for (auto i = 0u; i < num_atoms; ++i) {
+@@ -206,16 +221,7 @@ std::vector<boost::rational<int>> calcFracAtomNums(const CIPMol &mol) {
+ 
+         // Find resonant structures caused by relocation of a negative charge.
+         if (types[i] == Type::Cv3D3Minus || types[i] == Type::Nv2D2Minus) {
+-          int j = 0;
+-          for (; j < numres; ++j) {
+-            if (resparts[j] == parts[i]) {
+-              break;
+-            }
+-          }
+-          if (j >= numres) {
+-            resparts[numres] = parts[i];
+-            ++numres;
+-          }
++          resonance_parts[parts[i]] = true;
+         }
+ 
+         int numerator = 0;
+@@ -227,11 +233,11 @@ std::vector<boost::rational<int>> calcFracAtomNums(const CIPMol &mol) {
+           }
+         }
+ 
+-        // boost::rational does not accept 0 as denominator.
+-        if (denominator == 0) {
+-          fractions[i].assign(0, 1);
+-        } else {
+-          fractions[i].assign(numerator, denominator);
++        // A retained type is in the ring 2-core, so this should not be zero.
++        // Keep the ordinary atomic number if malformed input violates that
++        // invariant.
++        if (denominator != 0) {
++          fractions[i] = FractionalAtomicNum(numerator, denominator);
+         }
+       }
+     }
+@@ -239,33 +245,34 @@ std::vector<boost::rational<int>> calcFracAtomNums(const CIPMol &mol) {
+     // If there are any resonant structures due to negative charges,
+     // recalculate the average atomic number considering relocation
+     // of the charge through higher order bonds.
+-    if (numres > 0) {
+-      for (int j = 0; j < numres; ++j) {
+-        int numerator = 0;
+-        int denominator = 0;
+-        int part = resparts[j];
+-        for (auto i = 0u; i < num_atoms; ++i) {
+-          if (parts[i] == part) {
+-            // boost::rational does not accept 0 as denominator
+-            if (denominator == 0) {
+-              fractions[i].assign(0, 1);
+-            } else {
+-              fractions[i].assign(numerator, denominator);
+-            }
+-
+-            ++denominator;
+-            auto atom = mol.getAtom(i);
+-            for (auto &bond : mol.getBonds(atom)) {
+-              auto nbr = bond->getOtherAtom(atom);
+-              int bord = mol.getBondOrder(bond);
+-              if (bord > 1 && parts[nbr->getIdx()] == part) {
+-                numerator += (bord - 1) * nbr->getAtomicNum();
+-              }
+-            }
+-          }
++    auto numerators = std::vector<int>(numparts + 1);
++    auto denominators = std::vector<int>(numparts + 1);
++    for (auto i = 0u; i < num_atoms; ++i) {
++      const auto part = parts[i];
++      if (part == 0 || !resonance_parts[part]) {
++        continue;
++      }
++      ++denominators[part];
++      const auto atom = mol.getAtom(i);
++      for (const auto &bond : mol.getBonds(atom)) {
++        const auto nbr = bond->getOtherAtom(atom);
++        const auto bord = mol.getBondOrder(bond);
++        if (bord > 1 && parts[nbr->getIdx()] == part) {
++          numerators[part] += (bord - 1) * nbr->getAtomicNum();
+         }
+       }
+     }
++
++    // Every atom in a negative-charge resonance component shares one final
++    // Fraction object in Java. Assigning the final value in a separate pass
++    // reproduces that behavior without accidentally storing running prefixes.
++    for (auto i = 0u; i < num_atoms; ++i) {
++      const auto part = parts[i];
++      if (part != 0 && resonance_parts[part] && denominators[part] != 0) {
++        fractions[i] =
++            FractionalAtomicNum(numerators[part], denominators[part]);
++      }
++    }
+   }
+   return fractions;
+ }
+diff --git a/Code/GraphMol/CIPLabeler/Mancude.h b/Code/GraphMol/CIPLabeler/Mancude.h
+index f3fc4422b..a635e186a 100644
+--- a/Code/GraphMol/CIPLabeler/Mancude.h
++++ b/Code/GraphMol/CIPLabeler/Mancude.h
+@@ -31,6 +31,29 @@ namespace CIPLabeler {
+ 
+ class CIPMol;
+ 
++// boost::rational reduces its numerator and denominator on construction. The
++// unreduced denominator is also significant here: it records that an atomic
++// number was averaged over a Mancude system, even when the average happens to
++// be an integer (for example, 12/3). Keep both the value used for comparison
++// and that metadata.
++class FractionalAtomicNum {
++ public:
++  FractionalAtomicNum(int numerator, int denominator)
++      : d_numerator{numerator}, d_denominator{denominator} {}
++
++  boost::rational<int> value() const {
++    return {d_numerator, d_denominator};
++  }
++
++  int numerator() const { return d_numerator; }
++  int denominator() const { return d_denominator; }
++  bool isAveraged() const { return d_denominator > 1; }
++
++ private:
++  int d_numerator;
++  int d_denominator;
++};
++
+ enum class Type {
+   Cv4D3,       // =C(X)-
+   Nv3D2,       // =N-
+@@ -48,7 +71,7 @@ enum class Type {
+  * priority.
+  *
+  */
+-std::vector<boost::rational<int>> calcFracAtomNums(const CIPMol &mol);
++std::vector<FractionalAtomicNum> calcFracAtomNums(const CIPMol &mol);
+ 
+ }  // namespace CIPLabeler
+ }  // namespace RDKit
+diff --git a/Code/GraphMol/CIPLabeler/Node.cpp b/Code/GraphMol/CIPLabeler/Node.cpp
+index d39b16c56..a10da9d5b 100644
+--- a/Code/GraphMol/CIPLabeler/Node.cpp
++++ b/Code/GraphMol/CIPLabeler/Node.cpp
+@@ -23,9 +23,9 @@ Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
+   std::vector<char> new_visit;
+ 
+   if (flags & BOND_DUPLICATE) {
+-    auto frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
+-    if (frac.denominator() > 1) {
+-      return &dp_g->addNode(std::move(new_visit), atom, std::move(frac),
++    const auto &frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
++    if (frac.isAveraged()) {
++      return &dp_g->addNode(std::move(new_visit), atom, frac.value(),
+                             new_dist, flags);
+     }
+   }
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 0d35d3216..ed593b164 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -386,6 +386,68 @@ TEST_CASE("Digraph", "[accurateCIP]") {
+   check_incoming_edge_count(current_root);
+ }
+ 
++TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {
++  SECTION("negative resonance component gets one final fraction") {
++    auto mol = "[CH-]1C=CC=C1"_smiles;
++    CIPLabeler::CIPMol cipmol(*mol);
++
++    for (const auto atom : mol->atoms()) {
++      const auto &frac = cipmol.getFractionalAtomicNum(atom);
++      CHECK(frac.numerator() == 24);
++      CHECK(frac.denominator() == 5);
++      CHECK(frac.value() == boost::rational<int>(24, 5));
++      CHECK(frac.isAveraged());
++    }
++  }
++
++  SECTION("unreduced denominator remains available to graph expansion") {
++    auto mol = "[CH-]1C=C1"_smiles;
++    CIPLabeler::CIPMol cipmol(*mol);
++
++    for (const auto atom : mol->atoms()) {
++      const auto &frac = cipmol.getFractionalAtomicNum(atom);
++      CHECK(frac.numerator() == 12);
++      CHECK(frac.denominator() == 3);
++      CHECK(frac.value() == boost::rational<int>(4, 1));
++      CHECK(frac.isAveraged());
++    }
++
++    Digraph graph(cipmol, cipmol.getAtom(1));
++    Node *negative_node = nullptr;
++    for (const auto edge : graph.getOriginalRoot()->getEdges()) {
++      if (edge->isBeg(graph.getOriginalRoot()) &&
++          edge->getEnd()->getAtom() == cipmol.getAtom(0) &&
++          !edge->getEnd()->isDuplicate()) {
++        negative_node = edge->getEnd();
++        break;
++      }
++    }
++    REQUIRE(negative_node != nullptr);
++
++    int bond_duplicates = 0;
++    for (const auto edge : negative_node->getEdges()) {
++      const auto end = edge->getEnd();
++      if (edge->isBeg(negative_node) &&
++          end->isSet(Node::BOND_DUPLICATE)) {
++        ++bond_duplicates;
++        CHECK(end->getAtomicNumFraction() == boost::rational<int>(4, 1));
++      }
++    }
++    CHECK(bond_duplicates == 1);
++  }
++
++  SECTION("typed atom outside the ring two-core is relaxed") {
++    auto mol = "[N-]1CCC1"_smiles;
++    CIPLabeler::CIPMol cipmol(*mol);
++
++    const auto &frac = cipmol.getFractionalAtomicNum(cipmol.getAtom(0));
++    CHECK(frac.numerator() == 7);
++    CHECK(frac.denominator() == 1);
++    CHECK(frac.value() == boost::rational<int>(7, 1));
++    CHECK_FALSE(frac.isAveraged());
++  }
++}
++
+ TEST_CASE("Rule1a", "[accurateCIP]") {
+   SECTION("Compare equal") {
+     auto mol = "COC"_smiles;

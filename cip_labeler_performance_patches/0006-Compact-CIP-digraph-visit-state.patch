@@ -1,0 +1,208 @@
+From dd9b28c77487aac60f2db2e3132ffa61990bb238 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:35:28 -0400
+Subject: [PATCH 6/7] Compact CIP digraph visit state
+
+---
+ Code/GraphMol/CIPLabeler/Digraph.cpp     | 13 +++++---
+ Code/GraphMol/CIPLabeler/Digraph.h       |  5 +--
+ Code/GraphMol/CIPLabeler/Node.cpp        | 42 +++++++++++++++++++-----
+ Code/GraphMol/CIPLabeler/Node.h          |  9 +++--
+ Code/GraphMol/CIPLabeler/catch_tests.cpp | 16 +++++++++
+ 5 files changed, 66 insertions(+), 19 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
+index 52860bb79..89eec4199 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.cpp
++++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
+@@ -33,8 +33,9 @@ constexpr std::size_t MAX_NODE_COUNT = 100000;
+ const int MAX_NODE_DIST = 0;
+ }  // namespace
+ 
+-Node &Digraph::addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
+-                       boost::rational<int> &&frac, int dist, int flags) {
++Node &Digraph::addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
++                       boost::rational<int> &&frac, int dist, int flags,
++                       const Node *parent) {
+   if (MAX_NODE_COUNT > 0 && d_nodes.size() >= MAX_NODE_COUNT) {
+     std::stringstream errmsg;
+     errmsg << "Digraph generation failed: more than " << MAX_NODE_COUNT
+@@ -42,7 +43,7 @@ Node &Digraph::addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
+     throw TooManyNodesException(errmsg.str());
+   }
+   d_nodes.emplace_back(this, std::move(visit), atom, std::move(frac), dist,
+-                       flags);
++                       flags, parent);
+   return d_nodes.back();
+ }
+ 
+@@ -62,8 +63,10 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
+     : d_mol{mol} {
+   PRECONDITION(atom, "cannot init digraph on a nullptr")
+ 
+-  auto visit = std::vector<std::uint32_t>(d_mol.getNumAtoms());
+-  visit[atom->getIdx()] = 1;
++  auto visit =
++      std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
++  visit[atom->getIdx() / 64u] |=
++      std::uint64_t{1} << (atom->getIdx() % 64u);
+ 
+   auto dist = 1;
+   auto flags = 0x0;
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.h b/Code/GraphMol/CIPLabeler/Digraph.h
+index b01e9fd25..37d137f24 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.h
++++ b/Code/GraphMol/CIPLabeler/Digraph.h
+@@ -95,8 +95,9 @@ class Digraph {
+ 
+   void expand(Node *beg);
+ 
+-  Node &addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
+-                boost::rational<int> &&frac, int dist, int flags);
++  Node &addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
++                boost::rational<int> &&frac, int dist, int flags,
++                const Node *parent = nullptr);
+ 
+   // Has `atom` been seen yet?
+   bool seenAtom(Atom *atom) const;
+diff --git a/Code/GraphMol/CIPLabeler/Node.cpp b/Code/GraphMol/CIPLabeler/Node.cpp
+index 28088b0b8..c3c9f5fae 100644
+--- a/Code/GraphMol/CIPLabeler/Node.cpp
++++ b/Code/GraphMol/CIPLabeler/Node.cpp
+@@ -19,26 +19,28 @@ namespace RDKit {
+ namespace CIPLabeler {
+ 
+ Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
+-  int new_dist = flags & DUPLICATE ? d_visit[idx] : d_dist + 1;
+-  std::vector<std::uint32_t> new_visit;
++  int new_dist = flags & DUPLICATE ? getVisitedDistance(idx) : d_dist + 1;
++  std::vector<std::uint64_t> new_visit;
+ 
+   if (flags & BOND_DUPLICATE) {
+     const auto &frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
+     if (frac.isAveraged()) {
+       return &dp_g->addNode(std::move(new_visit), atom, frac.value(),
+-                            new_dist, flags);
++                            new_dist, flags, this);
+     }
+   }
+ 
+   auto atomic_num = atom ? atom->getAtomicNum() : 1;
+   return &dp_g->addNode(std::move(new_visit), atom, atomic_num, new_dist,
+-                        flags);
++                        flags, this);
+ }
+ 
+-Node::Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
+-           boost::rational<int> &&frac, int dist, int flags)
++Node::Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
++           boost::rational<int> &&frac, int dist, int flags,
++           const Node *parent)
+     : dp_g{g},
+       dp_atom{atom},
++      dp_parent{parent},
+       d_dist{dist},
+       d_atomic_num{std::move(frac)},
+       d_flags{flags},
+@@ -103,13 +105,35 @@ bool Node::isTerminal() const {
+ 
+ bool Node::isExpanded() const { return d_flags & EXPANDED; }
+ 
+-bool Node::isVisited(int idx) const { return d_visit[idx] != 0; }
++bool Node::isVisited(int idx) const {
++  const auto atom_idx = static_cast<unsigned int>(idx);
++  return d_visit[atom_idx / 64u] &
++         (std::uint64_t{1} << (atom_idx % 64u));
++}
++
++int Node::getVisitedDistance(int idx) const {
++  if (!isVisited(idx)) {
++    // A forward bond duplicate refers to the new child, which is not yet in
++    // this node's path. The previous visit array also returned zero here.
++    return 0;
++  }
++  for (const auto *node = this; node != nullptr; node = node->dp_parent) {
++    if (node->dp_atom != nullptr &&
++        node->dp_atom->getIdx() == static_cast<unsigned int>(idx)) {
++      return node->d_dist;
++    }
++  }
++  return 0;
++}
+ 
+ Node *Node::newChild(int idx, Atom *atom) const {
+   auto new_visit = d_visit;
+-  new_visit[idx] = d_dist + 1;
++  const auto atom_idx = static_cast<unsigned int>(idx);
++  new_visit[atom_idx / 64u] |=
++      std::uint64_t{1} << (atom_idx % 64u);
+   auto atomic_num = atom ? atom->getAtomicNum() : 1;
+-  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0);
++  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0,
++                        this);
+ }
+ 
+ Node *Node::newBondDuplicateChild(int idx, Atom *atom) const {
+diff --git a/Code/GraphMol/CIPLabeler/Node.h b/Code/GraphMol/CIPLabeler/Node.h
+index 8d30cfc5d..79c7d4c5b 100644
+--- a/Code/GraphMol/CIPLabeler/Node.h
++++ b/Code/GraphMol/CIPLabeler/Node.h
+@@ -67,8 +67,9 @@ class Node {
+   Node(const Node &) = delete;
+   Node &operator=(const Node &) = delete;
+ 
+-  Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
+-       boost::rational<int> &&frac, int dist, int flags);
++  Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
++       boost::rational<int> &&frac, int dist, int flags,
++       const Node *parent);
+ 
+   Digraph *getDigraph() const;
+ 
+@@ -121,6 +122,7 @@ class Node {
+  private:
+   Digraph *dp_g;
+   Atom *dp_atom;
++  const Node *dp_parent;
+   int d_dist;
+   boost::rational<int> d_atomic_num;
+   double d_atomic_mass;
+@@ -129,9 +131,10 @@ class Node {
+ 
+   std::vector<Edge *> d_edges;
+ 
+-  std::vector<std::uint32_t> d_visit;
++  std::vector<std::uint64_t> d_visit;
+ 
+   Node *newTerminalChild(int idx, Atom *atom, int flags) const;
++  int getVisitedDistance(int idx) const;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index 0d6ed92a6..4b71e01ee 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -435,6 +435,22 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
+                     TooManyNodesException);
+     CHECK(graph.getNumNodes() == max_node_count);
+   }
++
++  SECTION("ring duplicate keeps its ancestor distance") {
++    auto mol = "C1CC1"_smiles;
++    CIPLabeler::CIPMol cipmol(*mol);
++    Digraph graph(cipmol, cipmol.getAtom(0));
++    expandAll(graph);
++
++    bool found_ring_duplicate = false;
++    for (const auto node : graph.getNodes(cipmol.getAtom(0))) {
++      if (node->isSet(Node::RING_DUPLICATE)) {
++        found_ring_duplicate = true;
++        CHECK(node->getDistance() == 1);
++      }
++    }
++    CHECK(found_ring_duplicate);
++  }
+ }
+ 
+ TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {

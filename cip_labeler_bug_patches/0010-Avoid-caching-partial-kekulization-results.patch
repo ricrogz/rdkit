@@ -1,0 +1,67 @@
+From 5a8ed9c43483e85773d102cf026bfe5a99aa3188 Mon Sep 17 00:00:00 2001
+From: Ric R <ricrogz@gmail.com>
+Date: Thu, 6 Aug 2026 09:32:11 -0400
+Subject: [PATCH 10/14] Avoid caching partial kekulization results
+
+---
+ Code/GraphMol/CIPLabeler/CIPMol.cpp      | 10 ++++++++--
+ Code/GraphMol/CIPLabeler/catch_tests.cpp | 20 ++++++++++++++++++++
+ 2 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+index 0317d1e4f..5b6ec22ad 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+@@ -66,13 +66,19 @@ int CIPMol::getBondOrder(Bond *bond) const {
+   PRECONDITION(bond, "bad bond")
+   if (d_kekulized_bonds.empty()) {
+     RWMol tmp{d_mol};
++    const ROMol *bond_source = &tmp;
+     try {
+       MolOps::Kekulize(tmp);
+     } catch (const MolSanitizeException &) {
++      // Kekulize() may have changed some bonds before discovering that no
++      // valid assignment exists. Fall back to the untouched input instead of
++      // caching that partial assignment.
++      bond_source = &d_mol;
+     }
+-    auto& bonds = const_cast<std::vector<RDKit::Bond::BondType>&>(d_kekulized_bonds);
++    auto &bonds = const_cast<std::vector<RDKit::Bond::BondType> &>(
++        d_kekulized_bonds);
+     bonds.reserve(d_mol.getNumBonds());
+-    for (const auto &b : tmp.bonds()) {
++    for (const auto &b : bond_source->bonds()) {
+       bonds.push_back(b->getBondType());
+     }
+   }
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index ed593b164..c72c232f4 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -1055,6 +1055,26 @@ TEST_CASE("CIP code errors on fragments which cannot be kekulized",
+   }
+ }
+ 
++TEST_CASE("CIPMol discards a failed partial kekulization", "[accurateCIP]") {
++  RWMol mol;
++  for (auto i = 0u; i < 5u; ++i) {
++    auto atom = new Atom(6);
++    atom->setNoImplicit(true);
++    mol.addAtom(atom, true, true);
++  }
++  for (auto i = 0u; i < 5u; ++i) {
++    mol.addBond(i, (i + 1) % 5u, Bond::AROMATIC);
++  }
++
++  RWMol probe{mol};
++  CHECK_THROWS_AS(MolOps::Kekulize(probe), MolSanitizeException);
++
++  CIPLabeler::CIPMol cipmol(mol);
++  for (const auto bond : mol.bonds()) {
++    CHECK(cipmol.getBondOrder(bond) == 1);
++  }
++}
++
+ TEST_CASE("GitHub Issue #5142", "[bug][accurateCIP]") {
+   auto mol = "*C1C[C@H](CCC)[C@@H](C)[C@H](C)C1"_smiles;
+   REQUIRE(mol);
