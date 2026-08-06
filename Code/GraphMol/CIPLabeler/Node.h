@@ -10,6 +10,7 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "Descriptor.h"
@@ -66,7 +67,7 @@ class Node {
   Node(const Node &) = delete;
   Node &operator=(const Node &) = delete;
 
-  Node(Digraph *g, std::vector<char> &&visit, Atom *atom,
+  Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
        boost::rational<int> &&frac, int dist, int flags);
 
   Digraph *getDigraph() const;
@@ -128,7 +129,7 @@ class Node {
 
   std::vector<Edge *> d_edges;
 
-  std::vector<char> d_visit;
+  std::vector<std::uint32_t> d_visit;
 
   Node *newTerminalChild(int idx, Atom *atom, int flags) const;
 };
