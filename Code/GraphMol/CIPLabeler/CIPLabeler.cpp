@@ -120,12 +120,31 @@ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
   }
 
   boost::dynamic_bitset<> configurationFoci(mol.getNumAtoms());
+  std::vector<CIPMol::ConfigurationAtomSet> configurationAtomSets;
+  configurationAtomSets.reserve(configs.size());
   for (const auto &entry : configs) {
+    CIPMol::ConfigurationAtomSet atomSet;
     for (const auto focus : entry.config->getFoci()) {
       configurationFoci.set(focus->getIdx());
+      atomSet.foci.push_back(focus->getIdx());
+      atomSet.atoms.push_back(focus->getIdx());
+      for (const auto neighbor : mol.getNeighbors(focus)) {
+        atomSet.atoms.push_back(neighbor->getIdx());
+      }
     }
+    for (const auto carrier : entry.config->getCarriers()) {
+      if (carrier != nullptr) {
+        atomSet.atoms.push_back(carrier->getIdx());
+      }
+    }
+    std::ranges::sort(atomSet.atoms);
+    atomSet.atoms.erase(
+        std::unique(atomSet.atoms.begin(), atomSet.atoms.end()),
+        atomSet.atoms.end());
+    configurationAtomSets.push_back(std::move(atomSet));
   }
-  mol.setConfigurationFoci(std::move(configurationFoci));
+  mol.setConfigurationData(std::move(configurationFoci),
+                           std::move(configurationAtomSets));
 
   return configs;
 }
@@ -277,6 +296,40 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
   return true;
 }
 
+bool hasUnbreakableLigandTie(Configuration &configuration) {
+  auto &digraph = configuration.getDigraph();
+  if (!digraph.hasAuxiliaryInvariantRootTie()) {
+    return false;
+  }
+
+  // Bond and axial configurations have no Rule-6 retry: one exact
+  // auxiliary-invariant ligand tie is final. Tetrahedral configurations can
+  // use a Rule-6 reference only for one or two constitutional priority groups.
+  // With three groups, the preserved tied pair remains tied as later rules
+  // refine (but never merge) the other groups.
+  const auto tetrahedral = dynamic_cast<Tetrahedral *>(&configuration);
+  if (tetrahedral == nullptr &&
+      (dynamic_cast<Sp2Bond *>(&configuration) != nullptr ||
+       dynamic_cast<AtropisomerBond *>(&configuration) != nullptr)) {
+    return true;
+  }
+  if (tetrahedral == nullptr) {
+    // A future configuration type must state its own Rule-6 behavior before
+    // it can use this early exit.
+    return false;
+  }
+  auto root = digraph.getOriginalRoot();
+  if (digraph.getCurrentRoot() != root) {
+    digraph.changeRoot(root);
+  }
+  auto edges = root->getEdges();
+  if (edges.size() != 4u) {
+    return true;
+  }
+  constitutional_rules.sort(root, edges);
+  return constitutional_rules.getSorter()->getGroups(edges).size() > 2u;
+}
+
 // The chiral centers in current rdkit examples that can be resolved using only
 // the constitutional rules average about 8 iterations (the highest count is
 // 1039, in one of the examples in the CIP validation suite). We use 2000 as
@@ -392,6 +445,14 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
     if (desc != Descriptor::UNKNOWN) {
       conf->setPrimaryLabel(desc);
     } else {
+      // An exact rooted automorphism has proved that two primary ligands stay
+      // tied even after every other stereochemical annotation is applied.
+      // Auxiliary occurrence discovery cannot make this configuration
+      // unique, and in a highly cyclic component that otherwise means
+      // enumerating thousands of irrelevant return paths to reached foci.
+      if (hasUnbreakableLigandTie(*conf)) {
+        continue;
+      }
       if (labelAux(configs, all_rules, entry)) {
         desc = conf->label(all_rules);
 

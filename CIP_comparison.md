@@ -492,3 +492,100 @@ All tests passed (6623 assertions in 22 test cases)
 Targeted local C++ probes separately confirmed the charged-Mancude prefix fractions, the 260-node path-distance overflow behavior, stale `_CIPNeighborOrder`, and the selective pseudoasymmetric-label failure described above.
 
 The Java Maven tests were not run because `mvn` is not installed in this workspace. Java findings are based on complete source comparison and the checked-in Java test/validation data and commit history.
+
+## 11. Post-series optimization for the V157894 pathological case
+
+This follow-up was performed on 2026-08-06 after the correctness series and
+performance patches `0001` through `0013`. It studies the local test named
+`Long long running calculation`, whose V3000 input has 92 atoms, 106 bonds,
+and nine tetrahedral configurations. The molecule contains a 64-atom,
+76-bond biconnected cyclic block. Consequently, asking the unfolded digraph
+for every route from one configuration to every other configuration can
+materialize thousands of distinct simple-path occurrences even though the
+chemically relevant symmetry is local.
+
+### 11.1 Remaining source of broad auxiliary work
+
+Patch `0013` retains the support of an exact constitutional-automorphism
+witness. If that witness moves any other stereo annotation, auxiliary
+discovery conservatively targets the complete connected component. The exact
+matcher is free to return a product of independent automorphisms, however. In
+V157894 the local symmetry at atom 81 swaps the two directions of its
+six-membered ring, but an arbitrary valid witness can additionally swap a
+remote symmetric fragment around atom 20. The remote movement is irrelevant
+to the requested ligand equality, yet it activates the component-wide
+fallback.
+
+Static topology analysis also identified a genuine local dependency chain
+`68 <-> 71 <-> 91`. Those automorphisms necessarily move a neighboring
+configuration's carriers, so the conservative fallback cannot always be
+removed. Approximate nonduplicate occurrence counts explain the distinction:
+the false-positive component-wide fallback at center 81 can request 10,396
+configuration occurrences, while the genuine centers 68, 71, and 91 request
+about 15,310 occurrences together. A minimal dependency closure for the
+latter three would contain about 5,776 occurrences, but safely deriving that
+closure for every rerooted occurrence requires provenance that the current
+global `seenAtom()` state does not retain.
+
+### 11.2 Implemented improvements
+
+Performance patch `0014` adds four exact, molecule-independent
+optimizations:
+
+1. `CIPMol` now records each configuration's foci and complete local
+   annotation (foci, carriers, and focus neighbors). When a constitutional
+   witness appears to move another configuration, the matcher retries while
+   fixing every unrelated annotation pointwise. A successful retry replaces
+   only the witness support; a failed or bounded search retains the original
+   witness and the existing broad fallback. The fixed atoms are materialized
+   as a dense word mask so candidate checks remain constant time inside VF2.
+   Ambiguous shared foci or unavailable detailed metadata disable this
+   optimization conservatively, malformed metadata is rejected, and the
+   earlier `setConfigurationFoci()` interface remains available.
+2. A configuration-root ligand tie proved by an annotation-preserving exact
+   automorphism is recorded separately. Bond and axial configurations cannot
+   break such a tie. Tetrahedral configurations skip auxiliary discovery only
+   when their constitutional partition has more than two groups (or fewer
+   than four root edges), preserving the existing Rule-6 reference retry for
+   one- and two-group cases. This avoids enumerating return paths to already
+   reached configurations when no auxiliary descriptor can make the primary
+   priorities unique.
+3. The exact constitutional sibling shortcut is extended from the current
+   digraph root to original-child ring directions below it. The molecular
+   automorphism must fix the occurrence's immutable original-root path
+   pointwise, preserving visited-state and Rule-1b ring-duplicate distances.
+   Below-root use is restricted to ring bonds; ordinary pendant trees retain
+   the cheaper bridge proof and existing traversal.
+4. Multi-target auxiliary discovery builds a lazy multi-source molecular path
+   forest. An unblocked forest path is a positive reachability certificate and
+   avoids a fresh molecular BFS. If the occurrence's visited path blocks that
+   certificate, the previous residual-connectivity BFS still runs, so the
+   optimization cannot prune a reachable target.
+
+The focused Rule-1a regressions exercise an unexpanded exact ring symmetry
+below the digraph root and verify that a configuration-preserving root
+symmetry records an auxiliary-invariant tie. The large V157894 fixture and the
+local node-cap adjustment remain outside the formal patch series, consistent
+with the policy used for patch `0013`.
+
+### 11.3 Correctness boundaries and remaining work
+
+No atom numbers, molecule names, component-size thresholds, or aromaticity
+special cases are used by these gates. All positive pruning decisions are
+backed by an exact automorphism, a pointwise-fixed occurrence path, and (where
+required) pointwise-fixed stereo annotations. Failure, unsupported topology,
+overlapping configuration ownership, or search-budget exhaustion always
+falls back to the pre-existing algorithm.
+
+The genuine `68 <-> 71 <-> 91` dependency still offers a larger future
+optimization. It should use occurrence-scoped certificates recording which
+specific sibling comparison hid which configurations, rather than rescanning
+global seen atoms after target collection. Target collection itself can
+materialize unrelated configuration foci along detour paths, so treating all
+newly seen atoms as dependencies recreates the component-wide blow-up. A
+safe implementation would need a monotone worklist (and rollback/restart of
+uncommitted auxiliary spheres) or an equivalent provenance-preserving design.
+
+Per the task constraint, no build, unit test, benchmark, or labeling command
+was run for this follow-up. Review was limited to source inspection, static
+graph/path analysis, whitespace checks, and clean patch-series replay.

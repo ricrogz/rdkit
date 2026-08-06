@@ -73,3 +73,10 @@ atrop XOR path, overlapping auxiliary-label collisions, and the exact
 `N`-versus-`N-1` iteration-budget boundary. The corresponding source changes
 were reviewed statically but are not each exercised by a dedicated fixture in
 this series.
+
+The later V157894 pathological-runtime follow-up adds no correctness-series
+patch and does not change this directory's ordering or endpoint. Its exact
+symmetry gates retain the conservative corrected behavior whenever a proof is
+ambiguous or exhausted; the implementation and focused coverage are recorded
+as performance patch `0014` in `../cip_labeler_performance_patches` and in the
+post-series appendix to `../CIP_comparison.md`.

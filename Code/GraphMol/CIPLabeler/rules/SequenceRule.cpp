@@ -251,14 +251,16 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
 
   const auto firstGraph = a->getBeg()->getDigraph();
   const auto secondGraph = b->getBeg()->getDigraph();
+  const bool firstAtRoot = firstGraph->getCurrentRoot() == a->getBeg();
+  const bool secondAtRoot = secondGraph->getCurrentRoot() == b->getBeg();
   const ComparisonKey key{
       d_cacheId,
       a,
       b,
       a->getEnd(),
       b->getEnd(),
-      firstGraph->getCurrentRoot() == a->getBeg(),
-      secondGraph->getCurrentRoot() == b->getBeg(),
+      firstAtRoot,
+      secondAtRoot,
       d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref(),
       d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref()};
   auto &currentResults =
@@ -297,8 +299,8 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
       a,
       b->getEnd(),
       a->getEnd(),
-      secondGraph->getCurrentRoot() == b->getBeg(),
-      firstGraph->getCurrentRoot() == a->getBeg(),
+      secondAtRoot,
+      firstAtRoot,
       d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref(),
       d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref()};
   if (firstGraph == secondGraph) {
@@ -322,7 +324,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
 
   if (!isRecursiveComparisonNeeded(a, b) ||
       hasEquivalentAcyclicContinuation(a, b) ||
-      hasEquivalentConstitutionalRootContinuation(a, b)) {
+      hasEquivalentConstitutionalSiblingContinuation(a, b)) {
     return cacheResult(0);
   }
 
@@ -544,7 +546,7 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
   return graph->isAcyclicBranchWithoutConfiguration(a);
 }
 
-bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+bool SequenceRule::hasEquivalentConstitutionalSiblingContinuation(
     const Edge *a, const Edge *b) const {
   if (!d_useConstitutionalRootEquivalence) {
     return false;
@@ -555,29 +557,69 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
   const auto aEnd = a->getEnd();
   const auto bEnd = b->getEnd();
   const auto graph = aBeg->getDigraph();
-  const auto root = graph->getCurrentRoot();
-  if (graph != bBeg->getDigraph() || aBeg != root || bBeg != root ||
+  const auto currentRoot = graph->getCurrentRoot();
+  if (graph != bBeg->getDigraph() || aBeg != bBeg ||
       a->getBond() == nullptr || b->getBond() == nullptr ||
       aEnd->isDuplicateOrH() || bEnd->isDuplicateOrH() ||
-      !aEnd->isOriginalChildOf(root) || !bEnd->isOriginalChildOf(root)) {
+      !aEnd->isOriginalChildOf(aBeg) || !bEnd->isOriginalChildOf(aBeg)) {
     return false;
   }
 
+  // Keep the existing current-root behavior. Below that root, restrict exact
+  // symmetry searches to two ring directions: acyclic continuations already
+  // have a cheaper bridge proof, and this gate leaves ordinary pendant-tree
+  // comparisons unchanged.
+  if (aBeg != currentRoot &&
+      (!graph->getMol().isInRing(a->getBond()) ||
+       !graph->getMol().isInRing(b->getBond()))) {
+    return false;
+  }
   bool equivalent = false;
   std::vector<unsigned int> movedAtoms;
-  if (root == graph->getOriginalRoot()) {
+  if (aBeg == graph->getOriginalRoot()) {
     equivalent = graph->getMol().hasConstitutionalAutomorphism(
-        root->getAtom(), aEnd->getAtom(), bEnd->getAtom(), movedAtoms);
+        aBeg->getAtom(), aEnd->getAtom(), bEnd->getAtom(), movedAtoms);
   } else {
-    // A rerooted occurrence carries an immutable visited path. Requiring that
-    // path to be fixed pointwise preserves both its visited set and every
-    // distance used for ring-duplicate ordering under Rule 1b.
+    // Every non-original occurrence carries an immutable path from the
+    // original root. Requiring that path to be fixed pointwise preserves its
+    // visited set and every distance used for ring duplicates under Rule 1b,
+    // whether or not this local sibling pair is below a temporary reroot.
     equivalent = graph->getMol().hasConstitutionalAutomorphism(
-        root->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
-        root->getVisitedAtomCheckpoint(), root->getVisitedAtomDeltas(),
+        aBeg->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
+        aBeg->getVisitedAtomCheckpoint(), aBeg->getVisitedAtomDeltas(),
         movedAtoms);
   }
   if (equivalent) {
+    // VF2 may return a valid witness that unnecessarily composes the local
+    // ligand swap with an independent symmetry elsewhere in the component.
+    // Such a witness makes labelAux() conservatively discover remote stereo
+    // configurations. When that happened, ask for another exact witness
+    // while fixing every other configuration neighborhood pointwise. Failure
+    // only keeps the original witness and the existing conservative fallback.
+    const auto configurationOwner = graph->getOriginalRoot()->getAtom();
+    bool preservesConfigurations =
+        !graph->getMol().constitutionalAutomorphismMovesConfiguration(
+            movedAtoms, configurationOwner);
+    if (!preservesConfigurations) {
+      std::vector<unsigned int> configurationPreservingMovedAtoms;
+      if (graph->getMol()
+              .hasConfigurationPreservingConstitutionalAutomorphism(
+                  aBeg->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
+                  aBeg->getVisitedAtomCheckpoint(),
+                  aBeg->getVisitedAtomDeltas(), configurationOwner,
+                  configurationPreservingMovedAtoms)) {
+        movedAtoms = std::move(configurationPreservingMovedAtoms);
+        preservesConfigurations = true;
+      }
+    }
+    if (preservesConfigurations && aBeg == currentRoot) {
+      // The compared edges are ligands of the configuration currently being
+      // ranked. Their exact rooted isomorphism also preserves every possible
+      // auxiliary annotation. The configuration-specific labeling code can
+      // therefore avoid auxiliary discovery when Rule 6 cannot break the
+      // remaining tie.
+      graph->noteAuxiliaryInvariantRootTie();
+    }
     graph->noteConstitutionalRootEquivalence(movedAtoms);
   }
   return equivalent;

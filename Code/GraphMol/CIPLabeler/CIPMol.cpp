@@ -237,6 +237,42 @@ void CIPMol::setConfigurationFoci(boost::dynamic_bitset<> foci) {
   PRECONDITION(foci.size() == getNumAtoms(),
                "configuration focus bitset has the wrong size")
   d_configuration_foci = std::move(foci);
+  d_configuration_atom_sets.clear();
+  d_configuration_branch_cache.assign(2u * getNumBonds(), 0u);
+}
+
+void CIPMol::setConfigurationData(
+    boost::dynamic_bitset<> foci,
+    std::vector<ConfigurationAtomSet> configurationAtomSets) {
+  PRECONDITION(foci.size() == getNumAtoms(),
+               "configuration focus bitset has the wrong size")
+  boost::dynamic_bitset<> recordedFoci(getNumAtoms());
+  for (auto &atomSet : configurationAtomSets) {
+    PRECONDITION(!atomSet.foci.empty(), "configuration has no focus")
+    PRECONDITION(
+        std::ranges::all_of(atomSet.foci,
+                            [&](auto atomIdx) { return atomIdx < getNumAtoms(); }),
+        "configuration focus index is out of range")
+    PRECONDITION(
+        std::ranges::all_of(atomSet.atoms,
+                            [&](auto atomIdx) { return atomIdx < getNumAtoms(); }),
+        "configuration atom index is out of range")
+    std::ranges::sort(atomSet.foci);
+    atomSet.foci.erase(std::unique(atomSet.foci.begin(), atomSet.foci.end()),
+                       atomSet.foci.end());
+    std::ranges::sort(atomSet.atoms);
+    atomSet.atoms.erase(std::unique(atomSet.atoms.begin(), atomSet.atoms.end()),
+                        atomSet.atoms.end());
+    for (const auto focusIdx : atomSet.foci) {
+      PRECONDITION(std::ranges::binary_search(atomSet.atoms, focusIdx),
+                   "configuration focus is absent from its local atoms")
+      recordedFoci.set(focusIdx);
+    }
+  }
+  PRECONDITION(recordedFoci == foci,
+               "configuration metadata does not match the focus bitset")
+  d_configuration_foci = std::move(foci);
+  d_configuration_atom_sets = std::move(configurationAtomSets);
   d_configuration_branch_cache.assign(2u * getNumBonds(), 0u);
 }
 
@@ -638,6 +674,117 @@ bool CIPMol::hasConstitutionalAutomorphism(
 
   return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, fixedAtoms,
                                        addedFixedAtoms, &movedAtoms);
+}
+
+bool CIPMol::constitutionalAutomorphismMovesConfiguration(
+    std::span<const unsigned int> movedAtoms,
+    const Atom *configurationOwner) const {
+  if (movedAtoms.empty()) {
+    return false;
+  }
+  const auto ownerConfiguration =
+      findConfigurationOwnedBy(configurationOwner);
+  if (!ownerConfiguration) {
+    return true;
+  }
+
+  for (std::size_t i = 0; i < d_configuration_atom_sets.size(); ++i) {
+    if (i == *ownerConfiguration) {
+      continue;
+    }
+    for (const auto atomIdx : d_configuration_atom_sets[i].atoms) {
+      if (std::ranges::find(movedAtoms, atomIdx) != movedAtoms.end()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool CIPMol::hasConfigurationPreservingConstitutionalAutomorphism(
+    Atom *root, Atom *from, Atom *to,
+    std::span<const std::uint64_t> fixedAtoms,
+    std::span<const unsigned int> addedFixedAtoms,
+    const Atom *configurationOwner,
+    std::vector<unsigned int> &movedAtoms) const {
+  movedAtoms.clear();
+  if (root == nullptr || from == nullptr || to == nullptr ||
+      configurationOwner == nullptr) {
+    return false;
+  }
+  const auto numAtoms = getNumAtoms();
+  const auto rootIdx = root->getIdx();
+  const auto fromIdx = from->getIdx();
+  const auto toIdx = to->getIdx();
+  const auto ownerIdx = configurationOwner->getIdx();
+  if (rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms ||
+      ownerIdx >= numAtoms || getAtom(rootIdx) != root ||
+      getAtom(fromIdx) != from || getAtom(toIdx) != to ||
+      getAtom(ownerIdx) != configurationOwner ||
+      (!fixedAtoms.empty() &&
+       fixedAtoms.size() < (numAtoms + 63u) / 64u) ||
+      !hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
+    return false;
+  }
+
+  const auto ownerConfiguration =
+      findConfigurationOwnedBy(configurationOwner);
+  if (!ownerConfiguration) {
+    return false;
+  }
+  if (from == to) {
+    return true;
+  }
+
+  const auto wordCount = (numAtoms + 63u) / 64u;
+  std::vector<std::uint64_t> protectedAtoms(wordCount, 0u);
+  if (!fixedAtoms.empty()) {
+    std::copy_n(fixedAtoms.begin(), wordCount, protectedAtoms.begin());
+  }
+  const auto protectAtom = [&](unsigned int atomIdx) {
+    protectedAtoms[atomIdx / 64u] |=
+        std::uint64_t{1} << (atomIdx % 64u);
+  };
+  for (const auto atomIdx : addedFixedAtoms) {
+    if (atomIdx < numAtoms) {
+      protectAtom(atomIdx);
+    }
+  }
+  for (std::size_t i = 0; i < d_configuration_atom_sets.size(); ++i) {
+    if (i != *ownerConfiguration) {
+      for (const auto atomIdx : d_configuration_atom_sets[i].atoms) {
+        protectAtom(atomIdx);
+      }
+    }
+  }
+
+  return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, protectedAtoms,
+                                       {}, &movedAtoms);
+}
+
+std::optional<std::size_t> CIPMol::findConfigurationOwnedBy(
+    const Atom *configurationOwner) const {
+  if (configurationOwner == nullptr ||
+      configurationOwner->getIdx() >= getNumAtoms() ||
+      getAtom(configurationOwner->getIdx()) != configurationOwner) {
+    return std::nullopt;
+  }
+
+  const auto ownerIdx = configurationOwner->getIdx();
+  std::optional<std::size_t> result;
+  for (std::size_t i = 0; i < d_configuration_atom_sets.size(); ++i) {
+    if (!std::ranges::binary_search(d_configuration_atom_sets[i].foci,
+                                    ownerIdx)) {
+      continue;
+    }
+    if (result) {
+      // Shared foci need a stable configuration identity, not an atom-only
+      // owner. Until such an identity is available, remain conservative.
+      return std::nullopt;
+    }
+    result = i;
+  }
+  return result;
 }
 
 bool CIPMol::isInSameComponent(Atom *first, Atom *second) const {

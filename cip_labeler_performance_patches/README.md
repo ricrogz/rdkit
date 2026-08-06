@@ -1,6 +1,6 @@
 # CIPLabeler performance patch series
 
-This directory contains thirteen ordered `git format-patch` files implementing
+This directory contains fourteen ordered `git format-patch` files implementing
 the low-risk performance improvements identified during the Java/C++
 comparison. The changes preserve the corrected behavior established by the
 bug series.
@@ -9,9 +9,9 @@ bug series.
 
 - Required parent tree: complete bug series,
   `105c21fb52168d1fd276623cc3d057b7991f5e74`
-- Expected tree after this series: `50fcf284fa05b053f49a3172cf1d75297ff4099e`
+- Expected tree after this series: `b38b1dd7da917c36e1e0bfcc0287d9d483f86f53`
 - Reference endpoint used to generate the files:
-  `1fe9e6e560bf8f21c6fff68e38d147a30d6d0128`
+  `10a4fa8ff983b1f54b5239292e6e23c8e1ac4b05`
 - Apply the files in the order recorded in [`series`](series).
 
 After applying `../cip_labeler_bug_patches`:
@@ -40,13 +40,15 @@ committer metadata; the resulting tree should match the tree ID above.
 | `0011` | Reuses direction-local comparisons and sorts across auxiliary reroots, keeps Rule 1a/1b/2 results across distance spheres, memoizes exact path-constrained automorphism queries, keeps Rule 4b/5 reference sorters stable, stores the common one-word visit path inline, and replaces the stable auxiliary sort with distance buckets. |
 | `0012` | Generalizes the symmetry acceleration to arbitrary component sizes and ring topologies: persistent large-path visit state, component-local exact self-isomorphism, bounded explicit-field color refinement, exact linear-time distance-signature filtering, sparse dominance evidence, cumulative per-key/component search limits, logarithmically bounded prefilter use, and O(1) directed cyclic-core eligibility after one linear pass. It removes the earlier size, aromaticity, and bounded-automorphism-sample gates without adding molecule- or atom-number-specific cases. |
 | `0013` | Accelerates auxiliary labeling in large symmetric polycyclic graphs by retaining the support of each exact constitutional-automorphism witness and avoiding unseen auxiliary configurations only when every other stereo annotation is fixed pointwise. It also batches residual target reachability, reroots the occurrence tree along its parent/LCA paths, stores terminal-leaf edges inline, stops comparisons at tied terminal nodes, and proves identical constitutional continuations across molecular bridges. These gates depend only on graph topology and CIP invariants, not fixture identities or atom numbering. |
+| `0014` | Reduces pathological auxiliary work by retrying exact ligand symmetries with unrelated stereo annotations fixed, recognizing annotation-invariant primary ties that Rule 6 cannot resolve, extending path-fixed exact equality to ring siblings below the digraph root, and using multi-source path certificates before residual target BFS. Every failed or ambiguous proof retains the prior conservative traversal. |
 
 The following larger or workload-dependent opportunities from the comparison
 are intentionally not included: canonicalizing equivalent directed occurrence
-states, subtree-result dynamic programming beyond path-only rerooting, hybrid
-dense/sparse automorphism witnesses, arena allocation for large visit-state
-records, and a broader lazy-digraph rewrite. Those need dedicated benchmarking
-and a larger design review.
+states, occurrence-scoped auxiliary-dependency certificates, subtree-result
+dynamic programming beyond path-only rerooting, hybrid dense/sparse
+automorphism witnesses, arena allocation for large visit-state records, and a
+broader lazy-digraph rewrite. Those need dedicated benchmarking and a larger
+design review.
 
 ## Verification status
 

@@ -1,0 +1,750 @@
+From 10a4fa8ff983b1f54b5239292e6e23c8e1ac4b05 Mon Sep 17 00:00:00 2001
+From: Ricardo R-S <rodriguez@schrodinger.com>
+Date: Thu, 6 Aug 2026 16:36:05 -0400
+Subject: [PATCH 14/14] Prune exact-symmetry CIP auxiliary work
+
+Large symmetric polycycles can spend most of CIP assignment enumerating auxiliary occurrences when an exact constitutional witness composes the required local ligand swap with an unrelated symmetry.
+
+Retry those proofs with unrelated stereo neighborhoods fixed, record primary ties that auxiliary descriptors cannot break, extend path-fixed exact equality below the digraph root, and reuse a guarded target-path forest before residual BFS. Failed or ambiguous proofs retain the conservative traversal.
+
+Add focused coverage for below-root ring equality and configuration-preserving root ties.
+---
+ Code/GraphMol/CIPLabeler/CIPLabeler.cpp       |  63 +++++++-
+ Code/GraphMol/CIPLabeler/CIPMol.cpp           | 147 ++++++++++++++++++
+ Code/GraphMol/CIPLabeler/CIPMol.h             |  34 ++++
+ Code/GraphMol/CIPLabeler/Digraph.cpp          |  87 ++++++++++-
+ Code/GraphMol/CIPLabeler/Digraph.h            |   8 +
+ Code/GraphMol/CIPLabeler/catch_tests.cpp      |  68 ++++++++
+ .../CIPLabeler/rules/SequenceRule.cpp         |  74 +++++++--
+ Code/GraphMol/CIPLabeler/rules/SequenceRule.h |   4 +-
+ 8 files changed, 463 insertions(+), 22 deletions(-)
+
+diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+index 04e9e88cf..a3e8bd6c4 100644
+--- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
+@@ -120,12 +120,31 @@ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
+   }
+ 
+   boost::dynamic_bitset<> configurationFoci(mol.getNumAtoms());
++  std::vector<CIPMol::ConfigurationAtomSet> configurationAtomSets;
++  configurationAtomSets.reserve(configs.size());
+   for (const auto &entry : configs) {
++    CIPMol::ConfigurationAtomSet atomSet;
+     for (const auto focus : entry.config->getFoci()) {
+       configurationFoci.set(focus->getIdx());
++      atomSet.foci.push_back(focus->getIdx());
++      atomSet.atoms.push_back(focus->getIdx());
++      for (const auto neighbor : mol.getNeighbors(focus)) {
++        atomSet.atoms.push_back(neighbor->getIdx());
++      }
++    }
++    for (const auto carrier : entry.config->getCarriers()) {
++      if (carrier != nullptr) {
++        atomSet.atoms.push_back(carrier->getIdx());
++      }
+     }
++    std::ranges::sort(atomSet.atoms);
++    atomSet.atoms.erase(
++        std::unique(atomSet.atoms.begin(), atomSet.atoms.end()),
++        atomSet.atoms.end());
++    configurationAtomSets.push_back(std::move(atomSet));
+   }
+-  mol.setConfigurationFoci(std::move(configurationFoci));
++  mol.setConfigurationData(std::move(configurationFoci),
++                           std::move(configurationAtomSets));
+ 
+   return configs;
+ }
+@@ -277,6 +296,40 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
+   return true;
+ }
+ 
++bool hasUnbreakableLigandTie(Configuration &configuration) {
++  auto &digraph = configuration.getDigraph();
++  if (!digraph.hasAuxiliaryInvariantRootTie()) {
++    return false;
++  }
++
++  // Bond and axial configurations have no Rule-6 retry: one exact
++  // auxiliary-invariant ligand tie is final. Tetrahedral configurations can
++  // use a Rule-6 reference only for one or two constitutional priority groups.
++  // With three groups, the preserved tied pair remains tied as later rules
++  // refine (but never merge) the other groups.
++  const auto tetrahedral = dynamic_cast<Tetrahedral *>(&configuration);
++  if (tetrahedral == nullptr &&
++      (dynamic_cast<Sp2Bond *>(&configuration) != nullptr ||
++       dynamic_cast<AtropisomerBond *>(&configuration) != nullptr)) {
++    return true;
++  }
++  if (tetrahedral == nullptr) {
++    // A future configuration type must state its own Rule-6 behavior before
++    // it can use this early exit.
++    return false;
++  }
++  auto root = digraph.getOriginalRoot();
++  if (digraph.getCurrentRoot() != root) {
++    digraph.changeRoot(root);
++  }
++  auto edges = root->getEdges();
++  if (edges.size() != 4u) {
++    return true;
++  }
++  constitutional_rules.sort(root, edges);
++  return constitutional_rules.getSorter()->getGroups(edges).size() > 2u;
++}
++
+ // The chiral centers in current rdkit examples that can be resolved using only
+ // the constitutional rules average about 8 iterations (the highest count is
+ // 1039, in one of the examples in the CIP validation suite). We use 2000 as
+@@ -392,6 +445,14 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
+     if (desc != Descriptor::UNKNOWN) {
+       conf->setPrimaryLabel(desc);
+     } else {
++      // An exact rooted automorphism has proved that two primary ligands stay
++      // tied even after every other stereochemical annotation is applied.
++      // Auxiliary occurrence discovery cannot make this configuration
++      // unique, and in a highly cyclic component that otherwise means
++      // enumerating thousands of irrelevant return paths to reached foci.
++      if (hasUnbreakableLigandTie(*conf)) {
++        continue;
++      }
+       if (labelAux(configs, all_rules, entry)) {
+         desc = conf->label(all_rules);
+ 
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+index 88bde70d5..56207ed18 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
++++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
+@@ -237,6 +237,42 @@ void CIPMol::setConfigurationFoci(boost::dynamic_bitset<> foci) {
+   PRECONDITION(foci.size() == getNumAtoms(),
+                "configuration focus bitset has the wrong size")
+   d_configuration_foci = std::move(foci);
++  d_configuration_atom_sets.clear();
++  d_configuration_branch_cache.assign(2u * getNumBonds(), 0u);
++}
++
++void CIPMol::setConfigurationData(
++    boost::dynamic_bitset<> foci,
++    std::vector<ConfigurationAtomSet> configurationAtomSets) {
++  PRECONDITION(foci.size() == getNumAtoms(),
++               "configuration focus bitset has the wrong size")
++  boost::dynamic_bitset<> recordedFoci(getNumAtoms());
++  for (auto &atomSet : configurationAtomSets) {
++    PRECONDITION(!atomSet.foci.empty(), "configuration has no focus")
++    PRECONDITION(
++        std::ranges::all_of(atomSet.foci,
++                            [&](auto atomIdx) { return atomIdx < getNumAtoms(); }),
++        "configuration focus index is out of range")
++    PRECONDITION(
++        std::ranges::all_of(atomSet.atoms,
++                            [&](auto atomIdx) { return atomIdx < getNumAtoms(); }),
++        "configuration atom index is out of range")
++    std::ranges::sort(atomSet.foci);
++    atomSet.foci.erase(std::unique(atomSet.foci.begin(), atomSet.foci.end()),
++                       atomSet.foci.end());
++    std::ranges::sort(atomSet.atoms);
++    atomSet.atoms.erase(std::unique(atomSet.atoms.begin(), atomSet.atoms.end()),
++                        atomSet.atoms.end());
++    for (const auto focusIdx : atomSet.foci) {
++      PRECONDITION(std::ranges::binary_search(atomSet.atoms, focusIdx),
++                   "configuration focus is absent from its local atoms")
++      recordedFoci.set(focusIdx);
++    }
++  }
++  PRECONDITION(recordedFoci == foci,
++               "configuration metadata does not match the focus bitset")
++  d_configuration_foci = std::move(foci);
++  d_configuration_atom_sets = std::move(configurationAtomSets);
+   d_configuration_branch_cache.assign(2u * getNumBonds(), 0u);
+ }
+ 
+@@ -640,6 +676,117 @@ bool CIPMol::hasConstitutionalAutomorphism(
+                                        addedFixedAtoms, &movedAtoms);
+ }
+ 
++bool CIPMol::constitutionalAutomorphismMovesConfiguration(
++    std::span<const unsigned int> movedAtoms,
++    const Atom *configurationOwner) const {
++  if (movedAtoms.empty()) {
++    return false;
++  }
++  const auto ownerConfiguration =
++      findConfigurationOwnedBy(configurationOwner);
++  if (!ownerConfiguration) {
++    return true;
++  }
++
++  for (std::size_t i = 0; i < d_configuration_atom_sets.size(); ++i) {
++    if (i == *ownerConfiguration) {
++      continue;
++    }
++    for (const auto atomIdx : d_configuration_atom_sets[i].atoms) {
++      if (std::ranges::find(movedAtoms, atomIdx) != movedAtoms.end()) {
++        return true;
++      }
++    }
++  }
++  return false;
++}
++
++bool CIPMol::hasConfigurationPreservingConstitutionalAutomorphism(
++    Atom *root, Atom *from, Atom *to,
++    std::span<const std::uint64_t> fixedAtoms,
++    std::span<const unsigned int> addedFixedAtoms,
++    const Atom *configurationOwner,
++    std::vector<unsigned int> &movedAtoms) const {
++  movedAtoms.clear();
++  if (root == nullptr || from == nullptr || to == nullptr ||
++      configurationOwner == nullptr) {
++    return false;
++  }
++  const auto numAtoms = getNumAtoms();
++  const auto rootIdx = root->getIdx();
++  const auto fromIdx = from->getIdx();
++  const auto toIdx = to->getIdx();
++  const auto ownerIdx = configurationOwner->getIdx();
++  if (rootIdx >= numAtoms || fromIdx >= numAtoms || toIdx >= numAtoms ||
++      ownerIdx >= numAtoms || getAtom(rootIdx) != root ||
++      getAtom(fromIdx) != from || getAtom(toIdx) != to ||
++      getAtom(ownerIdx) != configurationOwner ||
++      (!fixedAtoms.empty() &&
++       fixedAtoms.size() < (numAtoms + 63u) / 64u) ||
++      !hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
++    return false;
++  }
++
++  const auto ownerConfiguration =
++      findConfigurationOwnedBy(configurationOwner);
++  if (!ownerConfiguration) {
++    return false;
++  }
++  if (from == to) {
++    return true;
++  }
++
++  const auto wordCount = (numAtoms + 63u) / 64u;
++  std::vector<std::uint64_t> protectedAtoms(wordCount, 0u);
++  if (!fixedAtoms.empty()) {
++    std::copy_n(fixedAtoms.begin(), wordCount, protectedAtoms.begin());
++  }
++  const auto protectAtom = [&](unsigned int atomIdx) {
++    protectedAtoms[atomIdx / 64u] |=
++        std::uint64_t{1} << (atomIdx % 64u);
++  };
++  for (const auto atomIdx : addedFixedAtoms) {
++    if (atomIdx < numAtoms) {
++      protectAtom(atomIdx);
++    }
++  }
++  for (std::size_t i = 0; i < d_configuration_atom_sets.size(); ++i) {
++    if (i != *ownerConfiguration) {
++      for (const auto atomIdx : d_configuration_atom_sets[i].atoms) {
++        protectAtom(atomIdx);
++      }
++    }
++  }
++
++  return hasConstitutionalAutomorphism(rootIdx, fromIdx, toIdx, protectedAtoms,
++                                       {}, &movedAtoms);
++}
++
++std::optional<std::size_t> CIPMol::findConfigurationOwnedBy(
++    const Atom *configurationOwner) const {
++  if (configurationOwner == nullptr ||
++      configurationOwner->getIdx() >= getNumAtoms() ||
++      getAtom(configurationOwner->getIdx()) != configurationOwner) {
++    return std::nullopt;
++  }
++
++  const auto ownerIdx = configurationOwner->getIdx();
++  std::optional<std::size_t> result;
++  for (std::size_t i = 0; i < d_configuration_atom_sets.size(); ++i) {
++    if (!std::ranges::binary_search(d_configuration_atom_sets[i].foci,
++                                    ownerIdx)) {
++      continue;
++    }
++    if (result) {
++      // Shared foci need a stable configuration identity, not an atom-only
++      // owner. Until such an identity is available, remain conservative.
++      return std::nullopt;
++    }
++    result = i;
++  }
++  return result;
++}
++
+ bool CIPMol::isInSameComponent(Atom *first, Atom *second) const {
+   if (first == nullptr || second == nullptr) {
+     return false;
+diff --git a/Code/GraphMol/CIPLabeler/CIPMol.h b/Code/GraphMol/CIPLabeler/CIPMol.h
+index 112f10623..dd5b36fb0 100644
+--- a/Code/GraphMol/CIPLabeler/CIPMol.h
++++ b/Code/GraphMol/CIPLabeler/CIPMol.h
+@@ -74,6 +74,11 @@ class CIPMolSpan {
+ 
+ class CIPMol {
+  public:
++  struct ConfigurationAtomSet {
++    std::vector<unsigned int> foci;
++    std::vector<unsigned int> atoms;
++  };
++
+   CIPMol() = delete;
+ 
+   explicit CIPMol(ROMol &mol);
+@@ -103,6 +108,14 @@ class CIPMol {
+   // acyclic branch cannot contain auxiliary stereochemical information.
+   void setConfigurationFoci(boost::dynamic_bitset<> foci);
+ 
++  // Also retain each configuration's complete local annotation. Exact
++  // constitutional symmetry searches use this only to request a witness that
++  // fixes unrelated stereo annotations; malformed or ambiguous ownership
++  // always falls back to broad auxiliary discovery.
++  void setConfigurationData(
++      boost::dynamic_bitset<> foci,
++      std::vector<ConfigurationAtomSet> configurationAtomSets);
++
+   // Returns true only when bond is acyclic and the molecular component on the
+   // endAtom side contains no registered configuration focus.
+   bool isAcyclicBranchWithoutConfiguration(Bond *bond, Atom *endAtom) const;
+@@ -131,6 +144,24 @@ class CIPMol {
+       std::span<const unsigned int> addedFixedAtoms,
+       std::vector<unsigned int> &movedAtoms) const;
+ 
++  // A constitutional witness may compose the requested ligand swap with an
++  // unrelated symmetry elsewhere in the molecule. Report whether its support
++  // moves any local stereo annotation other than the configuration owning the
++  // current digraph.
++  bool constitutionalAutomorphismMovesConfiguration(
++      std::span<const unsigned int> movedAtoms,
++      const Atom *configurationOwner) const;
++
++  // Retry an exact constitutional proof while fixing every other local stereo
++  // annotation pointwise. Success supplies a witness that cannot force broad
++  // auxiliary discovery merely because it composed an independent symmetry.
++  bool hasConfigurationPreservingConstitutionalAutomorphism(
++      Atom *root, Atom *from, Atom *to,
++      std::span<const std::uint64_t> fixedAtoms,
++      std::span<const unsigned int> addedFixedAtoms,
++      const Atom *configurationOwner,
++      std::vector<unsigned int> &movedAtoms) const;
++
+   // Component membership is used to keep symmetry and auxiliary-label work
+   // local to the connected structure containing the center of interest.
+   bool isInSameComponent(Atom *first, Atom *second) const;
+@@ -149,6 +180,7 @@ class CIPMol {
+   mutable std::vector<double> d_atomic_masses;
+   mutable std::vector<unsigned char> d_atomic_mass_cached;
+   boost::dynamic_bitset<> d_configuration_foci;
++  std::vector<ConfigurationAtomSet> d_configuration_atom_sets;
+   // Two directed sides per bond: 0=unknown, 1=contains a focus, 2=no focus.
+   mutable std::vector<unsigned char> d_configuration_branch_cache;
+   struct ConstitutionalAutomorphismKey {
+@@ -239,6 +271,8 @@ class CIPMol {
+                               std::vector<unsigned int> movedAtoms) const;
+   void addAutomorphismFailure(ConstitutionalAutomorphismEvidence &evidence,
+                               std::vector<unsigned int> fixedAtoms) const;
++  std::optional<std::size_t> findConfigurationOwnedBy(
++      const Atom *configurationOwner) const;
+ };
+ 
+ }  // namespace CIPLabeler
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
+index fedcdacfb..70d9309bd 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.cpp
++++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
+@@ -10,6 +10,7 @@
+ //
+ 
+ #include <algorithm>
++#include <limits>
+ #include <sstream>
+ 
+ #include "Digraph.h"
+@@ -150,8 +151,43 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
+   std::vector<unsigned int> seen(d_mol.getNumAtoms());
+   std::vector<Node *> candidateChildren;
+   candidateChildren.reserve(4u);
++  std::vector<unsigned int> nextTowardTarget;
++  std::vector<unsigned int> targetPathQueue;
++  std::size_t targetPathQueuePos = 0u;
++  std::size_t singleChildReachabilityQueries = 0u;
+   unsigned int generation = 0;
+ 
++  const auto initTargetPathForest = [&]() {
++    if (!nextTowardTarget.empty()) {
++      return;
++    }
++    constexpr auto noTarget = std::numeric_limits<unsigned int>::max();
++    nextTowardTarget.assign(d_mol.getNumAtoms(), noTarget);
++    targetPathQueue.reserve(d_mol.getNumAtoms());
++    for (auto atomIdx = targets.find_first();
++         atomIdx != boost::dynamic_bitset<>::npos;
++         atomIdx = targets.find_next(atomIdx)) {
++      const auto targetIdx = static_cast<unsigned int>(atomIdx);
++      nextTowardTarget[targetIdx] = targetIdx;
++      targetPathQueue.push_back(targetIdx);
++    }
++  };
++  const auto extendTargetPathForestTo = [&](unsigned int atomIdx) {
++    initTargetPathForest();
++    constexpr auto noTarget = std::numeric_limits<unsigned int>::max();
++    while (nextTowardTarget[atomIdx] == noTarget &&
++           targetPathQueuePos < targetPathQueue.size()) {
++      const auto currentIdx = targetPathQueue[targetPathQueuePos++];
++      for (const auto neighbor : d_mol.getNeighbors(d_mol.getAtom(currentIdx))) {
++        const auto neighborIdx = neighbor->getIdx();
++        if (nextTowardTarget[neighborIdx] == noTarget) {
++          nextTowardTarget[neighborIdx] = currentIdx;
++          targetPathQueue.push_back(neighborIdx);
++        }
++      }
++    }
++  };
++
+   for (std::size_t pos = 0; pos < nodes.size(); ++pos) {
+     auto node = nodes[pos];
+     const auto atom = node->getAtom();
+@@ -175,10 +211,21 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
+ 
+     if (candidateChildren.size() == 1u) {
+       const auto child = candidateChildren.front();
+-      if (targets.test(child->getAtom()->getIdx()) ||
+-          canReachUnvisitedTarget(child, targets, reachabilityQueue, seen,
+-                                  generation)) {
++      if (targets.test(child->getAtom()->getIdx())) {
+         nodes.push_back(child);
++      } else {
++        // A nearby target lets the old forward BFS finish before a reverse
++        // forest would amortize its frontier. Preserve that cold-query path;
++        // initialize the retained forest only for a repeated workload.
++        constexpr std::size_t targetPathForestWarmupQueries = 4u;
++        if (++singleChildReachabilityQueries >
++            targetPathForestWarmupQueries) {
++          extendTargetPathForestTo(child->getAtom()->getIdx());
++        }
++        if (canReachUnvisitedTarget(child, targets, nextTowardTarget,
++                                    reachabilityQueue, seen, generation)) {
++          nodes.push_back(child);
++        }
+       }
+     } else if (!candidateChildren.empty()) {
+       // Every child asks the same residual-connectivity question after the
+@@ -202,6 +249,8 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
+ 
+ bool Digraph::canReachUnvisitedTarget(const Node *node,
+                                       const boost::dynamic_bitset<> &targets,
++                                      std::span<const unsigned int>
++                                          nextTowardTarget,
+                                       std::vector<unsigned int> &queue,
+                                       std::vector<unsigned int> &seen,
+                                       unsigned int &generation) const {
+@@ -210,6 +259,30 @@ bool Digraph::canReachUnvisitedTarget(const Node *node,
+     return false;
+   }
+ 
++  // A multi-source molecular BFS supplies one concrete path to the nearest
++  // target. Most occurrence paths do not block that certificate, turning a
++  // fresh residual-connectivity BFS into a few bit tests. If the certificate
++  // crosses a visited atom, retain the exact fallback below to find an
++  // alternate route through a ring.
++  if (!nextTowardTarget.empty()) {
++    constexpr auto noTarget = std::numeric_limits<unsigned int>::max();
++    auto pathAtomIdx = atom->getIdx();
++    while (!targets.test(pathAtomIdx)) {
++      if (pathAtomIdx >= nextTowardTarget.size() ||
++          nextTowardTarget[pathAtomIdx] == noTarget) {
++        return false;
++      }
++      const auto nextAtomIdx = nextTowardTarget[pathAtomIdx];
++      if (nextAtomIdx == pathAtomIdx || node->isVisited(nextAtomIdx)) {
++        break;
++      }
++      pathAtomIdx = nextAtomIdx;
++    }
++    if (targets.test(pathAtomIdx)) {
++      return true;
++    }
++  }
++
+   // Use generation marks so each small molecular reachability search only
+   // clears the entries it actually visits.
+   if (++generation == 0u) {
+@@ -365,6 +438,14 @@ const boost::dynamic_bitset<> &Digraph::getConstitutionalEquivalenceMovedAtoms()
+   return d_constitutional_equivalence_moved_atoms;
+ }
+ 
++void Digraph::noteAuxiliaryInvariantRootTie() {
++  d_hasAuxiliaryInvariantRootTie = true;
++}
++
++bool Digraph::hasAuxiliaryInvariantRootTie() const {
++  return d_hasAuxiliaryInvariantRootTie;
++}
++
+ /**
+  * Access the reference atom for Rule 6 (if one is set).
+  */
+diff --git a/Code/GraphMol/CIPLabeler/Digraph.h b/Code/GraphMol/CIPLabeler/Digraph.h
+index bf1b93918..a6a947cf1 100644
+--- a/Code/GraphMol/CIPLabeler/Digraph.h
++++ b/Code/GraphMol/CIPLabeler/Digraph.h
+@@ -102,6 +102,12 @@ class Digraph {
+   bool usedConstitutionalRootEquivalence() const;
+   const boost::dynamic_bitset<> &getConstitutionalEquivalenceMovedAtoms() const;
+ 
++  // A pair of ligands at a configuration root was proven equivalent by an
++  // exact molecular automorphism that fixes every other stereo annotation.
++  // No auxiliary descriptor can break that tie.
++  void noteAuxiliaryInvariantRootTie();
++  bool hasAuxiliaryInvariantRootTie() const;
++
+   /**
+    * Access the reference atom for Rule 6 (if one is set).
+    */
+@@ -151,6 +157,7 @@ class Digraph {
+   Atom *dp_rule6Ref = nullptr;
+ 
+   bool d_usedConstitutionalRootEquivalence = false;
++  bool d_hasAuxiliaryInvariantRootTie = false;
+   boost::dynamic_bitset<> d_constitutional_equivalence_moved_atoms;
+ 
+   // Insertion at either end of a deque preserves element references, which
+@@ -163,6 +170,7 @@ class Digraph {
+                                    bool pruneConfigurationFreeBranches) const;
+   bool canReachUnvisitedTarget(const Node *node,
+                                const boost::dynamic_bitset<> &targets,
++                               std::span<const unsigned int> nextTowardTarget,
+                                std::vector<unsigned int> &queue,
+                                std::vector<unsigned int> &seen,
+                                unsigned int &generation) const;
+diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+index ff14509f4..0eac8ef01 100644
+--- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
++++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
+@@ -571,6 +571,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
+ 
+     CHECK(rule.getSorter()->prioritize(origin, edges).isUnique());
+   }
++
++  SECTION("Exact ring symmetry below the digraph root") {
++    auto mol = "CC1CCCCC1"_smiles;
++    REQUIRE(mol);
++    CIPLabeler::CIPMol cipmol(*mol);
++    Digraph graph(cipmol, cipmol.getAtom(0));
++
++    const auto outgoingEdgeTo = [](Node *node, unsigned int atomIdx) {
++      for (const auto edge : node->getEdges()) {
++        if (edge->isBeg(node) && !edge->getEnd()->isDuplicateOrH() &&
++            edge->getEnd()->getAtomIdx() == atomIdx) {
++          return edge;
++        }
++      }
++      return static_cast<Edge *>(nullptr);
++    };
++
++    const auto ringRootEdge =
++        outgoingEdgeTo(graph.getOriginalRoot(), 1u);
++    REQUIRE(ringRootEdge != nullptr);
++    const auto ringRoot = ringRootEdge->getEnd();
++    const auto firstDirection = outgoingEdgeTo(ringRoot, 2u);
++    const auto secondDirection = outgoingEdgeTo(ringRoot, 6u);
++    REQUIRE(firstDirection != nullptr);
++    REQUIRE(secondDirection != nullptr);
++    REQUIRE_FALSE(firstDirection->getEnd()->isExpanded());
++    REQUIRE_FALSE(secondDirection->getEnd()->isExpanded());
++
++    const auto nodeCount = graph.getNumNodes();
++    Rule1a rule;
++    CHECK(rule.recursiveCompare(firstDirection, secondDirection) == 0);
++    CHECK(graph.getNumNodes() == nodeCount);
++    CHECK_FALSE(firstDirection->getEnd()->isExpanded());
++    CHECK_FALSE(secondDirection->getEnd()->isExpanded());
++  }
++
++  SECTION("Configuration-preserving root symmetry remains an exact tie") {
++    auto mol = "CC1CCCCC1"_smiles;
++    REQUIRE(mol);
++    CIPLabeler::CIPMol cipmol(*mol);
++    boost::dynamic_bitset<> configurationFoci(mol->getNumAtoms());
++    configurationFoci.set(1u);
++    CIPLabeler::CIPMol::ConfigurationAtomSet configurationAtoms{
++        {1u}, {0u, 1u, 2u, 6u}};
++    cipmol.setConfigurationData(std::move(configurationFoci),
++                                {std::move(configurationAtoms)});
++    Digraph graph(cipmol, cipmol.getAtom(1));
++
++    const auto outgoingEdgeTo = [](Node *node, unsigned int atomIdx) {
++      for (const auto edge : node->getEdges()) {
++        if (edge->isBeg(node) && !edge->getEnd()->isDuplicateOrH() &&
++            edge->getEnd()->getAtomIdx() == atomIdx) {
++          return edge;
++        }
++      }
++      return static_cast<Edge *>(nullptr);
++    };
++    const auto firstDirection =
++        outgoingEdgeTo(graph.getOriginalRoot(), 2u);
++    const auto secondDirection =
++        outgoingEdgeTo(graph.getOriginalRoot(), 6u);
++    REQUIRE(firstDirection != nullptr);
++    REQUIRE(secondDirection != nullptr);
++
++    Rule1a rule;
++    CHECK(rule.recursiveCompare(firstDirection, secondDirection) == 0);
++    CHECK(graph.hasAuxiliaryInvariantRootTie());
++  }
+ }
+ 
+ TEST_CASE("Rule2", "[accurateCIP]") {
+diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
+index f1b23f921..f1b5dab21 100644
+--- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
++++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
+@@ -251,14 +251,16 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+ 
+   const auto firstGraph = a->getBeg()->getDigraph();
+   const auto secondGraph = b->getBeg()->getDigraph();
++  const bool firstAtRoot = firstGraph->getCurrentRoot() == a->getBeg();
++  const bool secondAtRoot = secondGraph->getCurrentRoot() == b->getBeg();
+   const ComparisonKey key{
+       d_cacheId,
+       a,
+       b,
+       a->getEnd(),
+       b->getEnd(),
+-      firstGraph->getCurrentRoot() == a->getBeg(),
+-      secondGraph->getCurrentRoot() == b->getBeg(),
++      firstAtRoot,
++      secondAtRoot,
+       d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref(),
+       d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref()};
+   auto &currentResults =
+@@ -297,8 +299,8 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+       a,
+       b->getEnd(),
+       a->getEnd(),
+-      secondGraph->getCurrentRoot() == b->getBeg(),
+-      firstGraph->getCurrentRoot() == a->getBeg(),
++      secondAtRoot,
++      firstAtRoot,
+       d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref(),
+       d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref()};
+   if (firstGraph == secondGraph) {
+@@ -322,7 +324,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+ 
+   if (!isRecursiveComparisonNeeded(a, b) ||
+       hasEquivalentAcyclicContinuation(a, b) ||
+-      hasEquivalentConstitutionalRootContinuation(a, b)) {
++      hasEquivalentConstitutionalSiblingContinuation(a, b)) {
+     return cacheResult(0);
+   }
+ 
+@@ -544,7 +546,7 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
+   return graph->isAcyclicBranchWithoutConfiguration(a);
+ }
+ 
+-bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
++bool SequenceRule::hasEquivalentConstitutionalSiblingContinuation(
+     const Edge *a, const Edge *b) const {
+   if (!d_useConstitutionalRootEquivalence) {
+     return false;
+@@ -555,29 +557,69 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+   const auto aEnd = a->getEnd();
+   const auto bEnd = b->getEnd();
+   const auto graph = aBeg->getDigraph();
+-  const auto root = graph->getCurrentRoot();
+-  if (graph != bBeg->getDigraph() || aBeg != root || bBeg != root ||
++  const auto currentRoot = graph->getCurrentRoot();
++  if (graph != bBeg->getDigraph() || aBeg != bBeg ||
+       a->getBond() == nullptr || b->getBond() == nullptr ||
+       aEnd->isDuplicateOrH() || bEnd->isDuplicateOrH() ||
+-      !aEnd->isOriginalChildOf(root) || !bEnd->isOriginalChildOf(root)) {
++      !aEnd->isOriginalChildOf(aBeg) || !bEnd->isOriginalChildOf(aBeg)) {
+     return false;
+   }
+ 
++  // Keep the existing current-root behavior. Below that root, restrict exact
++  // symmetry searches to two ring directions: acyclic continuations already
++  // have a cheaper bridge proof, and this gate leaves ordinary pendant-tree
++  // comparisons unchanged.
++  if (aBeg != currentRoot &&
++      (!graph->getMol().isInRing(a->getBond()) ||
++       !graph->getMol().isInRing(b->getBond()))) {
++    return false;
++  }
+   bool equivalent = false;
+   std::vector<unsigned int> movedAtoms;
+-  if (root == graph->getOriginalRoot()) {
++  if (aBeg == graph->getOriginalRoot()) {
+     equivalent = graph->getMol().hasConstitutionalAutomorphism(
+-        root->getAtom(), aEnd->getAtom(), bEnd->getAtom(), movedAtoms);
++        aBeg->getAtom(), aEnd->getAtom(), bEnd->getAtom(), movedAtoms);
+   } else {
+-    // A rerooted occurrence carries an immutable visited path. Requiring that
+-    // path to be fixed pointwise preserves both its visited set and every
+-    // distance used for ring-duplicate ordering under Rule 1b.
++    // Every non-original occurrence carries an immutable path from the
++    // original root. Requiring that path to be fixed pointwise preserves its
++    // visited set and every distance used for ring duplicates under Rule 1b,
++    // whether or not this local sibling pair is below a temporary reroot.
+     equivalent = graph->getMol().hasConstitutionalAutomorphism(
+-        root->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
+-        root->getVisitedAtomCheckpoint(), root->getVisitedAtomDeltas(),
++        aBeg->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
++        aBeg->getVisitedAtomCheckpoint(), aBeg->getVisitedAtomDeltas(),
+         movedAtoms);
+   }
+   if (equivalent) {
++    // VF2 may return a valid witness that unnecessarily composes the local
++    // ligand swap with an independent symmetry elsewhere in the component.
++    // Such a witness makes labelAux() conservatively discover remote stereo
++    // configurations. When that happened, ask for another exact witness
++    // while fixing every other configuration neighborhood pointwise. Failure
++    // only keeps the original witness and the existing conservative fallback.
++    const auto configurationOwner = graph->getOriginalRoot()->getAtom();
++    bool preservesConfigurations =
++        !graph->getMol().constitutionalAutomorphismMovesConfiguration(
++            movedAtoms, configurationOwner);
++    if (!preservesConfigurations) {
++      std::vector<unsigned int> configurationPreservingMovedAtoms;
++      if (graph->getMol()
++              .hasConfigurationPreservingConstitutionalAutomorphism(
++                  aBeg->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
++                  aBeg->getVisitedAtomCheckpoint(),
++                  aBeg->getVisitedAtomDeltas(), configurationOwner,
++                  configurationPreservingMovedAtoms)) {
++        movedAtoms = std::move(configurationPreservingMovedAtoms);
++        preservesConfigurations = true;
++      }
++    }
++    if (preservesConfigurations && aBeg == currentRoot) {
++      // The compared edges are ligands of the configuration currently being
++      // ranked. Their exact rooted isomorphism also preserves every possible
++      // auxiliary annotation. The configuration-specific labeling code can
++      // therefore avoid auxiliary discovery when Rule 6 cannot break the
++      // remaining tie.
++      graph->noteAuxiliaryInvariantRootTie();
++    }
+     graph->noteConstitutionalRootEquivalence(movedAtoms);
+   }
+   return equivalent;
+diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.h b/Code/GraphMol/CIPLabeler/rules/SequenceRule.h
+index 5b2ac0430..3238b4934 100644
+--- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.h
++++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.h
+@@ -106,8 +106,8 @@ class SequenceRule {
+ 
+   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
+   bool hasEquivalentAcyclicContinuation(const Edge *a, const Edge *b) const;
+-  bool hasEquivalentConstitutionalRootContinuation(const Edge *a,
+-                                                   const Edge *b) const;
++  bool hasEquivalentConstitutionalSiblingContinuation(const Edge *a,
++                                                      const Edge *b) const;
+   int recursiveCompareEqual(const Edge *a, const Edge *b) const;
+ 
+   static bool getCachedSort(std::uint64_t sortId, const Node *node, bool deep,
+-- 
+2.34.1
+

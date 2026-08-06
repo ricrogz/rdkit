@@ -11,3 +11,4 @@
 0011-Reuse-CIP-work-across-auxiliary-reroots.patch
 0012-Generalize-CIP-acceleration-for-symmetric-ring-syste.patch
 0013-Accelerate-auxiliary-CIP-labeling-in-polycyclic-grap.patch
+0014-Prune-exact-symmetry-CIP-auxiliary-work.patch

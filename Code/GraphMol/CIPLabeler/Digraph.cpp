@@ -10,6 +10,7 @@
 //
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 
 #include "Digraph.h"
@@ -150,7 +151,42 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
   std::vector<unsigned int> seen(d_mol.getNumAtoms());
   std::vector<Node *> candidateChildren;
   candidateChildren.reserve(4u);
+  std::vector<unsigned int> nextTowardTarget;
+  std::vector<unsigned int> targetPathQueue;
+  std::size_t targetPathQueuePos = 0u;
+  std::size_t singleChildReachabilityQueries = 0u;
   unsigned int generation = 0;
+
+  const auto initTargetPathForest = [&]() {
+    if (!nextTowardTarget.empty()) {
+      return;
+    }
+    constexpr auto noTarget = std::numeric_limits<unsigned int>::max();
+    nextTowardTarget.assign(d_mol.getNumAtoms(), noTarget);
+    targetPathQueue.reserve(d_mol.getNumAtoms());
+    for (auto atomIdx = targets.find_first();
+         atomIdx != boost::dynamic_bitset<>::npos;
+         atomIdx = targets.find_next(atomIdx)) {
+      const auto targetIdx = static_cast<unsigned int>(atomIdx);
+      nextTowardTarget[targetIdx] = targetIdx;
+      targetPathQueue.push_back(targetIdx);
+    }
+  };
+  const auto extendTargetPathForestTo = [&](unsigned int atomIdx) {
+    initTargetPathForest();
+    constexpr auto noTarget = std::numeric_limits<unsigned int>::max();
+    while (nextTowardTarget[atomIdx] == noTarget &&
+           targetPathQueuePos < targetPathQueue.size()) {
+      const auto currentIdx = targetPathQueue[targetPathQueuePos++];
+      for (const auto neighbor : d_mol.getNeighbors(d_mol.getAtom(currentIdx))) {
+        const auto neighborIdx = neighbor->getIdx();
+        if (nextTowardTarget[neighborIdx] == noTarget) {
+          nextTowardTarget[neighborIdx] = currentIdx;
+          targetPathQueue.push_back(neighborIdx);
+        }
+      }
+    }
+  };
 
   for (std::size_t pos = 0; pos < nodes.size(); ++pos) {
     auto node = nodes[pos];
@@ -175,10 +211,21 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
 
     if (candidateChildren.size() == 1u) {
       const auto child = candidateChildren.front();
-      if (targets.test(child->getAtom()->getIdx()) ||
-          canReachUnvisitedTarget(child, targets, reachabilityQueue, seen,
-                                  generation)) {
+      if (targets.test(child->getAtom()->getIdx())) {
         nodes.push_back(child);
+      } else {
+        // A nearby target lets the old forward BFS finish before a reverse
+        // forest would amortize its frontier. Preserve that cold-query path;
+        // initialize the retained forest only for a repeated workload.
+        constexpr std::size_t targetPathForestWarmupQueries = 4u;
+        if (++singleChildReachabilityQueries >
+            targetPathForestWarmupQueries) {
+          extendTargetPathForestTo(child->getAtom()->getIdx());
+        }
+        if (canReachUnvisitedTarget(child, targets, nextTowardTarget,
+                                    reachabilityQueue, seen, generation)) {
+          nodes.push_back(child);
+        }
       }
     } else if (!candidateChildren.empty()) {
       // Every child asks the same residual-connectivity question after the
@@ -202,12 +249,38 @@ std::vector<std::vector<Node *>> Digraph::getNodesForAuxiliaryLabeling(
 
 bool Digraph::canReachUnvisitedTarget(const Node *node,
                                       const boost::dynamic_bitset<> &targets,
+                                      std::span<const unsigned int>
+                                          nextTowardTarget,
                                       std::vector<unsigned int> &queue,
                                       std::vector<unsigned int> &seen,
                                       unsigned int &generation) const {
   const auto atom = node->getAtom();
   if (atom == nullptr || node->isDuplicateOrH()) {
     return false;
+  }
+
+  // A multi-source molecular BFS supplies one concrete path to the nearest
+  // target. Most occurrence paths do not block that certificate, turning a
+  // fresh residual-connectivity BFS into a few bit tests. If the certificate
+  // crosses a visited atom, retain the exact fallback below to find an
+  // alternate route through a ring.
+  if (!nextTowardTarget.empty()) {
+    constexpr auto noTarget = std::numeric_limits<unsigned int>::max();
+    auto pathAtomIdx = atom->getIdx();
+    while (!targets.test(pathAtomIdx)) {
+      if (pathAtomIdx >= nextTowardTarget.size() ||
+          nextTowardTarget[pathAtomIdx] == noTarget) {
+        return false;
+      }
+      const auto nextAtomIdx = nextTowardTarget[pathAtomIdx];
+      if (nextAtomIdx == pathAtomIdx || node->isVisited(nextAtomIdx)) {
+        break;
+      }
+      pathAtomIdx = nextAtomIdx;
+    }
+    if (targets.test(pathAtomIdx)) {
+      return true;
+    }
   }
 
   // Use generation marks so each small molecular reachability search only
@@ -363,6 +436,14 @@ bool Digraph::usedConstitutionalRootEquivalence() const {
 const boost::dynamic_bitset<> &Digraph::getConstitutionalEquivalenceMovedAtoms()
     const {
   return d_constitutional_equivalence_moved_atoms;
+}
+
+void Digraph::noteAuxiliaryInvariantRootTie() {
+  d_hasAuxiliaryInvariantRootTie = true;
+}
+
+bool Digraph::hasAuxiliaryInvariantRootTie() const {
+  return d_hasAuxiliaryInvariantRootTie;
 }
 
 /**
