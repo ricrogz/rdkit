@@ -304,6 +304,17 @@ TEST_CASE("Iteration limit includes the preliminary pass",
 
   CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 1),
                   CIPLabeler::MaxIterationsExceeded);
+
+  // A bounded call must not leave the thread-local budget exhausted for
+  // standalone rule comparisons on the same thread.
+  auto comparisonMol = "COC"_smiles;
+  REQUIRE(comparisonMol);
+  CIPLabeler::CIPMol cipmol(*comparisonMol);
+  Digraph digraph(cipmol, cipmol.getAtom(1));
+  auto origin = digraph.getOriginalRoot();
+  auto edges = origin->getEdges();
+  Rule1a rule;
+  CHECK_NOTHROW(rule.getSorter()->prioritize(origin, edges));
 }
 
 void check_incoming_edge_count(Node *root) {
@@ -928,9 +939,15 @@ TEST_CASE("Malformed stereo markers are ignored safely", "[accurateCIP]") {
   }
 
   SECTION("Cis/trans marker on a single bond") {
-    auto mol = "CC"_smiles;
+    auto mol = "CCCC"_smiles;
     REQUIRE(mol);
-    auto bond = mol->getBondWithIdx(0);
+    auto bond = mol->getBondBetweenAtoms(1, 2);
+    REQUIRE(bond);
+    REQUIRE(bond->getBondType() == Bond::SINGLE);
+
+    const auto beginCarrier = bond->getBeginAtomIdx() == 1 ? 0u : 3u;
+    const auto endCarrier = bond->getEndAtomIdx() == 2 ? 3u : 0u;
+    bond->setStereoAtoms(beginCarrier, endCarrier);
     bond->setStereo(Bond::STEREOCIS);
     bond->setProp(common_properties::_CIPCode, std::string("stale"));
     CHECK_NOTHROW(CIPLabeler::assignCIPLabels(*mol));
