@@ -95,8 +95,9 @@ class Digraph {
 
   void expand(Node *beg);
 
-  Node &addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
-                boost::rational<int> &&frac, int dist, int flags);
+  Node &addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
+                boost::rational<int> &&frac, int dist, int flags,
+                const Node *parent = nullptr);
 
   // Has `atom` been seen yet?
   bool seenAtom(Atom *atom) const;
