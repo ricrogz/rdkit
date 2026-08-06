@@ -424,6 +424,22 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
                     TooManyNodesException);
     CHECK(graph.getNumNodes() == max_node_count);
   }
+
+  SECTION("ring duplicate keeps its ancestor distance") {
+    auto mol = "C1CC1"_smiles;
+    CIPLabeler::CIPMol cipmol(*mol);
+    Digraph graph(cipmol, cipmol.getAtom(0));
+    expandAll(graph);
+
+    bool found_ring_duplicate = false;
+    for (const auto node : graph.getNodes(cipmol.getAtom(0))) {
+      if (node->isSet(Node::RING_DUPLICATE)) {
+        found_ring_duplicate = true;
+        CHECK(node->getDistance() == 1);
+      }
+    }
+    CHECK(found_ring_duplicate);
+  }
 }
 
 TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {

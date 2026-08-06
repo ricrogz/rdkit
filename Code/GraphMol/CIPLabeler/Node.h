@@ -67,8 +67,9 @@ class Node {
   Node(const Node &) = delete;
   Node &operator=(const Node &) = delete;
 
-  Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
-       boost::rational<int> &&frac, int dist, int flags);
+  Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
+       boost::rational<int> &&frac, int dist, int flags,
+       const Node *parent);
 
   Digraph *getDigraph() const;
 
@@ -121,6 +122,7 @@ class Node {
  private:
   Digraph *dp_g;
   Atom *dp_atom;
+  const Node *dp_parent;
   int d_dist;
   boost::rational<int> d_atomic_num;
   double d_atomic_mass;
@@ -129,9 +131,10 @@ class Node {
 
   std::vector<Edge *> d_edges;
 
-  std::vector<std::uint32_t> d_visit;
+  std::vector<std::uint64_t> d_visit;
 
   Node *newTerminalChild(int idx, Atom *atom, int flags) const;
+  int getVisitedDistance(int idx) const;
 };
 
 }  // namespace CIPLabeler

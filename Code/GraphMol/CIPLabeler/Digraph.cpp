@@ -33,8 +33,9 @@ constexpr std::size_t MAX_NODE_COUNT = 100000;
 const int MAX_NODE_DIST = 0;
 }  // namespace
 
-Node &Digraph::addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
-                       boost::rational<int> &&frac, int dist, int flags) {
+Node &Digraph::addNode(std::vector<std::uint64_t> &&visit, Atom *atom,
+                       boost::rational<int> &&frac, int dist, int flags,
+                       const Node *parent) {
   if (MAX_NODE_COUNT > 0 && d_nodes.size() >= MAX_NODE_COUNT) {
     std::stringstream errmsg;
     errmsg << "Digraph generation failed: more than " << MAX_NODE_COUNT
@@ -42,7 +43,7 @@ Node &Digraph::addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
     throw TooManyNodesException(errmsg.str());
   }
   d_nodes.emplace_back(this, std::move(visit), atom, std::move(frac), dist,
-                       flags);
+                       flags, parent);
   return d_nodes.back();
 }
 
@@ -62,8 +63,10 @@ Digraph::Digraph(const CIPMol &mol, Atom *atom, bool atropisomerMode)
     : d_mol{mol} {
   PRECONDITION(atom, "cannot init digraph on a nullptr")
 
-  auto visit = std::vector<std::uint32_t>(d_mol.getNumAtoms());
-  visit[atom->getIdx()] = 1;
+  auto visit =
+      std::vector<std::uint64_t>((d_mol.getNumAtoms() + 63u) / 64u);
+  visit[atom->getIdx() / 64u] |=
+      std::uint64_t{1} << (atom->getIdx() % 64u);
 
   auto dist = 1;
   auto flags = 0x0;

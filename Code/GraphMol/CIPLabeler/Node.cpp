@@ -19,26 +19,28 @@ namespace RDKit {
 namespace CIPLabeler {
 
 Node *Node::newTerminalChild(int idx, Atom *atom, int flags) const {
-  int new_dist = flags & DUPLICATE ? d_visit[idx] : d_dist + 1;
-  std::vector<std::uint32_t> new_visit;
+  int new_dist = flags & DUPLICATE ? getVisitedDistance(idx) : d_dist + 1;
+  std::vector<std::uint64_t> new_visit;
 
   if (flags & BOND_DUPLICATE) {
     const auto &frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
     if (frac.isAveraged()) {
       return &dp_g->addNode(std::move(new_visit), atom, frac.value(),
-                            new_dist, flags);
+                            new_dist, flags, this);
     }
   }
 
   auto atomic_num = atom ? atom->getAtomicNum() : 1;
   return &dp_g->addNode(std::move(new_visit), atom, atomic_num, new_dist,
-                        flags);
+                        flags, this);
 }
 
-Node::Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
-           boost::rational<int> &&frac, int dist, int flags)
+Node::Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
+           boost::rational<int> &&frac, int dist, int flags,
+           const Node *parent)
     : dp_g{g},
       dp_atom{atom},
+      dp_parent{parent},
       d_dist{dist},
       d_atomic_num{std::move(frac)},
       d_flags{flags},
@@ -103,13 +105,35 @@ bool Node::isTerminal() const {
 
 bool Node::isExpanded() const { return d_flags & EXPANDED; }
 
-bool Node::isVisited(int idx) const { return d_visit[idx] != 0; }
+bool Node::isVisited(int idx) const {
+  const auto atom_idx = static_cast<unsigned int>(idx);
+  return d_visit[atom_idx / 64u] &
+         (std::uint64_t{1} << (atom_idx % 64u));
+}
+
+int Node::getVisitedDistance(int idx) const {
+  if (!isVisited(idx)) {
+    // A forward bond duplicate refers to the new child, which is not yet in
+    // this node's path. The previous visit array also returned zero here.
+    return 0;
+  }
+  for (const auto *node = this; node != nullptr; node = node->dp_parent) {
+    if (node->dp_atom != nullptr &&
+        node->dp_atom->getIdx() == static_cast<unsigned int>(idx)) {
+      return node->d_dist;
+    }
+  }
+  return 0;
+}
 
 Node *Node::newChild(int idx, Atom *atom) const {
   auto new_visit = d_visit;
-  new_visit[idx] = d_dist + 1;
+  const auto atom_idx = static_cast<unsigned int>(idx);
+  new_visit[atom_idx / 64u] |=
+      std::uint64_t{1} << (atom_idx % 64u);
   auto atomic_num = atom ? atom->getAtomicNum() : 1;
-  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0);
+  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, d_dist + 1, 0,
+                        this);
 }
 
 Node *Node::newBondDuplicateChild(int idx, Atom *atom) const {
