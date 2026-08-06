@@ -54,6 +54,9 @@ Node::Node(Digraph *g, std::vector<char> &&visit, Atom *atom,
       d_atomic_mass = table->getAtomicWeight(atomic_number);
     } else {
       d_atomic_mass = table->getMassForIsotope(atomic_number, isotope);
+      if (atomic_number != 0 && d_atomic_mass == 0.0) {
+        d_atomic_mass = isotope;
+      }
     }
   }
   if (d_visit.empty() || d_flags & DUPLICATE) {

@@ -28,6 +28,9 @@ Tetrahedral::Tetrahedral(const CIPMol &mol, Atom *focus)
   for (auto &nbr : mol.getNeighbors(focus)) {
     carriers.push_back(nbr);
   }
+  if (carriers.size() < 2 || carriers.size() > 4) {
+    return;
+  }
   if (carriers.size() < 4) {
     // Implicit H -- use the central atom instead of a dummy H
     carriers.push_back(focus);
@@ -38,9 +41,9 @@ Tetrahedral::Tetrahedral(const CIPMol &mol, Atom *focus)
     // than the implicit H.
     carriers.push_back(nullptr);
   }
-  POSTCONDITION(carriers.size() == 4, "configuration must have 4 carriers");
-
-  setCarriers(std::move(carriers));
+  if (carriers.size() == 4) {
+    setCarriers(std::move(carriers));
+  }
 };
 
 void Tetrahedral::setPrimaryLabel(Descriptor desc) {
@@ -79,6 +82,7 @@ bool Tetrahedral::hasPrimaryLabel() const {
 
 void Tetrahedral::resetPrimaryLabel() const {
   getFocus()->clearProp(common_properties::_CIPCode);
+  getFocus()->clearProp(common_properties::_CIPNeighborOrder);
 }
 
 Descriptor Tetrahedral::label(const Rules &comp) {
@@ -104,8 +108,8 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
   d_ranked_anchors.clear();
 
   // something not right!?! bad creation
-  if (edges.size() < 3) {
-    return Descriptor::ns;
+  if (getCarriers().size() != 4 || edges.size() < 3) {
+    return Descriptor::UNKNOWN;
   }
 
   auto priority = comp.sort(node, edges);
@@ -151,6 +155,9 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
       continue;
     }
 
+    if (idx < 0 || static_cast<size_t>(idx) >= ordered.size()) {
+      return Descriptor::UNKNOWN;
+    }
     auto atom = edge->getEnd()->getAtom();
     ordered[idx] = atom;
 
