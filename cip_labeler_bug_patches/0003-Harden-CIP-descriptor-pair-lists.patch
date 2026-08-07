@@ -1,4 +1,4 @@
-From 69e19fefb3cefe3e54131890f13123a12f98c658 Mon Sep 17 00:00:00 2001
+From 24e2e11af2eb041ad4c731469bbcbcb345483e45 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:21:04 -0400
 Subject: [PATCH 03/14] Harden CIP descriptor pair lists
@@ -9,7 +9,7 @@ Subject: [PATCH 03/14] Harden CIP descriptor pair lists
  2 files changed, 37 insertions(+), 5 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index c89ce2614..57ebd6101 100644
+index 4064b1972..3f9fc8b8b 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
 @@ -11,6 +11,7 @@
@@ -20,7 +20,7 @@ index c89ce2614..57ebd6101 100644
  #include <string>
  #include <vector>
  
-@@ -72,6 +73,10 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
+@@ -78,6 +79,10 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
      CHECK(descriptors.add(Descriptor::R));
      CHECK(descriptors.add(Descriptor::S));
    }
@@ -31,7 +31,7 @@ index c89ce2614..57ebd6101 100644
    SECTION("Pairing") {
      REQUIRE(descriptors.getPairing() == 0);
  
-@@ -137,6 +142,22 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
+@@ -143,6 +148,22 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
      CHECK(list1.toString() == "R:llu");
      CHECK(list2.toString() == "R:uul");
    }

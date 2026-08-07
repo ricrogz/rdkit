@@ -1,4 +1,4 @@
-From 92f275aa3ca1b9ce253400bb97cb8ba06530e69a Mon Sep 17 00:00:00 2001
+From f4e9734cf5109d198583384ec76aa17dbc8b1569 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:41:17 -0400
 Subject: [PATCH 13/14] Validate double-bond CIP carriers
@@ -9,10 +9,10 @@ Subject: [PATCH 13/14] Validate double-bond CIP carriers
  2 files changed, 38 insertions(+)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index fef66d1be..2ed53c1c2 100644
+index b94838505..203522639 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -884,6 +884,23 @@ TEST_CASE("Malformed stereo markers are ignored safely", "[accurateCIP]") {
+@@ -890,6 +890,23 @@ TEST_CASE("Malformed stereo markers are ignored safely", "[accurateCIP]") {
      CHECK(!bond->hasProp(common_properties::_CIPNeighborOrder));
    }
  

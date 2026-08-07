@@ -1,4 +1,4 @@
-From 15a41eabd7a70f8dd091b57995511f6cb9de89f1 Mon Sep 17 00:00:00 2001
+From 9b7f8a557d5b277c4a981d30701dfb71e67c8776 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:37:54 -0400
 Subject: [PATCH 07/14] Optimize CIP digraph storage and lookups
@@ -160,10 +160,10 @@ index c3c9f5fae..5ff385e0b 100644
    } else if (dp_atom != nullptr) {
      d_atomic_mass = dp_g->getMol().getAtomicMass(dp_atom);
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 413bb0b83..3ffed8902 100644
+index 22600155d..d4918dfbc 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -383,9 +383,12 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
+@@ -389,9 +389,12 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
  
      CIPLabeler::CIPMol cipmol(mol);
      Digraph graph(cipmol, cipmol.getAtom(0));
@@ -176,7 +176,7 @@ index 413bb0b83..3ffed8902 100644
      const auto terminal_nodes = graph.getNodes(cipmol.getAtom(chain_length - 1));
      REQUIRE(terminal_nodes.size() == 1);
      CHECK(terminal_nodes.front()->getDistance() == chain_length);
-@@ -395,6 +398,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
+@@ -401,6 +404,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
      auto mol = "C"_smiles;
      CIPLabeler::CIPMol cipmol(*mol);
      Digraph graph(cipmol, cipmol.getAtom(0));
@@ -184,7 +184,7 @@ index 413bb0b83..3ffed8902 100644
  
      constexpr auto max_node_count = 100000;
      for (auto i = 1; i < max_node_count; ++i) {
-@@ -402,6 +406,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
+@@ -408,6 +412,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
                      Node::IMPL_HYDROGEN);
      }
      CHECK(graph.getNumNodes() == max_node_count);

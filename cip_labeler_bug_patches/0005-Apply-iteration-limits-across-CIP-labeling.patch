@@ -1,4 +1,4 @@
-From 10efe29592ee739a1d26302ba24d041ce08f0b8b Mon Sep 17 00:00:00 2001
+From 629609c9312169d5f746b1aa65e94f189fe7f346 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:25:21 -0400
 Subject: [PATCH 05/14] Apply iteration limits across CIP labeling
@@ -222,10 +222,10 @@ index fe3c4cc4f..804271cbb 100644
    python::def(
        "AssignCIPLabels", assignCIPLabelsWrapHelper,
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index b6229f47b..985dc888c 100644
+index e284e6366..fe5e2e53f 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -258,6 +258,26 @@ $$$$
+@@ -264,6 +264,26 @@ $$$$
    }
  }
  
@@ -252,7 +252,7 @@ index b6229f47b..985dc888c 100644
  void check_incoming_edge_count(Node *root) {
    auto queue = std::list<Node *>({root});
  
-@@ -1539,7 +1559,9 @@ $$$$
+@@ -1567,7 +1587,9 @@ $$$$
    auto mol = v2::FileParsers::MolFromMolBlock(molBlock, params);
  
    REQUIRE(mol);

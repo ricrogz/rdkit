@@ -1,4 +1,4 @@
-From a35601b6cb3807db5be4be5df60d3ad6a0aa0276 Mon Sep 17 00:00:00 2001
+From 9f03f176893a4f79602fd853349753b06ff8a7a6 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:28 -0400
 Subject: [PATCH 02/14] Cache atomic mass during CIP expansion

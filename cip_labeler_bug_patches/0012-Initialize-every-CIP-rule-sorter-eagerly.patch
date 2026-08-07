@@ -1,4 +1,4 @@
-From 4068314f97a5b0725f9bb319522a316cc4ee3719 Mon Sep 17 00:00:00 2001
+From cf96a00cb2318466f3a269206fcabada4b775b36 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:40:51 -0400
 Subject: [PATCH 12/14] Initialize every CIP rule sorter eagerly
@@ -10,10 +10,10 @@ Subject: [PATCH 12/14] Initialize every CIP rule sorter eagerly
  3 files changed, 9 insertions(+), 12 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 73402e9bc..fef66d1be 100644
+index 9cc889018..b94838505 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -53,6 +53,11 @@ static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
+@@ -59,6 +59,11 @@ static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
  static_assert(!std::is_constructible_v<Digraph, const CIPMol &&, Atom *>);
  
  TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {

@@ -1,4 +1,4 @@
-From fe7692abde7874a2b17734fd404425ea08d57f25 Mon Sep 17 00:00:00 2001
+From b67f50b44d9a787ecd0b0d6c0094367565cc19a3 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 13:56:40 -0400
 Subject: [PATCH 12/14] Generalize CIP acceleration for symmetric ring systems

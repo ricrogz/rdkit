@@ -1,31 +1,18 @@
-From 4e6ec609a45c5d81ae80c4e7137593ef0f117a0a Mon Sep 17 00:00:00 2001
+From b8b3feb10a35041e754f52ec01b9f7f75161a1fd Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:19:57 -0400
 Subject: [PATCH 01/14] Initialize composite CIP rules eagerly
 
 ---
- Code/GraphMol/CIPLabeler/catch_tests.cpp | 37 ++++++------------------
- Code/GraphMol/CIPLabeler/rules/Rules.h   | 12 ++++----
- 2 files changed, 15 insertions(+), 34 deletions(-)
+ Code/GraphMol/CIPLabeler/catch_tests.cpp |  9 +++++++++
+ Code/GraphMol/CIPLabeler/rules/Rules.h   | 12 ++++++------
+ 2 files changed, 15 insertions(+), 6 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 99ed7bd34..a18af6281 100644
+index 99ed7bd34..dea4f6235 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -15,12 +15,6 @@
- 
- #include <strstream>
- 
--#ifdef RDK_TEST_MULTITHREADED
--#include <csignal>
--#include <thread>
--#include <chrono>
--#endif
--
- #include <RDGeneral/BoostStartInclude.h>
- #include <boost/algorithm/string.hpp>
- #include <RDGeneral/BoostEndInclude.h>
-@@ -42,12 +36,21 @@
+@@ -42,12 +42,21 @@
  #include "rules/Pairlist.h"
  #include "rules/Rule1a.h"
  #include "rules/Rule2.h"
@@ -47,35 +34,6 @@ index 99ed7bd34..a18af6281 100644
  std::string toBinaryString(PairList::pairing_t value) {
    return std::bitset<PairList::numPairingBits>(value).to_string();
  }
-@@ -782,28 +785,6 @@ M  END
-     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 100000),
-                     CIPLabeler::MaxIterationsExceeded);
-   }
--#ifdef RDK_TEST_MULTITHREADED
--  SECTION("Ctrl+c interruption") {
--    using namespace std::chrono_literals;
--
--    // create one thread for assignCIPLabels...
--    std::thread cgThread([&mol]() {
--      // give the calculation a while to run (~15 seconds on my laptop)
--      // but still make sure it won't run forever
--      constexpr size_t maxIterations = 8000000;
--      CIPLabeler::assignCIPLabels(*mol, maxIterations);
--    });
--    // ... then another one to raise SIGINT
--    std::thread interruptThread([]() {
--      // sleep for a bit to allow for a few iterations, but not enough to
--      // hit maxIterations and trigger the exception
--      std::this_thread::sleep_for(100ms);
--      std::raise(SIGINT);
--    });
--    cgThread.join();
--    interruptThread.join();
--  }
--#endif
- }
- 
- void testOneAtropIsomerMandP(std::string inputText, const std::string &expected,
 diff --git a/Code/GraphMol/CIPLabeler/rules/Rules.h b/Code/GraphMol/CIPLabeler/rules/Rules.h
 index 1d75c8d70..3c4ee2532 100644
 --- a/Code/GraphMol/CIPLabeler/rules/Rules.h

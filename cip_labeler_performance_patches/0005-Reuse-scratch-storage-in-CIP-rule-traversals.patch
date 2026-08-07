@@ -1,4 +1,4 @@
-From 0d26cafab2247a4b46a17a9812aaf9bb633bb059 Mon Sep 17 00:00:00 2001
+From a8db0c798a5f7dd32eb155f88f3f5d028c3a1380 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:05 -0400
 Subject: [PATCH 05/14] Reuse scratch storage in CIP rule traversals

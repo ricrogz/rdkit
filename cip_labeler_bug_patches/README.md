@@ -3,15 +3,17 @@
 This directory contains 14 ordered `git format-patch` files for the C++
 implementation under `Code/GraphMol/CIPLabeler`. They implement the
 correctness and robustness fixes identified as C++-1 through C++-19 in
-[`CIP_comparison.md`](../CIP_comparison.md). The series assumes serialized
-CIPLabeler calls throughout; it neither adds nor tests concurrent execution.
+[`CIP_comparison.md`](../CIP_comparison.md). CIPLabeler calls themselves must
+remain serialized. The series preserves master's `RDK_TEST_MULTITHREADED`
+Ctrl-C regression: one thread runs the sole CIPLabeler call while a second
+thread delivers SIGINT; it does not run overlapping labeler calls.
 
 ## Baseline and ordering
 
 - RDKit base commit: `e3eb92687579`
-- Expected tree after this series: `c018725bcb24b1b7cc99f00684ea2cf7d85c963d`
+- Expected tree after this series: `4768dee389b71b45fc0f98e8d6ce4214bf5c2f0c`
 - Reference endpoint used to generate the files:
-  `286f7ec6b4c61c6e6f405d88bf5ad19e9083153b`
+  `5324307d91ec6c33dc2883b1e1bddc1d1c14d3a0`
 - Apply the files in the order recorded in [`series`](series).
 - Apply this complete series before the performance series in
   `../cip_labeler_performance_patches`.
@@ -29,7 +31,7 @@ committer metadata; the resulting tree should match the tree ID above.
 
 | Patch | Report finding(s) | Change |
 |---|---|---|
-| `0001` | C++-2 | Eagerly constructs the composite `Rules` sorter instead of mutating a global `const` object on first use, verifies its lifetime sequentially, and removes the inapplicable threaded test path. |
+| `0001` | C++-2 | Eagerly constructs the composite `Rules` sorter instead of mutating a global `const` object on first use and verifies its lifetime sequentially. Existing master tests and their supporting includes are preserved unchanged. |
 | `0002` | C++-4 | Returns Rule 6 decisions with magnitude 2 so downstream code recognizes pseudoasymmetric decisions. |
 | `0003` | C++-13 | Makes long `PairList` inputs safe and avoids invalid full-width shifts. |
 | `0004` | C++-10 | Validates every Rule 4b priority group instead of repeatedly inspecting group zero. |

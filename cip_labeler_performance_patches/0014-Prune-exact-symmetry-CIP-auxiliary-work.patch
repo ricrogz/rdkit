@@ -1,4 +1,4 @@
-From 9d0a158af221b088e38708625c0aa38b9416e264 Mon Sep 17 00:00:00 2001
+From c857a95381b539ed422777bf2cce00b7a8042892 Mon Sep 17 00:00:00 2001
 From: Ricardo R-S <rodriguez@schrodinger.com>
 Date: Thu, 6 Aug 2026 16:36:05 -0400
 Subject: [PATCH 14/14] Prune exact-symmetry CIP auxiliary work
@@ -520,10 +520,10 @@ index bf1b93918..a6a947cf1 100644
                                 std::vector<unsigned int> &seen,
                                 unsigned int &generation) const;
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 329a3b936..732d73f02 100644
+index 78becdf20..48329b06b 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -545,6 +545,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
+@@ -550,6 +550,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
  
      CHECK(rule.getSorter()->prioritize(origin, edges).isUnique());
    }

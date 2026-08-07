@@ -1,4 +1,4 @@
-From bd6bf6544ae92567fac0a436242f29e932f04d4f Mon Sep 17 00:00:00 2001
+From 2178bd70ad85d51e75b75cb390c0bdb33a2aca60 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:26:22 -0400
 Subject: [PATCH 08/14] Add CIP labeling regression coverage
@@ -8,10 +8,10 @@ Subject: [PATCH 08/14] Add CIP labeling regression coverage
  1 file changed, 182 insertions(+)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 985dc888c..b1ac3eb2c 100644
+index fe5e2e53f..f154bf32c 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -20,6 +20,7 @@
+@@ -26,6 +26,7 @@
  #include <RDGeneral/BoostStartInclude.h>
  #include <boost/algorithm/string.hpp>
  #include <RDGeneral/BoostEndInclude.h>
@@ -19,7 +19,7 @@ index 985dc888c..b1ac3eb2c 100644
  
  #include <catch2/catch_all.hpp>
  
-@@ -481,6 +482,32 @@ TEST_CASE("Rule2", "[accurateCIP]") {
+@@ -487,6 +488,32 @@ TEST_CASE("Rule2", "[accurateCIP]") {
  
      CHECK(rule.getSorter()->prioritize(origin, edges).isUnique());
    }
@@ -52,7 +52,7 @@ index 985dc888c..b1ac3eb2c 100644
  }
  
  TEST_CASE("Tetrahedral assignment", "[accurateCIP]") {
-@@ -575,6 +602,7 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
+@@ -581,6 +608,7 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
      CHECK(atom1->getPropIfPresent(common_properties::_CIPCode, chirality));
      CHECK(chirality == "S");
      CHECK(!atom5->hasProp(common_properties::_CIPCode));
@@ -60,7 +60,7 @@ index 985dc888c..b1ac3eb2c 100644
    }
    SECTION("Assign bonds") {
      auto mol = R"(C\C=C\C=C/C)"_smiles;
-@@ -598,6 +626,160 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
+@@ -604,6 +632,160 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
      CHECK(!bond1->hasProp(common_properties::_CIPCode));
      CHECK(bond3->getPropIfPresent(common_properties::_CIPCode, stereo));
      CHECK(stereo == "Z");

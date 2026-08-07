@@ -1,4 +1,4 @@
-From 493cf5f9bbf6c45b398da0c2a79fe7e0b27d6da7 Mon Sep 17 00:00:00 2001
+From 6da52326f4b243bd6d2c60061cd50558b7b5f3ff Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 12:40:58 -0400
 Subject: [PATCH 11/14] Reuse CIP work across auxiliary reroots

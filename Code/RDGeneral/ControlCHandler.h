@@ -11,6 +11,7 @@
 #ifndef CONTROLCHANDLER_H
 #define CONTROLCHANDLER_H
 
+#include <atomic>
 #include <csignal>
 #include <stdexcept>
 
@@ -57,25 +58,28 @@ class ControlCHandler {
   ~ControlCHandler() {
     if (--d_nestingDepth == 0) {
       std::signal(SIGINT, d_prev_handler);
-      d_gotSignal = 0;
+      d_gotSignal.clear(std::memory_order_relaxed);
     }
   }
-  static bool getGotSignal() { return d_gotSignal != 0; }
+  static bool getGotSignal() {
+    return d_gotSignal.test(std::memory_order_relaxed);
+  }
   static void signalHandler(int signalNumber) {
     if (signalNumber == SIGINT) {
-      d_gotSignal = 1;
+      d_gotSignal.test_and_set(std::memory_order_relaxed);
       std::signal(SIGINT, d_prev_handler);
     }
   }
   static void reset() {
-    d_gotSignal = 0;
+    d_gotSignal.clear(std::memory_order_relaxed);
     std::signal(SIGINT, signalHandler);
   }
 
  private:
-  // sig_atomic_t is the standard type that may be read and written by an
-  // asynchronous signal handler in this otherwise single-threaded lifecycle.
-  inline static volatile std::sig_atomic_t d_gotSignal{0};
+  // Handler scope construction/destruction is serialized, but SIGINT may be
+  // delivered by another thread. atomic_flag is guaranteed lock-free and can
+  // therefore be touched safely by the asynchronous signal handler.
+  inline static std::atomic_flag d_gotSignal = ATOMIC_FLAG_INIT;
   inline static unsigned int d_nestingDepth{0};
   inline static void (*d_prev_handler)(int);
 };

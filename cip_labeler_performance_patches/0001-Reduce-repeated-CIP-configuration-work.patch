@@ -1,4 +1,4 @@
-From 2b55118a4f786970342958ebfc121de738bdb847 Mon Sep 17 00:00:00 2001
+From f3bed194bec58dee6dddb39a80ccbb842f92e00e Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:03 -0400
 Subject: [PATCH 01/14] Reduce repeated CIP configuration work

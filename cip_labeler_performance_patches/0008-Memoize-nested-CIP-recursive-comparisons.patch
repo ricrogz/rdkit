@@ -1,4 +1,4 @@
-From 869d6c2b99528e20abbba3e304de22206ef37c92 Mon Sep 17 00:00:00 2001
+From 056229f9c39725941b7e713e542eee0ffd4b79e2 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 10:42:03 -0400
 Subject: [PATCH 08/14] Memoize nested CIP recursive comparisons
@@ -10,10 +10,10 @@ Subject: [PATCH 08/14] Memoize nested CIP recursive comparisons
  3 files changed, 117 insertions(+), 5 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 3ffed8902..55ad3c9ce 100644
+index d4918dfbc..c0201d4f0 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -2075,3 +2075,18 @@ $$$$
+@@ -2103,3 +2103,18 @@ $$$$
      CHECK(ranked_anchors == std::vector<unsigned int>{0, Atom::NOATOM});
    }
  }

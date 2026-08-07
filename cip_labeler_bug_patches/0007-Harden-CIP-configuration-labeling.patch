@@ -1,4 +1,4 @@
-From 00173df68af4f1e6c93a849eec86da1ab49ccda6 Mon Sep 17 00:00:00 2001
+From 64be8902f9e826128d22389becc1180310c13c53 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:26:18 -0400
 Subject: [PATCH 07/14] Harden CIP configuration labeling

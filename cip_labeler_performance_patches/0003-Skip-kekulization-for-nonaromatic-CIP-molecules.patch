@@ -1,4 +1,4 @@
-From 1a6c2c1922ab031c0773a6d1c2386ed08fe71cfd Mon Sep 17 00:00:00 2001
+From e12ffaa3bff58ce6ddd653a40306cca8d5597377 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:38 -0400
 Subject: [PATCH 03/14] Skip kekulization for nonaromatic CIP molecules

@@ -1,4 +1,4 @@
-From 47f50106dc22bc9a75c0f487f304efea3c4775b5 Mon Sep 17 00:00:00 2001
+From e62d57c7a6fbe5272f6d4e6d47321b8f67634f2d Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 11:17:14 -0400
 Subject: [PATCH 09/14] Avoid exponential CIP work in symmetric ring chains

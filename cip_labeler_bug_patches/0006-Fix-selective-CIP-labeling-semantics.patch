@@ -1,4 +1,4 @@
-From e822af1973734f480979e5c2b0b4cab271600a38 Mon Sep 17 00:00:00 2001
+From 4b12df99925f87a1c403aa0fba2a3c10e91d023c Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:26:13 -0400
 Subject: [PATCH 06/14] Fix selective CIP labeling semantics

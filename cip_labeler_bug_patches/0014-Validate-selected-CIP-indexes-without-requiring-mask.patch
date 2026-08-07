@@ -1,4 +1,4 @@
-From 286f7ec6b4c61c6e6f405d88bf5ad19e9083153b Mon Sep 17 00:00:00 2001
+From 5324307d91ec6c33dc2883b1e1bddc1d1c14d3a0 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:42:53 -0400
 Subject: [PATCH 14/14] Validate selected CIP indexes without requiring mask
@@ -83,10 +83,10 @@ index 5d35a67ec..f7ac298b9 100644
   *   \param maxRecursiveIterations - maximum total number of recursive
   *      comparisons across the preliminary and full labeling passes. A value
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 2ed53c1c2..222cac1e9 100644
+index 203522639..50780eec4 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -772,15 +772,37 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
+@@ -778,15 +778,37 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
  
      boost::dynamic_bitset<> noBonds;
      boost::dynamic_bitset<> wrongAtoms(mol->getNumAtoms() + 1);

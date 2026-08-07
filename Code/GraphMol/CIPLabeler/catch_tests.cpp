@@ -19,6 +19,11 @@
 
 #include <strstream>
 
+#ifdef RDK_TEST_MULTITHREADED
+#include <thread>
+#include <chrono>
+#endif
+
 #include <RDGeneral/BoostStartInclude.h>
 #include <boost/algorithm/string.hpp>
 #include <RDGeneral/BoostEndInclude.h>
@@ -1369,7 +1374,29 @@ M  END
     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 100000),
                     CIPLabeler::MaxIterationsExceeded);
   }
+#ifdef RDK_TEST_MULTITHREADED
   SECTION("Ctrl+c interruption") {
+    using namespace std::chrono_literals;
+
+    // create one thread for assignCIPLabels...
+    std::thread cgThread([&mol]() {
+      // give the calculation a while to run (~15 seconds on my laptop)
+      // but still make sure it won't run forever
+      constexpr size_t maxIterations = 8000000;
+      CIPLabeler::assignCIPLabels(*mol, maxIterations);
+    });
+    // ... then another one to raise SIGINT
+    std::thread interruptThread([]() {
+      // sleep for a bit to allow for a few iterations, but not enough to
+      // hit maxIterations and trigger the exception
+      std::this_thread::sleep_for(100ms);
+      std::raise(SIGINT);
+    });
+    cgThread.join();
+    interruptThread.join();
+  }
+#endif
+  SECTION("Nested Ctrl+c interruption") {
     // A surrounding handler models the wrapper's handler and also verifies
     // that the nested handler in assignCIPLabels() observes the same signal.
     ControlCHandler handler;
