@@ -6,7 +6,7 @@ if(RDK_BUILD_MAEPARSER_SUPPORT OR RDK_BUILD_COORDGEN_SUPPORT)
     add_definitions(-DIN_MAEPARSER)
   endif()
 
-  find_package(maeparser QUIET)
+  find_package(maeparser REQUIRED)
 
   if(MAEPARSER_FORCE_BUILD OR (NOT maeparser_FOUND))
     if(NOT DEFINED MAEPARSER_DIR)
@@ -63,7 +63,7 @@ if(RDK_BUILD_COORDGEN_SUPPORT)
     add_definitions(-DIN_COORDGEN)
   endif(MSVC AND (NOT RDK_INSTALL_DLLS_MSVC))
 
-  find_package(coordgen QUIET)
+  find_package(coordgen REQUIRED)
   if(COORDGEN_FORCE_BUILD OR (NOT coordgen_FOUND))
     if(NOT DEFINED COORDGEN_DIR)
       set(COORDGEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/coordgen")

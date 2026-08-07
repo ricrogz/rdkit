@@ -330,7 +330,7 @@ if(RDK_BUILD_PYTHON_WRAPPERS)
   )
 
   if(WIN32 OR "${Py_ENABLE_SHARED}" STREQUAL "1")
-    target_link_libraries(rdkit_py_base INTERFACE ${Python3_LIBRARIES} )
+    target_link_libraries(rdkit_py_base INTERFACE Python3::Module )
   endif()
 
 
