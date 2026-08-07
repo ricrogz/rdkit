@@ -9,7 +9,10 @@
 //
 
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <memory>
+#include <stdexcept>
 
 #include <GraphMol/Fingerprints/MorganFingerprints.h>
 #include <GraphMol/SmilesParse/SmilesWrite.h>
@@ -546,6 +549,71 @@ void testSmilesSupplierConsistency() {
               multiMol->getProp<std::string>("Column_2"));
 }
 
+void testSDPropertyParsingConsistency() {
+  const std::string rdbase = getenv("RDBASE");
+  std::ifstream molStream(rdbase +
+                          "/Code/GraphMol/FileParsers/test_data/CH.mol");
+  std::string text{std::istreambuf_iterator<char>(molStream),
+                   std::istreambuf_iterator<char>()};
+  TEST_ASSERT(!text.empty());
+  text +=
+      "> invalid property header\n"
+      "ignored value\n"
+      "\n"
+      ">  <kept>\n"
+      "yes\n"
+      "\n"
+      "$$$$\n";
+
+  std::istringstream forwardStrm(text);
+  std::istringstream multiStrm(text);
+  ForwardSDMolSupplier forwardSup(&forwardStrm, false, true, true, true);
+  MultithreadedSDMolSupplier multiSup(&multiStrm, false, true, true, true);
+  std::unique_ptr<ROMol> forwardMol{forwardSup.next()};
+  std::unique_ptr<ROMol> multiMol{multiSup.next()};
+  TEST_ASSERT(forwardMol);
+  TEST_ASSERT(multiMol);
+  TEST_ASSERT(forwardMol->getProp<std::string>("kept") == "yes");
+  TEST_ASSERT(multiMol->getProp<std::string>("kept") ==
+              forwardMol->getProp<std::string>("kept"));
+}
+
+void testEarlyCloseWithFullQueues() {
+  std::string text;
+  for (unsigned int i = 0; i < 100; ++i) {
+    text += "C mol" + std::to_string(i) + "\n";
+  }
+  std::istringstream stream(text);
+  v2::FileParsers::MultithreadedMolSupplier::Parameters params;
+  params.numWriterThreads = 8;
+  params.sizeInputQueue = 1;
+  params.sizeOutputQueue = 1;
+  v2::FileParsers::SmilesMolSupplierParams parseParams;
+  parseParams.titleLine = false;
+  {
+    v2::FileParsers::MultithreadedSmilesMolSupplier supplier(
+        &stream, false, params, parseParams);
+    auto mol = supplier.next();
+    TEST_ASSERT(mol);
+  }
+}
+
+void testZeroCapacityRejected() {
+  std::istringstream stream("C mol\n");
+  v2::FileParsers::MultithreadedMolSupplier::Parameters params;
+  params.sizeOutputQueue = 0;
+  v2::FileParsers::SmilesMolSupplierParams parseParams;
+  parseParams.titleLine = false;
+  bool threw = false;
+  try {
+    v2::FileParsers::MultithreadedSmilesMolSupplier supplier(
+        &stream, false, params, parseParams);
+  } catch (const std::invalid_argument &) {
+    threw = true;
+  }
+  TEST_ASSERT(threw);
+}
+
 int main() {
   RDLog::InitLogs();
 
@@ -577,6 +645,18 @@ int main() {
 
   testSmilesSupplierConsistency();
   BOOST_LOG(rdErrorLog) << "Finished: testSmilesSupplierConsistency()\n";
+  BOOST_LOG(rdErrorLog) << "-----------------------------------------\n\n";
+
+  testSDPropertyParsingConsistency();
+  BOOST_LOG(rdErrorLog) << "Finished: testSDPropertyParsingConsistency()\n";
+  BOOST_LOG(rdErrorLog) << "-----------------------------------------\n\n";
+
+  testEarlyCloseWithFullQueues();
+  BOOST_LOG(rdErrorLog) << "Finished: testEarlyCloseWithFullQueues()\n";
+  BOOST_LOG(rdErrorLog) << "-----------------------------------------\n\n";
+
+  testZeroCapacityRejected();
+  BOOST_LOG(rdErrorLog) << "Finished: testZeroCapacityRejected()\n";
   BOOST_LOG(rdErrorLog) << "-----------------------------------------\n\n";
 
   /*

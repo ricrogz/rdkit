@@ -14,6 +14,7 @@
 
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace RDKit {
@@ -46,7 +47,7 @@ void MultithreadedSDMolSupplier::initFromSettings(
     const MolFileParserParams &parseParams) {
   MultithreadedMolSupplier::initFromSettings(takeOwnership, params);
   d_parseParams = parseParams;
-  df_processPropertyLists = true;
+  df_processPropertyLists.store(true, std::memory_order_relaxed);
   d_line = 0;
 }
 
@@ -73,16 +74,16 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
     std::swap(prevStr, currentStr);
     if (std::getline(*dp_inStream, currentStr)) {
       readAnyLine = true;
+      record += currentStr;
+      record.push_back('\n');
     }
-    record += currentStr + "\n";
     ++d_line;
   }
 
   // A truly empty stream is logical EOF. If getline() successfully read one
   // or more blank lines, preserve them as a null record, matching
   // ForwardSDMolSupplier.
-  if (record.find_first_not_of(" \t\r\n") == std::string::npos &&
-      !readAnyLine) {
+  if (!readAnyLine) {
     if (dp_inStream->eof() && d_lastReadRecordId == 0) {
       // Match ForwardSDMolSupplier's empty-input behavior. Do not set this
       // after a real record: the multithreaded supplier has already prefetched
@@ -93,25 +94,27 @@ bool MultithreadedSDMolSupplier::extractNextRecord(std::string &record,
     return false;
   }
 
-  ++d_lastReadRecordId;
-  index = d_lastReadRecordId;
+  index = ++d_lastReadRecordId;
   return true;
 }
 
 void MultithreadedSDMolSupplier::readMolProps(RWMol &mol,
                                               std::istringstream &inStream) {
   PRECONDITION(inStream, "no stream");
+  const bool processPropertyLists =
+      df_processPropertyLists.load(std::memory_order_relaxed);
   bool hasProp = false;
   bool warningIssued = false;
-  std::string tempStr;
-  std::string dlabel = "";
-  std::getline(inStream, tempStr);
+  std::string dlabel;
+  std::string inputLine;
+  std::getline(inStream, inputLine);
+  std::string_view tempStr = inputLine;
 
   // FIX: report files missing the $$$$ marker
   while (!inStream.eof() && !inStream.fail() && !tempStr.starts_with("$$$$")) {
-    tempStr = strip(tempStr);
-    if (tempStr != "") {
-      if (tempStr[0] == '>') {  // data header line: start of a data item
+    tempStr = FileParserUtils::strip(tempStr);
+    if (!tempStr.empty()) {
+      if (tempStr.front() == '>') {  // data header line: start of a data item
         // ignore all other crap and seek for for a data label enclosed
         // by '<' and '>'
         // FIX: "CTfile.pdf" (page 51) says that the data header line does not
@@ -120,51 +123,57 @@ void MultithreadedSDMolSupplier::readMolProps(RWMol &mol,
         // situation - so ignore such data items for now
         hasProp = true;
         warningIssued = false;
-        tempStr.erase(0, 1);             // remove the first ">" sign
-        size_t sl = tempStr.find("<");   // begin datalabel
-        size_t se = tempStr.rfind(">");  // end datalabel
-        if ((sl == std::string::npos) || (se == std::string::npos) ||
+        tempStr.remove_prefix(1);        // remove the first ">" sign
+        size_t sl = tempStr.find('<');   // begin datalabel
+        size_t se = tempStr.rfind('>');  // end datalabel
+        if ((sl == std::string_view::npos) || (se == std::string_view::npos) ||
             (se == (sl + 1))) {
           // we either do not have a data label or the label is empty
           // no data label ignore until next data item
           // i.e. until we hit a blank line
-          std::getline(inStream, tempStr);
-          std::string stmp = strip(tempStr);
-          while (stmp.length() != 0) {
-            std::getline(inStream, tempStr);
+          std::getline(inStream, inputLine);
+          tempStr = inputLine;
+          auto stmp = FileParserUtils::strip(tempStr);
+          while (!stmp.empty()) {
+            std::getline(inStream, inputLine);
+            tempStr = inputLine;
             if (inStream.eof()) {
               throw FileParseException("End of data field name not found");
             }
+            stmp = FileParserUtils::strip(tempStr);
           }
         } else {
-          dlabel = tempStr.substr(sl + 1, se - sl - 1);
+          dlabel = std::string(tempStr.substr(sl + 1, se - sl - 1));
           // we know the label - now read in the relevant properties
           // until we hit a blank line
-          std::getline(inStream, tempStr);
+          std::getline(inStream, inputLine);
+          tempStr = inputLine;
 
-          std::string prop = "";
-          std::string stmp = strip(tempStr);
+          std::string prop;
+          auto stmp = FileParserUtils::strip(tempStr);
           int nplines = 0;  // number of lines for this property
-          while (stmp.length() != 0 || tempStr[0] == ' ' ||
-                 tempStr[0] == '\t') {
+          while (!stmp.empty() ||
+                 (!tempStr.empty() &&
+                  (tempStr.front() == ' ' || tempStr.front() == '\t'))) {
             nplines++;
             if (nplines > 1) {
               prop += "\n";
             }
             // take off \r if it's still in the property:
-            if (tempStr[tempStr.length() - 1] == '\r') {
-              tempStr.erase(tempStr.length() - 1);
+            if (tempStr.back() == '\r') {
+              tempStr.remove_suffix(1);
             }
-            prop += tempStr;
-            // erase tempStr in case the file does not end with a carrier
+            prop.append(tempStr);
+            // erase inputLine in case the file does not end with a carriage
             // return (we will end up in an infinite loop if we don't do
             // this and we do not check for EOF in this while loop body)
-            tempStr.erase();
-            std::getline(inStream, tempStr);
-            stmp = strip(tempStr);
+            inputLine.clear();
+            std::getline(inStream, inputLine);
+            tempStr = inputLine;
+            stmp = FileParserUtils::strip(tempStr);
           }
           mol.setProp(dlabel, prop);
-          if (df_processPropertyLists) {
+          if (processPropertyLists) {
             // apply this as an atom property list if that's appropriate
             FileParserUtils::processMolPropertyList(mol, dlabel);
           }
@@ -194,7 +203,8 @@ void MultithreadedSDMolSupplier::readMolProps(RWMol &mol,
         }
       }
     }
-    std::getline(inStream, tempStr);
+    std::getline(inStream, inputLine);
+    tempStr = inputLine;
   }
 }
 

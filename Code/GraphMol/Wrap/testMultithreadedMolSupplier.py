@@ -213,10 +213,11 @@ class TestCase(unittest.TestCase):
         with self.subTest(content=content):
           with open(fileN, 'wb') as tmp:
             tmp.write(content)
-      singleMols = list(Chem.SmilesMolSupplier(fileN, titleLine=False))
-      multithreadedMols = list(Chem.MultithreadedSmilesMolSupplier(fileN, titleLine=False))
-      self.assertEqual(singleMols, [])
-      self.assertEqual(multithreadedMols, singleMols)
+          singleMols = list(Chem.SmilesMolSupplier(fileN, titleLine=False))
+          multithreadedMols = list(
+            Chem.MultithreadedSmilesMolSupplier(fileN, titleLine=False))
+          self.assertEqual(singleMols, [])
+          self.assertEqual(multithreadedMols, singleMols)
 
 
 if __name__ == '__main__':

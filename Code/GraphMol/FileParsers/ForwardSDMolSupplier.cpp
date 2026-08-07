@@ -104,6 +104,7 @@ void ForwardSDMolSupplier::readMolProps(ROMol &mol) {
             if (dp_inStream->eof()) {
               throw FileParseException("End of data field name not found");
             }
+            stmp = FileParserUtils::strip(tempStr);
           }
         } else {
           dlabel = tempStr.substr(sl + 1, se - sl - 1);

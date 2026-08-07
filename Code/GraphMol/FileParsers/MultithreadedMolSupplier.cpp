@@ -30,63 +30,30 @@ void MultithreadedMolSupplier::initFromSettings(bool takeOwnership,
 }
 
 void MultithreadedMolSupplier::close() {
+  const std::lock_guard<std::mutex> lifecycleLock(d_lifecycleMutex);
   df_forceStop = true;
 
-  // close() is called from the destructor, and will be
-  // triggered if an exception is thrown. If this happens,
-  // the queues might not be initialized, so make sure
-  // they are initialized before dereferencing them.
+  // Mark both queues done before joining. This wakes consumers as well as
+  // producers, and future pushes are rejected instead of being enqueued.
+  if (d_inputQueue) {
+    d_inputQueue->setDone();
+  }
   if (d_outputQueue) {
     d_outputQueue->setDone();
-  }
-
-  if (df_started) {
-    if (d_inputQueue) {
-      // Clear the queues until they are empty
-      //  d_inputQueue->clear is not thread-safe
-      std::tuple<std::string, unsigned int, unsigned int> r;
-      while (d_inputQueue->pop(r)) {
-      }
-    }
-    // clear the output queues, they might be full
-    //  and blocking the writer threads, note
-    //  that while ending threads the writers may
-    //  put a few more items back in the queue
-    if (d_outputQueue) {
-      std::tuple<RWMol *, std::string, unsigned int> mol_r;
-      while (d_outputQueue->pop(mol_r)) {
-        delete std::get<0>(mol_r);
-      }
-    }
   }
 
   endThreads();
 
-  // notify the queue again that it is done in case
-  //  anyone is waiting on it
-  if (d_outputQueue) {
-    d_outputQueue->setDone();
-  }
-
-  // destroy all objects in the input and output queues
-  //  and anything missed put in the queues while
-  //  the threads were endings
+  // Threads have stopped, so queue storage can now be destroyed safely.
   if (d_inputQueue) {
     d_inputQueue->clear();
   }
-
   if (d_outputQueue) {
-    // destroy all objects in the output queue
-    std::tuple<RWMol *, std::string, unsigned int> r;
-    while (d_outputQueue->pop(r)) {
-      delete std::get<0>(r);
-    }
+    d_outputQueue->clear();
   }
 
-  // close external streams if any
-  //  destructors are called child to parent, however the threads
-  //  need to be ended before shutting down streams, so override this
-  //  in the child class.
+  // Derived destructors call close() while their parsing state is still alive;
+  // only release the input stream after every worker has stopped.
   closeStreams();
   df_started = false;
 }
@@ -103,84 +70,131 @@ void MultithreadedMolSupplier::closeStreams() {
 void MultithreadedMolSupplier::reader() {
   std::string record;
   unsigned int lineNum, index;
-  while (!df_forceStop && extractNextRecord(record, lineNum, index)) {
-    if (readCallback) {
-      try {
-        record = readCallback(record, index);
-      } catch (std::exception &e) {
-        BOOST_LOG(rdErrorLog)
-            << "Read callback exception: " << e.what() << std::endl;
+  try {
+    while (!df_forceStop && extractNextRecord(record, lineNum, index)) {
+      const auto callback =
+          std::atomic_load_explicit(&d_readCallback, std::memory_order_acquire);
+      if (callback) {
+        try {
+          record = (*callback)(record, index);
+        } catch (const std::exception &e) {
+          BOOST_LOG(rdErrorLog)
+              << "Read callback exception: " << e.what() << std::endl;
+        } catch (...) {
+          BOOST_LOG(rdErrorLog)
+              << "Unknown read callback exception" << std::endl;
+        }
       }
+      inputRecord_t inputRecord{std::move(record), lineNum, index};
+      if (df_forceStop || !d_inputQueue->push(std::move(inputRecord))) {
+        break;
+      }
+      ++d_readRecordCount;
     }
-    auto r = std::make_tuple(record, lineNum, index);
-    if (!df_forceStop) {
-      d_inputQueue->push(r);
-    }
+  } catch (const std::exception &e) {
+    BOOST_LOG(rdErrorLog) << "Reader thread exception: " << e.what()
+                          << std::endl;
+  } catch (...) {
+    BOOST_LOG(rdErrorLog) << "Unknown reader thread exception" << std::endl;
   }
-  df_readerDone = true;
+  df_readerDone.store(true, std::memory_order_release);
   d_inputQueue->setDone();
 }
 
 void MultithreadedMolSupplier::writer() {
-  std::tuple<std::string, unsigned int, unsigned int> r;
-  while (!df_forceStop && d_inputQueue->pop(r)) {
-    try {
-      auto mol = processMoleculeRecord(std::get<0>(r), std::get<1>(r));
-      if (!df_forceStop && mol && writeCallback) {
-        writeCallback(*mol, std::get<0>(r), std::get<2>(r));
+  try {
+    inputRecord_t inputRecord;
+    while (!df_forceStop && d_inputQueue->pop(inputRecord)) {
+      if (df_forceStop.load(std::memory_order_relaxed)) {
+        break;
       }
-      auto temp = std::tuple<RWMol *, std::string, unsigned int>{
-          mol.release(), std::get<0>(r), std::get<2>(r)};
-
-      d_outputQueue->push(temp);
-    } catch (...) {
-      // fill the queue wih a null value
-      auto nullValue = std::tuple<RWMol *, std::string, unsigned int>{
-          nullptr, std::get<0>(r), std::get<2>(r)};
-      d_outputQueue->push(nullValue);
+      try {
+        auto mol = processMoleculeRecord(std::get<0>(inputRecord),
+                                         std::get<1>(inputRecord));
+        const auto callback = std::atomic_load_explicit(
+            &d_writeCallback, std::memory_order_acquire);
+        if (!df_forceStop && mol && callback) {
+          (*callback)(*mol, std::get<0>(inputRecord), std::get<2>(inputRecord));
+        }
+        outputRecord_t outputRecord{std::move(mol),
+                                    std::move(std::get<0>(inputRecord)),
+                                    std::get<2>(inputRecord)};
+        if (!d_outputQueue->push(std::move(outputRecord))) {
+          break;
+        }
+      } catch (...) {
+        // Preserve one output entry per input record, including parse and
+        // write-callback failures.
+        outputRecord_t nullRecord{nullptr, std::move(std::get<0>(inputRecord)),
+                                  std::get<2>(inputRecord)};
+        if (!d_outputQueue->push(std::move(nullRecord))) {
+          break;
+        }
+      }
     }
+  } catch (const std::exception &e) {
+    df_forceStop.store(true, std::memory_order_release);
+    d_inputQueue->setDone();
+    d_outputQueue->setDone();
+    BOOST_LOG(rdErrorLog) << "Writer thread exception: " << e.what()
+                          << std::endl;
+  } catch (...) {
+    df_forceStop.store(true, std::memory_order_release);
+    d_inputQueue->setDone();
+    d_outputQueue->setDone();
+    BOOST_LOG(rdErrorLog) << "Unknown writer thread exception" << std::endl;
   }
 
-  // Protect the shared writer-thread counter.
-  // Note that d_threadEndCounter starts at 1, so that the last thread
-  // to finish will set the output queue to done.
-  // We can't use d_writerThreads.size() here because for the case
-  // of many threads and a small number of records, some threads may
-  // finish before others have started.
-  d_threadCounterMutex.lock();
-  if (d_threadEndCounter < d_params.numWriterThreads) {
-    ++d_threadEndCounter;
-    d_threadCounterMutex.unlock();
-  } else {
-    // Here we need to unlock the threadCounterMutex before we setDone on the
-    //  outputQueue.  This causes a notification to the queue which may
-    //  actually have elements in it.  This notification may unblock the queue
-    //  which allows waiting threads to get their last attempt at adding to it
-    //  which will end up here and deadlock.
-    d_threadCounterMutex.unlock();
+  const auto finishedWriterCount =
+      d_finishedWriterCount.fetch_add(1, std::memory_order_relaxed) + 1;
+  if (finishedWriterCount == d_params.numWriterThreads) {
     d_outputQueue->setDone();
   }
 }
 
 std::unique_ptr<RWMol> MultithreadedMolSupplier::next() {
-  if (!df_started) {
-    df_started = true;
-    startThreads();
-  }
-  std::tuple<RWMol *, std::string, unsigned int> r;
-  if (!df_forceStop && d_outputQueue->pop(r)) {
-    d_lastItemText = std::get<1>(r);
-    d_lastReturnedRecordId = std::get<2>(r);
-    std::unique_ptr<RWMol> res{std::get<0>(r)};
-    if (res && nextCallback) {
+  const std::lock_guard<std::mutex> nextLock(d_nextMutex);
+  {
+    const std::lock_guard<std::mutex> lifecycleLock(d_lifecycleMutex);
+    if (!df_started && !df_forceStop) {
+      df_started = true;
       try {
-        nextCallback(*res, *this);
+        startThreads();
+      } catch (...) {
+        df_forceStop = true;
+        d_inputQueue->setDone();
+        d_outputQueue->setDone();
+        endThreads();
+        df_started = false;
+        throw;
+      }
+    }
+  }
+
+  outputRecord_t outputRecord;
+  if (!df_forceStop && d_outputQueue->pop(outputRecord)) {
+    {
+      const std::lock_guard<std::mutex> itemTextLock(d_lastItemTextMutex);
+      d_lastItemText = std::move(std::get<1>(outputRecord));
+    }
+    d_lastRecordId.store(std::get<2>(outputRecord), std::memory_order_release);
+    auto res = std::move(std::get<0>(outputRecord));
+    const auto callback =
+        std::atomic_load_explicit(&d_nextCallback, std::memory_order_acquire);
+    if (res && callback) {
+      try {
+        (*callback)(*res, *this);
       } catch (...) {
         // Ignore exception and proceed with mol as is.
       }
     }
-    ++d_returnedCount;
+    d_returnedRecordCount.fetch_add(1, std::memory_order_release);
     return res;
+  }
+  if (!df_forceStop && d_returnedRecordCount.load(std::memory_order_acquire)) {
+    // A failed pop after natural worker completion is a physical EOF read,
+    // not a null molecule record. Forward-iterator wrappers must suppress it.
+    df_eofHitOnRead.store(true, std::memory_order_release);
   }
   return nullptr;
 }
@@ -196,43 +210,88 @@ void MultithreadedMolSupplier::endThreads() {
   // stop the writers before stopping the readers
   //  otherwise there might be a deadlock
   for (auto &thread : d_writerThreads) {
-    thread.join();
+    if (thread.joinable()) {
+      thread.join();
+    }
   }
-  d_readerThread.join();
+  if (d_readerThread.joinable()) {
+    d_readerThread.join();
+  }
 }
 
 void MultithreadedMolSupplier::startThreads() {
+  // Reserve before any thread starts so vector allocation cannot fail while
+  // worker threads are already running.
+  d_writerThreads.reserve(d_params.numWriterThreads);
   // run the reader function in a separate thread
   d_readerThread = std::thread(&MultithreadedMolSupplier::reader, this);
   // run the writer function in separate threads
   for (unsigned int i = 0; i < d_params.numWriterThreads; i++) {
-    d_writerThreads.emplace_back(
-        std::thread(&MultithreadedMolSupplier::writer, this));
+    d_writerThreads.emplace_back(&MultithreadedMolSupplier::writer, this);
   }
 }
 
-bool MultithreadedMolSupplier::atEnd() {
-  // Check reader completion first. Its set to 'done' happens after all
-  // updates to d_lastReadRecordId and all input-queue pushes, so a true
-  // value guarantees that the record count below is final.
-  if (!df_readerDone) {
+bool MultithreadedMolSupplier::isAtEnd() const {
+  if (df_forceStop.load(std::memory_order_acquire)) {
+    return true;
+  }
+  // The reader increments its count after every successful input-queue push;
+  // the release store publishes the final value. The returned count avoids
+  // depending on writer-exit timing once the final output has been consumed.
+  if (!df_readerDone.load(std::memory_order_acquire)) {
     return false;
   }
-  return d_returnedCount == d_lastReadRecordId;
+  return d_returnedRecordCount.load(std::memory_order_acquire) ==
+         d_readRecordCount;
 }
 
-bool MultithreadedMolSupplier::getEOFHitOnRead() {
-  // Do not return true until the output queue is empty,
-  // otherwise the Python wrapper will drop the queued mols.
-  return df_eofHitOnRead.load() && atEnd();
+bool MultithreadedMolSupplier::atEnd() { return isAtEnd(); }
+
+bool MultithreadedMolSupplier::getEOFHitOnRead() const {
+  // Delaying the EOF flag until all output is consumed prevents forward
+  // iterators from discarding a molecule that the reader prefetched before
+  // discovering EOF.
+  if (df_forceStop.load(std::memory_order_acquire) || !isAtEnd()) {
+    return false;
+  }
+  return !df_forceStop.load(std::memory_order_acquire) &&
+         df_eofHitOnRead.load(std::memory_order_acquire);
 }
 
 unsigned int MultithreadedMolSupplier::getLastRecordId() const {
-  return d_lastReturnedRecordId;
+  return d_lastRecordId.load(std::memory_order_acquire);
 }
 
 std::string MultithreadedMolSupplier::getLastItemText() const {
+  const std::lock_guard<std::mutex> itemTextLock(d_lastItemTextMutex);
   return d_lastItemText;
+}
+
+void MultithreadedMolSupplier::setNextCallback(nextCallBackFn_t cb) {
+  std::shared_ptr<const nextCallBackFn_t> callback;
+  if (cb) {
+    callback = std::make_shared<nextCallBackFn_t>(std::move(cb));
+  }
+  std::atomic_store_explicit(&d_nextCallback, std::move(callback),
+                             std::memory_order_release);
+}
+
+void MultithreadedMolSupplier::setWriteCallback(writeCallBackFn_t cb) {
+  std::shared_ptr<const writeCallBackFn_t> callback;
+  if (cb) {
+    callback = std::make_shared<writeCallBackFn_t>(std::move(cb));
+  }
+  std::atomic_store_explicit(&d_writeCallback, std::move(callback),
+                             std::memory_order_release);
+}
+
+void MultithreadedMolSupplier::setReadCallback(readCallBackFn_t cb) {
+  std::shared_ptr<const readCallBackFn_t> callback;
+  if (cb) {
+    callback = std::make_shared<readCallBackFn_t>(std::move(cb));
+  }
+  std::atomic_store_explicit(&d_readCallback, std::move(callback),
+                             std::memory_order_release);
 }
 
 void MultithreadedMolSupplier::reset() {

@@ -16,6 +16,7 @@
 
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 using tokenizer = boost::tokenizer<boost::char_separator<char>>;
@@ -126,10 +127,9 @@ bool MultithreadedSmilesMolSupplier::extractNextRecord(std::string &record,
     return false;
   }
 
-  record = tempStr;
+  record = std::move(tempStr);
   lineNum = d_line;
-  ++d_lastReadRecordId;
-  index = d_lastReadRecordId;
+  index = ++d_lastReadRecordId;
   return true;
 }
 

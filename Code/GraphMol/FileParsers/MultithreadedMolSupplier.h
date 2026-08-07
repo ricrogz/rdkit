@@ -46,10 +46,11 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   using writeCallBackFn_t =
       std::function<void(RWMol &, const std::string &, unsigned int)>;
 
-  using inputQueue_t =
-      ConcurrentQueue<std::tuple<std::string, unsigned int, unsigned int>>;
-  using outputQueue_t =
-      ConcurrentQueue<std::tuple<RWMol *, std::string, unsigned int>>;
+  using inputRecord_t = std::tuple<std::string, unsigned int, unsigned int>;
+  using outputRecord_t =
+      std::tuple<std::unique_ptr<RWMol>, std::string, unsigned int>;
+  using inputQueue_t = ConcurrentQueue<inputRecord_t>;
+  using outputQueue_t = ConcurrentQueue<outputRecord_t>;
 
   struct Parameters {
     unsigned int numWriterThreads = 1;
@@ -72,9 +73,9 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   //! returns true when all records have been read from the supplier
   bool atEnd() final;
 
-  //! included for the interface. Python wrappers check this
-  //! each time next() is called.  It is not used in the C++ code.
-  bool getEOFHitOnRead();
+  //! indicates that the most recent null result was caused by physical EOF
+  //! rather than by a malformed record
+  virtual bool getEOFHitOnRead() const;
 
   //! returns the record id of the last extracted item
   //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
@@ -93,7 +94,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
     place
 
    */
-  void setNextCallback(nextCallBackFn_t cb) { nextCallback = cb; }
+  void setNextCallback(nextCallBackFn_t cb);
 
   //! sets the callback to be applied to molecules after they are processed, but
   ///! before they are written to the output queue
@@ -102,7 +103,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
     to the string record, and an unsigned int record id. This can modify the
     molecule in place
   */
-  void setWriteCallback(writeCallBackFn_t cb) { writeCallback = cb; }
+  void setWriteCallback(writeCallBackFn_t cb);
 
   //! sets the callback to be applied to input text records before they are
   ///! added to the input queue
@@ -110,7 +111,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
     \param cb: a function that takes a const reference to the string record and
     an unsigned int record id and returns the modified string record
   */
-  void setReadCallback(readCallBackFn_t cb) { readCallback = cb; }
+  void setReadCallback(readCallBackFn_t cb);
 
   //! not yet implemented
   void init() final{};
@@ -129,8 +130,8 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   virtual std::unique_ptr<RWMol> processMoleculeRecord(
       const std::string &record, unsigned int lineNum) = 0;
 
-  //!< stores last extracted record id
-  std::atomic<unsigned int> d_lastReadRecordId = 0;
+  //!< stores the id of the last record read by the reader thread
+  unsigned int d_lastReadRecordId = 0;
 
   std::atomic<bool> df_eofHitOnRead = false;
 
@@ -154,6 +155,9 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   //! finalizes the reader and writer threads
   void endThreads();
 
+  //! returns whether all reader-published records have been returned
+  bool isAtEnd() const;
+
   //! reads lines from input stream to populate the input queue
   void reader();
 
@@ -174,18 +178,25 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   std::atomic<bool> df_forceStop = false;
   std::atomic<bool> df_readerDone = false;
 
-  std::mutex d_threadCounterMutex;
-  unsigned int d_threadEndCounter{1};        //!< thread counter
+  size_t d_readRecordCount = 0;  //!< only written by the reader thread
+  std::atomic<size_t> d_returnedRecordCount{0};
+
+  std::atomic<unsigned int> d_finishedWriterCount{0};
   std::vector<std::thread> d_writerThreads;  //!< vector writer threads
   std::thread d_readerThread;                //!< single reader thread
 
-  std::string d_lastItemText;               //!< stores last extracted record
-  unsigned int d_lastReturnedRecordId = 0;  //!< stores last extracted record id
-  unsigned int d_returnedCount = 0;
+  std::mutex d_lifecycleMutex;
+  std::mutex d_nextMutex;
+  mutable std::mutex d_lastItemTextMutex;
+  std::string d_lastItemText;  //!< stores last extracted record
+  std::atomic<unsigned int> d_lastRecordId{0};
 
-  readCallBackFn_t readCallback = nullptr;
-  nextCallBackFn_t nextCallback = nullptr;
-  writeCallBackFn_t writeCallback = nullptr;
+  // Access these only through std::atomic_load/store for shared_ptr. This is
+  // supported by older standard libraries that do not provide the C++20
+  // std::atomic<std::shared_ptr<T>> specialization.
+  std::shared_ptr<const readCallBackFn_t> d_readCallback;
+  std::shared_ptr<const nextCallBackFn_t> d_nextCallback;
+  std::shared_ptr<const writeCallBackFn_t> d_writeCallback;
 };
 }  // namespace FileParsers
 }  // namespace v2
