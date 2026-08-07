@@ -1,11 +1,11 @@
-From b9abe6a48adea8c5ab30f249b68db271cb340fc9 Mon Sep 17 00:00:00 2001
+From 8cd41fe7c60b9b6ea89a7c63a17671b06887e6f9 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 12:03:39 -0400
-Subject: [PATCH] Accelerate CIP labeling in highly cyclic stereocages
+Subject: [PATCH 10/14] Accelerate CIP labeling in highly cyclic stereocages
 
 ---
  Code/GraphMol/CIPLabeler/CIPLabeler.cpp       |  81 +++++--
- Code/GraphMol/CIPLabeler/CIPMol.cpp           |  71 ++++++
+ Code/GraphMol/CIPLabeler/CIPMol.cpp           |  73 ++++++
  Code/GraphMol/CIPLabeler/CIPMol.h             |   9 +
  Code/GraphMol/CIPLabeler/CMakeLists.txt       |   4 +-
  Code/GraphMol/CIPLabeler/Descriptor.h         |  31 +++
@@ -14,9 +14,9 @@ Subject: [PATCH] Accelerate CIP labeling in highly cyclic stereocages
  Code/GraphMol/CIPLabeler/Edge.cpp             |  22 +-
  Code/GraphMol/CIPLabeler/Node.cpp             |  59 ++++-
  Code/GraphMol/CIPLabeler/Node.h               |  15 +-
- Code/GraphMol/CIPLabeler/Sort.cpp             |  31 ++-
+ Code/GraphMol/CIPLabeler/Sort.cpp             |  29 ++-
  Code/GraphMol/CIPLabeler/Sort.h               |   2 +
- Code/GraphMol/CIPLabeler/catch_tests.cpp      | 154 +++++++++++-
+ Code/GraphMol/CIPLabeler/catch_tests.cpp      | 164 ++++++++++++-
  Code/GraphMol/CIPLabeler/rules/Rule1a.cpp     |   4 +-
  Code/GraphMol/CIPLabeler/rules/Rule1b.cpp     |   4 +-
  Code/GraphMol/CIPLabeler/rules/Rule2.cpp      |   2 +-
@@ -34,10 +34,11 @@ Subject: [PATCH] Accelerate CIP labeling in highly cyclic stereocages
  Code/GraphMol/CIPLabeler/rules/Rule6.h        |   3 +
  .../CIPLabeler/rules/SequenceRule.cpp         | 221 ++++++++++++++++--
  Code/GraphMol/CIPLabeler/rules/SequenceRule.h |  25 +-
- 30 files changed, 909 insertions(+), 104 deletions(-)
+ Code/RDGeneral/ControlCHandler.h              |  35 ++-
+ 31 files changed, 942 insertions(+), 116 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index 361252496..2772c4375 100644
+index cdb5bb1a9..3acf1e5b3 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -135,7 +135,19 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
@@ -142,7 +143,7 @@ index 361252496..2772c4375 100644
    }
  
    return true;
-@@ -330,9 +363,9 @@ void validateSelection(const boost::dynamic_bitset<> &selection,
+@@ -332,9 +365,9 @@ void validateSelection(const boost::dynamic_bitset<> &selection,
         index = selection.find_next(index)) {
      if (index >= expectedSize) {
        std::ostringstream msg;
@@ -156,7 +157,7 @@ index 361252496..2772c4375 100644
      }
    }
 diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
-index 5e05632cb..c53e50258 100644
+index 5e05632cb..3d478df20 100644
 --- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
 @@ -11,9 +11,11 @@
@@ -171,7 +172,7 @@ index 5e05632cb..c53e50258 100644
  
  #include "CIPMol.h"
  
-@@ -126,6 +128,75 @@ bool CIPMol::isAcyclicBranchWithoutConfiguration(Bond *bond,
+@@ -126,6 +128,77 @@ bool CIPMol::isAcyclicBranchWithoutConfiguration(Bond *bond,
    return !containsFocus;
  }
  
@@ -214,6 +215,8 @@ index 5e05632cb..c53e50258 100644
 +  params.recursionPossible = false;
 +  params.uniquify = false;
 +  params.maxMatches = 1;
++  // CIPLabeler comparison caches and callback counters are intentionally
++  // single-threaded, so the nested matcher must remain serial as well.
 +  params.numThreads = 1;
 +  params.useChirality = false;
 +  params.extraAtomCheckOverridesDefaultCheck = true;
@@ -783,15 +786,13 @@ index 2d510dad8..30a25f017 100644
  
    std::vector<Edge *> d_edges;
 diff --git a/Code/GraphMol/CIPLabeler/Sort.cpp b/Code/GraphMol/CIPLabeler/Sort.cpp
-index 69657fe72..9fa79d984 100644
+index 69657fe72..468212543 100644
 --- a/Code/GraphMol/CIPLabeler/Sort.cpp
 +++ b/Code/GraphMol/CIPLabeler/Sort.cpp
-@@ -12,13 +12,25 @@
+@@ -12,13 +12,23 @@
  #include "Sort.h"
  #include "rules/SequenceRule.h"
  
-+#include <atomic>
-+
 +#include <RDGeneral/ControlCHandler.h>
 +
  namespace RDKit {
@@ -800,7 +801,7 @@ index 69657fe72..9fa79d984 100644
 -Sort::Sort(const SequenceRule *comparator) : d_rules{comparator} {}
 +namespace {
 +std::uint64_t nextSortCacheId() {
-+  static std::atomic<std::uint64_t> nextId{0};
++  static std::uint64_t nextId = 0;
 +  return ++nextId;
 +}
 +}  // namespace
@@ -814,7 +815,7 @@ index 69657fe72..9fa79d984 100644
  
  const std::vector<const SequenceRule *> &Sort::getRules() const {
    return d_rules;
-@@ -27,6 +39,17 @@ const std::vector<const SequenceRule *> &Sort::getRules() const {
+@@ -27,6 +37,17 @@ const std::vector<const SequenceRule *> &Sort::getRules() const {
  Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
                            bool deep) const {
    const SequenceRule::ComparisonSession comparisonSession;
@@ -832,7 +833,7 @@ index 69657fe72..9fa79d984 100644
    bool unique = true;
    int numPseudoAsym = 0;
  
-@@ -49,7 +72,9 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
+@@ -49,7 +70,9 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
      }
    }
  
@@ -864,10 +865,41 @@ index c23cb361f..2b1259529 100644
  
    int compareSubstituents(const Node *node, const Edge *a, const Edge *b,
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index bbee817dd..ff14509f4 100644
+index 55ad3c9ce..329a3b936 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -1985,9 +1985,12 @@ $$$$
+@@ -10,6 +10,7 @@
+ 
+ #include <algorithm>
+ #include <bitset>
++#include <csignal>
+ #include <list>
+ #include <limits>
+ #include <string>
+@@ -21,6 +22,7 @@
+ #include <RDGeneral/BoostStartInclude.h>
+ #include <boost/algorithm/string.hpp>
+ #include <RDGeneral/BoostEndInclude.h>
++#include <RDGeneral/ControlCHandler.h>
+ #include <RDGeneral/Exceptions.h>
+ 
+ #include <catch2/catch_all.hpp>
+@@ -1301,6 +1303,14 @@ M  END
+     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 100000),
+                     CIPLabeler::MaxIterationsExceeded);
+   }
++  SECTION("Ctrl+c interruption") {
++    // A surrounding handler models the wrapper's handler and also verifies
++    // that the nested handler in assignCIPLabels() observes the same signal.
++    ControlCHandler handler;
++    std::raise(SIGINT);
++    CIPLabeler::assignCIPLabels(*mol, 8000000);
++    CHECK(!mol->hasProp(common_properties::_CIPComputed));
++  }
+ }
+ 
+ void testOneAtropIsomerMandP(std::string inputText, const std::string &expected,
+@@ -1935,9 +1945,12 @@ $$$$
  
    REQUIRE(mol);
    // Leave enough of the global budget for the preliminary pass to visit the
@@ -883,7 +915,7 @@ index bbee817dd..ff14509f4 100644
  
    auto at = mol->getAtomWithIdx(22);
    REQUIRE(at->getChiralTag() == Atom::ChiralType::CHI_TETRAHEDRAL_CW);
-@@ -2140,3 +2143,148 @@ TEST_CASE("Long running calculation") {
+@@ -2090,3 +2103,148 @@ TEST_CASE("Long running calculation") {
      CIPLabeler::assignCIPLabels(*mol);
    }
  }
@@ -1397,7 +1429,7 @@ index 7b910468e..211ac83bb 100644
  
  }  // namespace CIPLabeler
 diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-index 505dd4944..7a36a1406 100644
+index 614da14a2..56ea73e8d 100644
 --- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 +++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 @@ -10,6 +10,8 @@
@@ -1406,10 +1438,10 @@ index 505dd4944..7a36a1406 100644
  
 +#include <algorithm>
 +#include <array>
- #include <atomic>
  #include <cstddef>
  #include <cstdint>
-@@ -67,12 +69,64 @@ struct ComparisonKeyHash {
+ #include <functional>
+@@ -66,12 +68,64 @@ struct ComparisonKeyHash {
  
  struct ComparisonSessionState {
    std::size_t depth = 0;
@@ -1475,9 +1507,9 @@ index 505dd4944..7a36a1406 100644
 +constexpr std::size_t MAX_CACHED_SORTS = 50000;
 +constexpr std::size_t SORTS_PER_GENERATION = MAX_CACHED_SORTS / 2;
  
- thread_local ComparisonSessionState comparisonSessionState;
- 
-@@ -85,18 +139,26 @@ std::uint64_t nextCacheId() {
+ // CIPLabeler calls are serialized by contract. Nested comparison sessions
+ // share this state, and the outermost session clears it before and after use.
+@@ -86,18 +140,26 @@ std::uint64_t nextCacheId() {
  
  SequenceRule::ComparisonSession::ComparisonSession() {
    if (comparisonSessionState.depth++ == 0) {
@@ -1508,7 +1540,7 @@ index 505dd4944..7a36a1406 100644
  
  SequenceRule::~SequenceRule() = default;
  
-@@ -138,9 +200,34 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -139,9 +201,34 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
                            secondGraph->getCurrentRoot(),
                            firstGraph->getRule6Ref(),
                            secondGraph->getRule6Ref()};
@@ -1546,7 +1578,7 @@ index 505dd4944..7a36a1406 100644
    }
  
    const auto directResult = compare(a, b);
-@@ -148,17 +235,82 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -149,17 +236,82 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
      return directResult;
    }
  
@@ -1632,7 +1664,7 @@ index 505dd4944..7a36a1406 100644
  int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
    std::vector<std::pair<const Edge *, const Edge *>> queue{{a, b}};
    std::vector<Edge *> as;
-@@ -237,6 +389,13 @@ void SequenceRule::setSorter(const Sort *sorter) {
+@@ -238,6 +390,13 @@ void SequenceRule::setSorter(const Sort *sorter) {
    d_cacheId = nextCacheId();
  }
  
@@ -1646,7 +1678,7 @@ index 505dd4944..7a36a1406 100644
  Priority SequenceRule::sort(const Node *node, std::vector<Edge *> &edges,
                              bool deep) const {
    return getSorter()->prioritize(node, edges, deep);
-@@ -280,5 +439,41 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
+@@ -281,5 +440,41 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
    return graph->isAcyclicBranchWithoutConfiguration(a);
  }
  
@@ -1748,6 +1780,88 @@ index 4611cbbb4..898f3bffb 100644
  };
  
  }  // namespace CIPLabeler
+diff --git a/Code/RDGeneral/ControlCHandler.h b/Code/RDGeneral/ControlCHandler.h
+index 8fd7f0597..bb6ea0e64 100644
+--- a/Code/RDGeneral/ControlCHandler.h
++++ b/Code/RDGeneral/ControlCHandler.h
+@@ -11,7 +11,6 @@
+ #ifndef CONTROLCHANDLER_H
+ #define CONTROLCHANDLER_H
+ 
+-#include <atomic>
+ #include <csignal>
+ #include <stdexcept>
+ 
+@@ -20,16 +19,19 @@ namespace RDKit {
+ class ControlCCaught : public std::runtime_error {
+  public:
+   explicit ControlCCaught()
+-      : std::runtime_error("The process was interrupted with Ctrl+c") {};
++      : std::runtime_error("The process was interrupted with Ctrl+c"){};
+ };
+ 
+ //! This class catches a control-C/SIGINT and sets the flag d_gotSignal
+ //! if one is received.  It is intended to be used inside a long
+ //! C++ calculation called from Python which intercepts the signal
+ //! handler.  The C++ code must check the value of d_gotSignal
+-//! periodically and act accordingly.  The destructor resets
+-//! the signal handler and flag for next use, which is essential
+-//! because it's a static variable.
++//! periodically and act accordingly. Nested instances share the handler and
++//! flag installed by the first instance; only the last instance resets them.
++//! This allows an outer operation to observe an interrupt caught by an inner
++//! operation. Resetting the signal handler and flag after the last instance is
++//! essential because they are static variables. Handler scopes must all run on
++//! the same thread.
+ //! Example usage, inside a boost::python wrapper:
+ //!  ResultsObject results;
+ //!  {
+@@ -43,29 +45,38 @@ class ControlCCaught : public std::runtime_error {
+ //! released, otherwise a crash is inevitable at some future point.
+ class ControlCHandler {
+  public:
+-  ControlCHandler() { d_prev_handler = std::signal(SIGINT, signalHandler); }
++  ControlCHandler() {
++    if (d_nestingDepth++ == 0) {
++      d_prev_handler = std::signal(SIGINT, signalHandler);
++    }
++  }
+   ControlCHandler(const ControlCHandler &) = delete;
+   ControlCHandler(ControlCHandler &&) = delete;
+   ControlCHandler &operator=(const ControlCHandler &) = delete;
+   ControlCHandler &operator=(ControlCHandler &&) = delete;
+   ~ControlCHandler() {
+-    std::signal(SIGINT, d_prev_handler);
+-    d_gotSignal = false;
++    if (--d_nestingDepth == 0) {
++      std::signal(SIGINT, d_prev_handler);
++      d_gotSignal = 0;
++    }
+   }
+-  static bool getGotSignal() { return d_gotSignal; }
++  static bool getGotSignal() { return d_gotSignal != 0; }
+   static void signalHandler(int signalNumber) {
+     if (signalNumber == SIGINT) {
+-      d_gotSignal = true;
++      d_gotSignal = 1;
+       std::signal(SIGINT, d_prev_handler);
+     }
+   }
+   static void reset() {
+-    d_gotSignal = false;
++    d_gotSignal = 0;
+     std::signal(SIGINT, signalHandler);
+   }
+ 
+  private:
+-  inline static bool d_gotSignal{false};
++  // sig_atomic_t is the standard type that may be read and written by an
++  // asynchronous signal handler in this otherwise single-threaded lifecycle.
++  inline static volatile std::sig_atomic_t d_gotSignal{0};
++  inline static unsigned int d_nestingDepth{0};
+   inline static void (*d_prev_handler)(int);
+ };
+ }  // namespace RDKit
 -- 
 2.34.1
 

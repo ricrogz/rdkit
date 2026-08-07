@@ -1,4 +1,4 @@
-From 7551960631e8836d13fbc6a6c01433bb415a2e05 Mon Sep 17 00:00:00 2001
+From 1c2c5c5ae7c68f94c65439bbd005b2f17afa8119 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:31:28 -0400
 Subject: [PATCH 09/14] Fix Mancude resonance bookkeeping
@@ -297,10 +297,10 @@ index d39b16c56..a10da9d5b 100644
      }
    }
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 0d35d3216..ed593b164 100644
+index b1ac3eb2c..dfdc34085 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -386,6 +386,68 @@ TEST_CASE("Digraph", "[accurateCIP]") {
+@@ -358,6 +358,68 @@ TEST_CASE("Digraph", "[accurateCIP]") {
    check_incoming_edge_count(current_root);
  }
  
@@ -369,3 +369,6 @@ index 0d35d3216..ed593b164 100644
  TEST_CASE("Rule1a", "[accurateCIP]") {
    SECTION("Compare equal") {
      auto mol = "COC"_smiles;
+-- 
+2.34.1
+

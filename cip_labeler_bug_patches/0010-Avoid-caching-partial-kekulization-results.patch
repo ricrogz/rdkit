@@ -1,4 +1,4 @@
-From 5a8ed9c43483e85773d102cf026bfe5a99aa3188 Mon Sep 17 00:00:00 2001
+From fb068bcb40cfe51acaab94d5d2aee3ad29860b83 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:32:11 -0400
 Subject: [PATCH 10/14] Avoid caching partial kekulization results
@@ -35,10 +35,10 @@ index 0317d1e4f..5b6ec22ad 100644
      }
    }
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index ed593b164..c72c232f4 100644
+index dfdc34085..f5a3d12b0 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -1055,6 +1055,26 @@ TEST_CASE("CIP code errors on fragments which cannot be kekulized",
+@@ -1027,6 +1027,26 @@ TEST_CASE("CIP code errors on fragments which cannot be kekulized",
    }
  }
  
@@ -65,3 +65,6 @@ index ed593b164..c72c232f4 100644
  TEST_CASE("GitHub Issue #5142", "[bug][accurateCIP]") {
    auto mol = "*C1C[C@H](CCC)[C@@H](C)[C@H](C)C1"_smiles;
    REQUIRE(mol);
+-- 
+2.34.1
+

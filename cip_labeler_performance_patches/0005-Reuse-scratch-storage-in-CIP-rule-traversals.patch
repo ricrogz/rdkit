@@ -1,7 +1,7 @@
-From 80a75bf76e2102e6d6d126a3453340f4796c8ba5 Mon Sep 17 00:00:00 2001
+From 0d26cafab2247a4b46a17a9812aaf9bb633bb059 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:05 -0400
-Subject: [PATCH 5/7] Reuse scratch storage in CIP rule traversals
+Subject: [PATCH 05/14] Reuse scratch storage in CIP rule traversals
 
 ---
  Code/GraphMol/CIPLabeler/rules/Rule4b.cpp     | 108 +++++++++---------
@@ -404,3 +404,6 @@ index 3fa1c592a..291828ff8 100644
        }
      }
    }
+-- 
+2.34.1
+

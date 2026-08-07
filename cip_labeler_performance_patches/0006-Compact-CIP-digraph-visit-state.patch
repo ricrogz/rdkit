@@ -1,7 +1,7 @@
-From dd9b28c77487aac60f2db2e3132ffa61990bb238 Mon Sep 17 00:00:00 2001
+From 211ec07975f9d292d4aec76766bbbd227be4ad7e Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:35:28 -0400
-Subject: [PATCH 6/7] Compact CIP digraph visit state
+Subject: [PATCH 06/14] Compact CIP digraph visit state
 
 ---
  Code/GraphMol/CIPLabeler/Digraph.cpp     | 13 +++++---
@@ -180,10 +180,10 @@ index 8d30cfc5d..79c7d4c5b 100644
  
  }  // namespace CIPLabeler
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 0d6ed92a6..4b71e01ee 100644
+index 222cac1e9..413bb0b83 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -435,6 +435,22 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
+@@ -407,6 +407,22 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
                      TooManyNodesException);
      CHECK(graph.getNumNodes() == max_node_count);
    }
@@ -206,3 +206,6 @@ index 0d6ed92a6..4b71e01ee 100644
  }
  
  TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {
+-- 
+2.34.1
+

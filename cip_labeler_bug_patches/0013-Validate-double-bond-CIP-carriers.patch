@@ -1,4 +1,4 @@
-From 2dfedf73edb4975e7ddc32b953661c23924f6fdc Mon Sep 17 00:00:00 2001
+From 92f275aa3ca1b9ce253400bb97cb8ba06530e69a Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:41:17 -0400
 Subject: [PATCH 13/14] Validate double-bond CIP carriers
@@ -9,10 +9,10 @@ Subject: [PATCH 13/14] Validate double-bond CIP carriers
  2 files changed, 38 insertions(+)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index ed93d5557..5d657877d 100644
+index fef66d1be..2ed53c1c2 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -912,6 +912,23 @@ TEST_CASE("Malformed stereo markers are ignored safely", "[accurateCIP]") {
+@@ -884,6 +884,23 @@ TEST_CASE("Malformed stereo markers are ignored safely", "[accurateCIP]") {
      CHECK(!bond->hasProp(common_properties::_CIPNeighborOrder));
    }
  
@@ -68,3 +68,6 @@ index 05e0824ab..987d4dd6b 100644
    std::vector<Atom *> anchors{
        {mol.getAtom(stereo_atoms[0]), mol.getAtom(stereo_atoms[1])}};
  
+-- 
+2.34.1
+

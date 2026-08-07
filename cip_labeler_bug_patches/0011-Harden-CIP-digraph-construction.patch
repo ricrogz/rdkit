@@ -1,4 +1,4 @@
-From 321f881627b89cc7d8c44b0ddee35e5355aa5378 Mon Sep 17 00:00:00 2001
+From c0c2918d79a632627c142b885cb8ba3261850c3b Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:33:12 -0400
 Subject: [PATCH 11/14] Harden CIP digraph construction
@@ -156,7 +156,7 @@ index 82521c52a..8d30cfc5d 100644
    Node *newTerminalChild(int idx, Atom *atom, int flags) const;
  };
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index c72c232f4..852bce6d7 100644
+index f5a3d12b0..73402e9bc 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
 @@ -13,6 +13,7 @@
@@ -167,7 +167,7 @@ index c72c232f4..852bce6d7 100644
  #include <vector>
  
  #include <strstream>
-@@ -54,6 +55,10 @@
+@@ -47,6 +48,10 @@
  using namespace RDKit;
  using namespace RDKit::CIPLabeler;
  
@@ -178,7 +178,7 @@ index c72c232f4..852bce6d7 100644
  TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
    const Rules rules({new Rule1a});
  
-@@ -386,6 +391,47 @@ TEST_CASE("Digraph", "[accurateCIP]") {
+@@ -358,6 +363,47 @@ TEST_CASE("Digraph", "[accurateCIP]") {
    check_incoming_edge_count(current_root);
  }
  
@@ -226,3 +226,6 @@ index c72c232f4..852bce6d7 100644
  TEST_CASE("Mancude fractional atomic numbers", "[accurateCIP]") {
    SECTION("negative resonance component gets one final fraction") {
      auto mol = "[CH-]1C=CC=C1"_smiles;
+-- 
+2.34.1
+

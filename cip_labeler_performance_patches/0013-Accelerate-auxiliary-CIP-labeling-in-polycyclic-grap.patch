@@ -1,7 +1,7 @@
-From 4b72a520cc45e7354fd23117cca9972a87b61d73 Mon Sep 17 00:00:00 2001
+From 9cf37bd9459d3923e1de1450cc299afaa9554d03 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 14:49:40 -0400
-Subject: [PATCH] Accelerate auxiliary CIP labeling in polycyclic graphs
+Subject: [PATCH 13/14] Accelerate auxiliary CIP labeling in polycyclic graphs
 
 ---
  Code/GraphMol/CIPLabeler/CIPLabeler.cpp       |  51 ++++++-
@@ -15,7 +15,7 @@ Subject: [PATCH] Accelerate auxiliary CIP labeling in polycyclic graphs
  8 files changed, 281 insertions(+), 46 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index fcce959fc..04e9e88cf 100644
+index 22bd38045..10cd0dafa 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -139,14 +139,53 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
@@ -79,7 +79,7 @@ index fcce959fc..04e9e88cf 100644
    boost::dynamic_bitset<> targetFoci(digraph.getMol().getNumAtoms());
    for (std::size_t i = 0; i < configs.size(); ++i) {
 diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
-index 1e80c5db5..88bde70d5 100644
+index e6bec4e5d..466ddce0a 100644
 --- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
 @@ -573,6 +573,14 @@ bool CIPMol::branchReachesCyclicCore(Atom *root, Atom *end) const {
@@ -178,7 +178,7 @@ index 1e80c5db5..88bde70d5 100644
      return *cached;
    }
  
-@@ -1047,13 +1066,16 @@ bool CIPMol::hasConstitutionalAutomorphism(
+@@ -1049,13 +1068,16 @@ bool CIPMol::hasConstitutionalAutomorphism(
      return false;
    }
  
@@ -246,7 +246,7 @@ index 8d8530139..112f10623 100644
                                std::vector<unsigned int> movedAtoms) const;
    void addAutomorphismFailure(ConstitutionalAutomorphismEvidence &evidence,
 diff --git a/Code/GraphMol/CIPLabeler/Digraph.cpp b/Code/GraphMol/CIPLabeler/Digraph.cpp
-index fa4c69e19..bd9a9bea3 100644
+index 8b160b816..fedcdacfb 100644
 --- a/Code/GraphMol/CIPLabeler/Digraph.cpp
 +++ b/Code/GraphMol/CIPLabeler/Digraph.cpp
 @@ -73,8 +73,17 @@ bool Digraph::seenAtom(Atom *atom) const {
@@ -578,10 +578,10 @@ index e9ba4d4f3..856452994 100644
    boost::rational<int> d_atomic_num;
    double d_atomic_mass;
 diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-index 3dba7e119..f1b23f921 100644
+index f6d20ed47..37861ef48 100644
 --- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 +++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-@@ -244,6 +244,9 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -245,6 +245,9 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
      if (directResult != 0) {
        return directResult;
      }
@@ -591,7 +591,7 @@ index 3dba7e119..f1b23f921 100644
    }
  
    const auto firstGraph = a->getBeg()->getDigraph();
-@@ -312,6 +315,9 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -313,6 +316,9 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
        // traversals.
        return cacheResult(directResult);
      }
@@ -601,7 +601,7 @@ index 3dba7e119..f1b23f921 100644
    }
  
    if (!isRecursiveComparisonNeeded(a, b) ||
-@@ -413,6 +419,9 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
+@@ -414,6 +420,9 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
      }
      auto aNode = aParent->getEnd();
      auto bNode = bParent->getEnd();
@@ -611,7 +611,7 @@ index 3dba7e119..f1b23f921 100644
      const auto &aNodeEdges = aNode->getEdges();
      const auto &bNodeEdges = bNode->getEdges();
      as.assign(aNodeEdges.begin(), aNodeEdges.end());
-@@ -524,6 +533,14 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
+@@ -525,6 +534,14 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
      return false;
    }
  
@@ -626,7 +626,7 @@ index 3dba7e119..f1b23f921 100644
    return graph->isAcyclicBranchWithoutConfiguration(a);
  }
  
-@@ -547,19 +564,21 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+@@ -548,19 +565,21 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
    }
  
    bool equivalent = false;

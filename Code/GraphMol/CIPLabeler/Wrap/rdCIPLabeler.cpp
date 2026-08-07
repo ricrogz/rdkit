@@ -65,6 +65,8 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
 
   std::string docString =
       "New implementation of Stereo assignment using a true CIP ranking.\n"
+      "This implementation is single-threaded; concurrent calls are "
+      "unsupported.\n"
       "On return:  The molecule to contains CIP flags\n"
       "Errors:  when maxRecursiveIterations is exceeded, throws a "
       "MaxIterationsExceeded error\nARGUMENTS:\n\n"

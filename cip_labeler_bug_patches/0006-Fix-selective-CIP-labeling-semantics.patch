@@ -1,15 +1,15 @@
-From 1a5d6bb767880f2ab4974d802d8238efcfbf4277 Mon Sep 17 00:00:00 2001
+From e822af1973734f480979e5c2b0b4cab271600a38 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:26:13 -0400
 Subject: [PATCH 06/14] Fix selective CIP labeling semantics
 
 ---
  Code/GraphMol/CIPLabeler/CIPLabeler.cpp | 148 +++++++++++++++++++-----
- Code/GraphMol/CIPLabeler/CIPLabeler.h   |   9 ++
- 2 files changed, 126 insertions(+), 31 deletions(-)
+ Code/GraphMol/CIPLabeler/CIPLabeler.h   |   8 ++
+ 2 files changed, 125 insertions(+), 31 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index ffd2eb2dc..f8e85c169 100644
+index c5cd3c4a9..7fe406026 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -10,12 +10,14 @@
@@ -149,7 +149,7 @@ index ffd2eb2dc..f8e85c169 100644
    }
  
    for (const auto &e : queue) {
-@@ -234,14 +258,17 @@ class ScopedPreliminaryBudget {
+@@ -236,14 +260,17 @@ class ScopedPreliminaryBudget {
    ~ScopedPreliminaryBudget() { iterationBudget.endPreliminaryPass(); }
  };
  
@@ -170,7 +170,7 @@ index ffd2eb2dc..f8e85c169 100644
      // Make sure this stereo center has no label
      conf->resetPrimaryLabel();
  
-@@ -256,7 +283,11 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+@@ -258,7 +285,11 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
    }
  
    // try again on everything that hasn't been resolved yet
@@ -183,7 +183,7 @@ index ffd2eb2dc..f8e85c169 100644
      if (conf->hasPrimaryLabel()) {
        // already resolved!
        continue;
-@@ -266,7 +297,7 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+@@ -268,7 +299,7 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
      if (desc != Descriptor::UNKNOWN) {
        conf->setPrimaryLabel(desc);
      } else {
@@ -192,7 +192,7 @@ index ffd2eb2dc..f8e85c169 100644
          desc = conf->label(all_rules);
  
          if (desc != Descriptor::UNKNOWN) {
-@@ -277,6 +308,52 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+@@ -279,6 +310,52 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
    }
  }
  
@@ -245,7 +245,7 @@ index ffd2eb2dc..f8e85c169 100644
  }  // namespace
  
  void assignCIPLabels(ROMol &mol, const boost::dynamic_bitset<> &atoms,
-@@ -284,8 +361,15 @@ void assignCIPLabels(ROMol &mol, const boost::dynamic_bitset<> &atoms,
+@@ -286,8 +363,15 @@ void assignCIPLabels(ROMol &mol, const boost::dynamic_bitset<> &atoms,
                       unsigned int maxRecursiveIterations) {
    ControlCHandler hdlr;
  
@@ -261,7 +261,7 @@ index ffd2eb2dc..f8e85c169 100644
    CIPMol cipmol{mol};
    auto configs = findConfigs(cipmol, atoms, bonds);
  
-@@ -299,8 +383,10 @@ void assignCIPLabels(ROMol &mol, const boost::dynamic_bitset<> &atoms,
+@@ -301,8 +385,10 @@ void assignCIPLabels(ROMol &mol, const boost::dynamic_bitset<> &atoms,
      return;
    }
  
@@ -275,10 +275,10 @@ index ffd2eb2dc..f8e85c169 100644
  
  void assignCIPLabels(ROMol &mol, unsigned int maxRecursiveIterations) {
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.h b/Code/GraphMol/CIPLabeler/CIPLabeler.h
-index c689484aa..1574bffb5 100644
+index d03c0af6f..5d35a67ec 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.h
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.h
-@@ -74,8 +74,14 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+@@ -76,8 +76,14 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
   *   \param mol - the molecule to be labelled.
   *
   *   \param atoms - bitset with the atom indexes to be labeled.
@@ -293,13 +293,15 @@ index c689484aa..1574bffb5 100644
   *
   *   \param maxRecursiveIterations - maximum total number of recursive
   *      comparisons across the preliminary and full labeling passes. A value
-@@ -84,6 +90,9 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+@@ -86,6 +92,8 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
   *      A peptide with MW~3000 took about 100 comparisons, and a 20,000 MW
   *      protein took about 600 comparisons.
   *
 + *   \note Partial labeling does not set common_properties::_CIPComputed,
 + *      which denotes a complete molecule-wide calculation.
-+ *
-  */
- RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
-     ROMol &mol, const boost::dynamic_bitset<> &atoms,
+  *   \warning This implementation is single-threaded. Calls to either
+  *      assignCIPLabels() overload must not overlap.
+  *
+-- 
+2.34.1
+

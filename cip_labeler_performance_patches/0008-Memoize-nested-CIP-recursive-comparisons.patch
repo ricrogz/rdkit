@@ -1,19 +1,19 @@
-From 4c6978123a895dacd75085f541824e3f26cacae7 Mon Sep 17 00:00:00 2001
+From 869d6c2b99528e20abbba3e304de22206ef37c92 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 10:42:03 -0400
-Subject: [PATCH] Memoize nested CIP recursive comparisons
+Subject: [PATCH 08/14] Memoize nested CIP recursive comparisons
 
 ---
  Code/GraphMol/CIPLabeler/catch_tests.cpp      |  15 +++
- .../CIPLabeler/rules/SequenceRule.cpp         | 105 +++++++++++++++++-
+ .../CIPLabeler/rules/SequenceRule.cpp         | 106 +++++++++++++++++-
  Code/GraphMol/CIPLabeler/rules/SequenceRule.h |   1 +
- 3 files changed, 116 insertions(+), 5 deletions(-)
+ 3 files changed, 117 insertions(+), 5 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index c811c9c51..bbee817dd 100644
+index 3ffed8902..55ad3c9ce 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -2125,3 +2125,18 @@ $$$$
+@@ -2075,3 +2075,18 @@ $$$$
      CHECK(ranked_anchors == std::vector<unsigned int>{0, Atom::NOATOM});
    }
  }
@@ -33,7 +33,7 @@ index c811c9c51..bbee817dd 100644
 +  }
 +}
 diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-index 291828ff8..74dac903f 100644
+index 291828ff8..88b85f454 100644
 --- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 +++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 @@ -10,6 +10,10 @@
@@ -47,7 +47,7 @@ index 291828ff8..74dac903f 100644
  #include <utility>
  
  #include "SequenceRule.h"
-@@ -19,6 +23,85 @@
+@@ -19,6 +23,86 @@
  namespace RDKit {
  namespace CIPLabeler {
  
@@ -80,9 +80,10 @@ index 291828ff8..74dac903f 100644
 +// between top-level comparisons. Keep results only while one exact rule object
 +// has an active recursive comparison. This also prevents temporary Rule4b and
 +// Rule5New replacement rules from inheriting entries when stack addresses are
-+// reused with a different reference descriptor.
-+thread_local std::unordered_map<const SequenceRule *,
-+                                std::unique_ptr<RecursiveComparisonCache>>
++// reused with a different reference descriptor. CIPLabeler calls are
++// serialized by contract, so all nested comparisons share this state.
++std::unordered_map<const SequenceRule *,
++                   std::unique_ptr<RecursiveComparisonCache>>
 +    recursiveComparisonCaches;
 +
 +class ScopedRecursiveComparisonCache {
@@ -133,7 +134,7 @@ index 291828ff8..74dac903f 100644
  SequenceRule::SequenceRule() : dp_sorter{new Sort(this)} {}
  
  SequenceRule::~SequenceRule() = default;
-@@ -50,11 +133,23 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -50,11 +134,23 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
      throw ControlCCaught();
    }
  
@@ -160,7 +161,7 @@ index 291828ff8..74dac903f 100644
    std::vector<std::pair<const Edge *, const Edge *>> queue{{a, b}};
    std::vector<Edge *> as;
    std::vector<Edge *> bs;
-@@ -87,7 +182,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -87,7 +183,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
            continue;
          }
  
@@ -169,7 +170,7 @@ index 291828ff8..74dac903f 100644
          if (cmp != 0) {
            return cmp;
          }
-@@ -112,7 +207,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -112,7 +208,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
            continue;
          }
  
@@ -190,3 +191,6 @@ index c0a5fbc3d..2bbf7bc07 100644
  };
  
  }  // namespace CIPLabeler
+-- 
+2.34.1
+

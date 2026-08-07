@@ -1,7 +1,7 @@
-From f679b8c9ebbf65802cc74e693434aaabdbd442af Mon Sep 17 00:00:00 2001
+From a35601b6cb3807db5be4be5df60d3ad6a0aa0276 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:28 -0400
-Subject: [PATCH 2/7] Cache atomic mass during CIP expansion
+Subject: [PATCH 02/14] Cache atomic mass during CIP expansion
 
 ---
  Code/GraphMol/CIPLabeler/CIPMol.cpp | 12 ++++++++++++
@@ -93,3 +93,6 @@ index 6c9a823f4..28088b0b8 100644
    }
    if (d_visit.empty() || d_flags & DUPLICATE) {
      d_flags |= EXPANDED;
+-- 
+2.34.1
+

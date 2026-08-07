@@ -61,6 +61,8 @@ class RDKIT_CIPLABELER_EXPORT MaxIterationsExceeded
  *          bond directions will be labelled.
  *   \note Labels will be stored under the common_properties::_CIPCode
  *          property of the relevant atoms/bonds.
+ *   \warning This implementation is single-threaded. Calls to either
+ *          assignCIPLabels() overload must not overlap.
  *   \param maxRecursiveIterations - maximum total number of recursive
  *          comparisons across all labeling passes; zero means no
  *          caller-specified limit.
@@ -94,6 +96,8 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
  *
  *   \note Partial labeling does not set common_properties::_CIPComputed,
  *      which denotes a complete molecule-wide calculation.
+ *   \warning This implementation is single-threaded. Calls to either
+ *      assignCIPLabels() overload must not overlap.
  *
  */
 RDKIT_CIPLABELER_EXPORT void assignCIPLabels(

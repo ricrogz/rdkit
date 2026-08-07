@@ -1,14 +1,14 @@
-From a4065f8b038c9597744cabcd6011fb94af3aef4b Mon Sep 17 00:00:00 2001
+From 2b55118a4f786970342958ebfc121de738bdb847 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:03 -0400
-Subject: [PATCH 1/7] Reduce repeated CIP configuration work
+Subject: [PATCH 01/14] Reduce repeated CIP configuration work
 
 ---
  Code/GraphMol/CIPLabeler/CIPLabeler.cpp | 9 ++++++++-
  1 file changed, 8 insertions(+), 1 deletion(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index 0e5e3535c..6dd44ab81 100644
+index 1a4f1d3c9..2b6d78203 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -51,6 +51,7 @@ const Rules all_rules({new Rule1a, new Rule1b, new Rule2, new Rule3, new Rule4a,
@@ -19,7 +19,7 @@ index 0e5e3535c..6dd44ab81 100644
  };
  
  using ConfigList = std::vector<ConfigEntry>;
-@@ -275,6 +276,7 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
+@@ -277,6 +278,7 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
      try {
        const ScopedPreliminaryBudget preliminaryBudget;
        auto desc = conf->label(constitutional_rules);
@@ -27,7 +27,7 @@ index 0e5e3535c..6dd44ab81 100644
        if (desc != Descriptor::UNKNOWN) {
          conf->setPrimaryLabel(desc);
        }
-@@ -293,7 +295,12 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
+@@ -295,7 +297,12 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
        continue;
      }
  
@@ -41,3 +41,6 @@ index 0e5e3535c..6dd44ab81 100644
      if (desc != Descriptor::UNKNOWN) {
        conf->setPrimaryLabel(desc);
      } else {
+-- 
+2.34.1
+

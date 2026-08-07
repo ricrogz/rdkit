@@ -1,4 +1,4 @@
-From b4982688c0d4b75289e9d2abfeb77968a9cbadc5 Mon Sep 17 00:00:00 2001
+From 092149eeebfd67f6d9619a530e2929bcffbbb844 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:20:23 -0400
 Subject: [PATCH 02/14] Mark Rule 6 comparisons as pseudoasymmetric
@@ -9,7 +9,7 @@ Subject: [PATCH 02/14] Mark Rule 6 comparisons as pseudoasymmetric
  2 files changed, 39 insertions(+), 3 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 132b5305d..8b34a27f5 100644
+index a18af6281..c89ce2614 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
 @@ -8,6 +8,7 @@
@@ -20,7 +20,7 @@ index 132b5305d..8b34a27f5 100644
  #include <bitset>
  #include <list>
  #include <string>
-@@ -43,6 +44,7 @@
+@@ -36,6 +37,7 @@
  #include "rules/Pairlist.h"
  #include "rules/Rule1a.h"
  #include "rules/Rule2.h"
@@ -28,7 +28,7 @@ index 132b5305d..8b34a27f5 100644
  #include "rules/Rules.h"
  
  #include "CIPMol.h"
-@@ -165,6 +167,40 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
+@@ -137,6 +139,40 @@ TEST_CASE("Descriptor lists", "[accurateCIP]") {
    }
  }
  
@@ -90,3 +90,6 @@ index 2d205be3f..1b6e7fde1 100644
 -}  // namespace RDKit
 \ No newline at end of file
 +}  // namespace RDKit
+-- 
+2.34.1
+

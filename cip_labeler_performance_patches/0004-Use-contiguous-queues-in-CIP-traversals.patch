@@ -1,7 +1,7 @@
-From 734031e87d63f3f7d392528d3432f5991188864a Mon Sep 17 00:00:00 2001
+From 59546afe07ec49c6366505fd2996cea02d40c6b5 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:26:08 -0400
-Subject: [PATCH 4/7] Use contiguous queues in CIP traversals
+Subject: [PATCH 04/14] Use contiguous queues in CIP traversals
 
 ---
  Code/GraphMol/CIPLabeler/Digraph.cpp        | 6 +++---
@@ -126,3 +126,6 @@ index 8e469a9f5..e33855cd2 100644
 -}  // namespace RDKit
 \ No newline at end of file
 +}  // namespace RDKit
+-- 
+2.34.1
+

@@ -1,11 +1,11 @@
-From a2f722958a8a74f2cdac1809988f0f19946da362 Mon Sep 17 00:00:00 2001
+From 47f50106dc22bc9a75c0f487f304efea3c4775b5 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 11:17:14 -0400
-Subject: [PATCH] Avoid exponential CIP work in symmetric ring chains
+Subject: [PATCH 09/14] Avoid exponential CIP work in symmetric ring chains
 
 ---
  Code/GraphMol/CIPLabeler/CIPLabeler.cpp       |  10 +-
- Code/GraphMol/CIPLabeler/CIPMol.cpp           |  60 +++++++
+ Code/GraphMol/CIPLabeler/CIPMol.cpp           |  60 ++++++
  Code/GraphMol/CIPLabeler/CIPMol.h             |  15 ++
  Code/GraphMol/CIPLabeler/Digraph.cpp          |  37 ++++
  Code/GraphMol/CIPLabeler/Digraph.h            |  22 +++
@@ -17,12 +17,12 @@ Subject: [PATCH] Avoid exponential CIP work in symmetric ring chains
  .../CIPLabeler/configs/Tetrahedral.cpp        |   1 +
  Code/GraphMol/CIPLabeler/rules/Rule4b.cpp     |   4 +
  Code/GraphMol/CIPLabeler/rules/Rule5New.cpp   |   4 +
- .../CIPLabeler/rules/SequenceRule.cpp         | 170 +++++++++++-------
+ .../CIPLabeler/rules/SequenceRule.cpp         | 172 +++++++++++-------
  Code/GraphMol/CIPLabeler/rules/SequenceRule.h |  26 +++
- 15 files changed, 298 insertions(+), 70 deletions(-)
+ 15 files changed, 299 insertions(+), 71 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index 6dd44ab81..361252496 100644
+index 2b6d78203..cdb5bb1a9 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -119,6 +119,14 @@ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
@@ -410,14 +410,12 @@ index b4023bdc5..3b31752ae 100644
    const auto &aEnd = a->getEnd();
    const auto &bBeg = b->getBeg();
 diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-index 74dac903f..505dd4944 100644
+index 88b85f454..614da14a2 100644
 --- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 +++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-@@ -10,99 +10,93 @@
- //
+@@ -11,99 +11,93 @@
  #include "RDGeneral/ControlCHandler.h"
  
-+#include <atomic>
  #include <cstddef>
 +#include <cstdint>
  #include <functional>
@@ -494,9 +492,10 @@ index 74dac903f..505dd4944 100644
 -// between top-level comparisons. Keep results only while one exact rule object
 -// has an active recursive comparison. This also prevents temporary Rule4b and
 -// Rule5New replacement rules from inheriting entries when stack addresses are
--// reused with a different reference descriptor.
--thread_local std::unordered_map<const SequenceRule *,
--                                std::unique_ptr<RecursiveComparisonCache>>
+-// reused with a different reference descriptor. CIPLabeler calls are
+-// serialized by contract, so all nested comparisons share this state.
+-std::unordered_map<const SequenceRule *,
+-                   std::unique_ptr<RecursiveComparisonCache>>
 -    recursiveComparisonCaches;
 -
 -class ScopedRecursiveComparisonCache {
@@ -520,7 +519,9 @@ index 74dac903f..505dd4944 100644
 -      delete;
 -  ScopedRecursiveComparisonCache &operator=(
 -      const ScopedRecursiveComparisonCache &) = delete;
-+thread_local ComparisonSessionState comparisonSessionState;
++// CIPLabeler calls are serialized by contract. Nested comparison sessions
++// share this state, and the outermost session clears it before and after use.
++ComparisonSessionState comparisonSessionState;
  
 -  ~ScopedRecursiveComparisonCache() {
 -    if (--d_cache->depth == 0) {
@@ -528,7 +529,7 @@ index 74dac903f..505dd4944 100644
 -    }
 -  }
 +std::uint64_t nextCacheId() {
-+  static std::atomic<std::uint64_t> nextId{0};
++  static std::uint64_t nextId = 0;
 +  return ++nextId;
 +}
  
@@ -568,7 +569,7 @@ index 74dac903f..505dd4944 100644
  
  SequenceRule::~SequenceRule() = default;
  
-@@ -126,6 +120,8 @@ int SequenceRule::getComparision(const Edge *a, const Edge *b,
+@@ -127,6 +121,8 @@ int SequenceRule::getComparision(const Edge *a, const Edge *b,
  const Sort *SequenceRule::getSorter() const { return dp_sorter.get(); }
  
  int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
@@ -577,7 +578,7 @@ index 74dac903f..505dd4944 100644
    if (!CIPLabeler_detail::decrementRemainingCallCountAndCheck()) {
      throw MaxIterationsExceeded();
    }
-@@ -133,19 +129,33 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -134,19 +130,33 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
      throw ControlCCaught();
    }
  
@@ -616,7 +617,7 @@ index 74dac903f..505dd4944 100644
    return result;
  }
  
-@@ -158,6 +168,9 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
+@@ -159,6 +169,9 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
  
    for (std::size_t pos = 0; pos < queue.size(); ++pos) {
      const auto [aParent, bParent] = queue[pos];
@@ -626,7 +627,7 @@ index 74dac903f..505dd4944 100644
      auto aNode = aParent->getEnd();
      auto bNode = bParent->getEnd();
      const auto &aNodeEdges = aNode->getEdges();
-@@ -219,7 +232,10 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
+@@ -220,7 +233,10 @@ int SequenceRule::recursiveCompareEqual(const Edge *a, const Edge *b) const {
    return 0;
  }
  
@@ -638,7 +639,7 @@ index 74dac903f..505dd4944 100644
  
  Priority SequenceRule::sort(const Node *node, std::vector<Edge *> &edges,
                              bool deep) const {
-@@ -244,5 +260,25 @@ bool SequenceRule::areUpEdges(Node *aNode, Node *bNode, Edge *aEdge,
+@@ -245,5 +261,25 @@ bool SequenceRule::areUpEdges(Node *aNode, Node *bNode, Edge *aEdge,
    return false;
  }
  

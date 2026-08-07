@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <csignal>
 #include <list>
 #include <limits>
 #include <string>
@@ -18,16 +19,10 @@
 
 #include <strstream>
 
-#ifdef RDK_TEST_MULTITHREADED
-#include <atomic>
-#include <csignal>
-#include <thread>
-#include <chrono>
-#endif
-
 #include <RDGeneral/BoostStartInclude.h>
 #include <boost/algorithm/string.hpp>
 #include <RDGeneral/BoostEndInclude.h>
+#include <RDGeneral/ControlCHandler.h>
 #include <RDGeneral/Exceptions.h>
 
 #include <catch2/catch_all.hpp>
@@ -66,27 +61,6 @@ TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
         std::vector<const SequenceRule *>{&standaloneRule});
 
   const Rules rules({new Rule1a});
-
-#ifdef RDK_TEST_MULTITHREADED
-  std::atomic<bool> start{false};
-  std::vector<const Sort *> sorters(8);
-  std::vector<std::thread> threads;
-  threads.reserve(sorters.size());
-  for (auto i = 0u; i < sorters.size(); ++i) {
-    threads.emplace_back([&, i]() {
-      while (!start.load(std::memory_order_acquire)) {
-      }
-      sorters[i] = rules.getSorter();
-    });
-  }
-  start.store(true, std::memory_order_release);
-  for (auto &thread : threads) {
-    thread.join();
-  }
-  for (const auto sorter : sorters) {
-    CHECK(sorter == rules.getSorter());
-  }
-#endif
 
   REQUIRE(rules.getSorter());
   CHECK(rules.getSorter()->getRules() ==
@@ -305,8 +279,8 @@ TEST_CASE("Iteration limit includes the preliminary pass",
   CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 1),
                   CIPLabeler::MaxIterationsExceeded);
 
-  // A bounded call must not leave the thread-local budget exhausted for
-  // standalone rule comparisons on the same thread.
+  // A bounded call must not leave the shared budget exhausted for a later
+  // standalone rule comparison.
   auto comparisonMol = "COC"_smiles;
   REQUIRE(comparisonMol);
   CIPLabeler::CIPMol cipmol(*comparisonMol);
@@ -1395,28 +1369,14 @@ M  END
     CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 100000),
                     CIPLabeler::MaxIterationsExceeded);
   }
-#ifdef RDK_TEST_MULTITHREADED
   SECTION("Ctrl+c interruption") {
-    using namespace std::chrono_literals;
-
-    // create one thread for assignCIPLabels...
-    std::thread cgThread([&mol]() {
-      // give the calculation a while to run (~15 seconds on my laptop)
-      // but still make sure it won't run forever
-      constexpr size_t maxIterations = 8000000;
-      CIPLabeler::assignCIPLabels(*mol, maxIterations);
-    });
-    // ... then another one to raise SIGINT
-    std::thread interruptThread([]() {
-      // sleep for a bit to allow for a few iterations, but not enough to
-      // hit maxIterations and trigger the exception
-      std::this_thread::sleep_for(100ms);
-      std::raise(SIGINT);
-    });
-    cgThread.join();
-    interruptThread.join();
+    // A surrounding handler models the wrapper's handler and also verifies
+    // that the nested handler in assignCIPLabels() observes the same signal.
+    ControlCHandler handler;
+    std::raise(SIGINT);
+    CIPLabeler::assignCIPLabels(*mol, 8000000);
+    CHECK(!mol->hasProp(common_properties::_CIPComputed));
   }
-#endif
 }
 
 void testOneAtropIsomerMandP(std::string inputText, const std::string &expected,

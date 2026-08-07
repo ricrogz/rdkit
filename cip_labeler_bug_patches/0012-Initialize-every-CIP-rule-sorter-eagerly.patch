@@ -1,4 +1,4 @@
-From 956091f441625d2c7a7ad642fd1f9020fe0aa3dd Mon Sep 17 00:00:00 2001
+From 4068314f97a5b0725f9bb319522a316cc4ee3719 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:40:51 -0400
 Subject: [PATCH 12/14] Initialize every CIP rule sorter eagerly
@@ -10,10 +10,10 @@ Subject: [PATCH 12/14] Initialize every CIP rule sorter eagerly
  3 files changed, 9 insertions(+), 12 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 852bce6d7..ed93d5557 100644
+index 73402e9bc..fef66d1be 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -60,6 +60,11 @@ static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
+@@ -53,6 +53,11 @@ static_assert(!std::is_constructible_v<Digraph, CIPMol &&, Atom *>);
  static_assert(!std::is_constructible_v<Digraph, const CIPMol &&, Atom *>);
  
  TEST_CASE("Rules eagerly initializes its composite sorter", "[accurateCIP]") {
@@ -24,7 +24,7 @@ index 852bce6d7..ed93d5557 100644
 +
    const Rules rules({new Rule1a});
  
- #ifdef RDK_TEST_MULTITHREADED
+   REQUIRE(rules.getSorter());
 diff --git a/Code/GraphMol/CIPLabeler/rules/Rules.h b/Code/GraphMol/CIPLabeler/rules/Rules.h
 index 3c4ee2532..cb8cf0bfe 100644
 --- a/Code/GraphMol/CIPLabeler/rules/Rules.h
@@ -70,3 +70,6 @@ index 7b6276d34..3fa1c592a 100644
  
  int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
    if (!CIPLabeler_detail::decrementRemainingCallCountAndCheck()) {
+-- 
+2.34.1
+

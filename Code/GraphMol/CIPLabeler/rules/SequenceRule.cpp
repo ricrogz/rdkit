@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -141,10 +140,12 @@ constexpr std::size_t COMPARISONS_PER_GENERATION =
 constexpr std::size_t MAX_CACHED_SORTS_PER_FAMILY = 50000;
 constexpr std::size_t SORTS_PER_GENERATION = MAX_CACHED_SORTS_PER_FAMILY / 2;
 
-thread_local ComparisonSessionState comparisonSessionState;
+// CIPLabeler calls are serialized by contract. Nested comparison sessions
+// share this state, and the outermost session clears it before and after use.
+ComparisonSessionState comparisonSessionState;
 
 std::uint64_t nextCacheId() {
-  static std::atomic<std::uint64_t> nextId{0};
+  static std::uint64_t nextId = 0;
   return ++nextId;
 }
 

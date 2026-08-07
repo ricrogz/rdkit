@@ -12,4 +12,3 @@
 0012-Initialize-every-CIP-rule-sorter-eagerly.patch
 0013-Validate-double-bond-CIP-carriers.patch
 0014-Validate-selected-CIP-indexes-without-requiring-mask.patch
-0015-Preserve-interrupts-across-nested-control-handlers.patch

@@ -1116,6 +1116,8 @@ bool CIPMol::hasConstitutionalAutomorphism(
   params.recursionPossible = false;
   params.uniquify = false;
   params.maxMatches = 1;
+  // CIPLabeler comparison caches and callback counters are intentionally
+  // single-threaded, so the nested matcher must remain serial as well.
   params.numThreads = 1;
   params.useChirality = false;
   params.extraAtomCheckOverridesDefaultCheck = true;

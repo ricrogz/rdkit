@@ -374,7 +374,9 @@ struct IterationBudget {
   unsigned int remainingPreliminary = 0;
 };
 
-thread_local IterationBudget iterationBudget;
+// CIPLabeler calls are serialized by contract, so one shared budget is enough.
+// ScopedIterationBudget restores it after nested calls and exceptions.
+IterationBudget iterationBudget;
 
 class ScopedIterationBudget {
  public:

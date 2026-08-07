@@ -3,15 +3,15 @@
 This directory contains fourteen ordered `git format-patch` files implementing
 the low-risk performance improvements identified during the Java/C++
 comparison. The changes preserve the corrected behavior established by the
-bug series.
+bug series and use only the serialized execution model documented there.
 
 ## Baseline and ordering
 
 - Required parent tree: complete bug series,
-  `105c21fb52168d1fd276623cc3d057b7991f5e74`
-- Expected tree after this series: `b38b1dd7da917c36e1e0bfcc0287d9d483f86f53`
+  `c018725bcb24b1b7cc99f00684ea2cf7d85c963d`
+- Expected tree after this series: `d1b3a5fbef0a9da832409ac722319ef703b8093b`
 - Reference endpoint used to generate the files:
-  `10a4fa8ff983b1f54b5239292e6e23c8e1ac4b05`
+  `9d0a158af221b088e38708625c0aa38b9416e264`
 - Apply the files in the order recorded in [`series`](series).
 
 After applying `../cip_labeler_bug_patches`:
@@ -34,9 +34,9 @@ committer metadata; the resulting tree should match the tree ID above.
 | `0005` | Reuses queue and edge scratch buffers in recursive rule traversals and removes intermediate node-list allocations. |
 | `0006` | Replaces the per-node array of 32-bit visit distances with a compact path bitset plus parent ancestry for the uncommon distance lookup. |
 | `0007` | Uses stable `deque` storage for graph nodes and edges, fixes edge reservation, indexes seen molecule atoms with a bitset, and evaluates the negative-resonance predicate lazily. |
-| `0008` | Memoizes completed comparisons of exact ordered edge pairs while one sequence-rule recursion is active, eliminating repeated traversal of symmetric ring chains without retaining results across mutable CIP state. |
-| `0009` | Shares bounded exact-comparison results across one configuration-label session and cuts equivalent symmetric continuations at focus-free molecular bridges. Auxiliary discovery still traverses every component containing a valid configuration focus, while Rule 4b/5 skip exhaustive traversal when no effective auxiliary descriptor exists. |
-| `0010` | Accelerates the highly cyclic stereocage regression by batching target-guided auxiliary occurrence discovery, proving symmetric cyclic constitutional ligands equal through constrained molecular self-isomorphism, pruning descriptor-free Rule 3-6 branches with reroot-aware counts, and retaining bounded exact comparison and sort results across each immutable auxiliary-label distance sphere. |
+| `0008` | Memoizes completed comparisons of exact ordered edge pairs in ordinary shared state while one serialized sequence-rule recursion is active, eliminating repeated traversal of symmetric ring chains without retaining results across mutable CIP state. |
+| `0009` | Shares bounded exact-comparison results across one serialized configuration-label session, uses ordinary cache-identity counters, and cuts equivalent symmetric continuations at focus-free molecular bridges. Auxiliary discovery still traverses every component containing a valid configuration focus, while Rule 4b/5 skip exhaustive traversal when no effective auxiliary descriptor exists. |
+| `0010` | Accelerates the highly cyclic stereocage regression by batching target-guided auxiliary occurrence discovery, proving symmetric cyclic constitutional ligands equal through constrained molecular self-isomorphism, pruning descriptor-free Rule 3-6 branches with reroot-aware counts, and retaining bounded exact comparison and sort results across each immutable auxiliary-label distance sphere. Its constrained matcher is pinned to one thread; serial nested Ctrl-C scopes preserve the outer signal using `sig_atomic_t`, and the regression test raises the signal synchronously. |
 | `0011` | Reuses direction-local comparisons and sorts across auxiliary reroots, keeps Rule 1a/1b/2 results across distance spheres, memoizes exact path-constrained automorphism queries, keeps Rule 4b/5 reference sorters stable, stores the common one-word visit path inline, and replaces the stable auxiliary sort with distance buckets. |
 | `0012` | Generalizes the symmetry acceleration to arbitrary component sizes and ring topologies: persistent large-path visit state, component-local exact self-isomorphism, bounded explicit-field color refinement, exact linear-time distance-signature filtering, sparse dominance evidence, cumulative per-key/component search limits, logarithmically bounded prefilter use, and O(1) directed cyclic-core eligibility after one linear pass. It removes the earlier size, aromaticity, and bounded-automorphism-sample gates without adding molecule- or atom-number-specific cases. |
 | `0013` | Accelerates auxiliary labeling in large symmetric polycyclic graphs by retaining the support of each exact constitutional-automorphism witness and avoiding unseen auxiliary configurations only when every other stereo annotation is fixed pointwise. It also batches residual target reachability, reroots the occurrence tree along its parent/LCA paths, stores terminal-leaf edges inline, stops comparisons at tied terminal nodes, and proves identical constitutional continuations across molecular bridges. These gates depend only on graph topology and CIP invariants, not fixture identities or atom numbering. |
@@ -65,8 +65,9 @@ ctest --test-dir <build-dir> -R '^testCIPLabeler$' --output-on-failure
 ```
 
 Performance should be measured separately on representative ordinary,
-aromatic, highly symmetric, and deep/ring-rich molecules. The refreshed patch
-files were checked for whitespace errors, replayed onto a clean worktree, and
-compared with the applied source tree (the local slow regression fixtures and
-the user's node-cap adjustment are intentionally outside this patch series).
-No build, test, or benchmark command was run while refreshing them.
+aromatic, highly symmetric, and deep/ring-rich molecules. The refreshed series
+was replayed onto a clean worktree; the resulting source diff was checked for
+whitespace errors and compared with the applied source tree (the local slow
+regression fixtures and the user's node-cap adjustment are intentionally
+outside this patch series). No build, test, or benchmark command was run while
+refreshing it.

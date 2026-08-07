@@ -1,22 +1,22 @@
-From 6d1643cc19ac5c4a906678c7b13ead41efc4c02d Mon Sep 17 00:00:00 2001
+From fe7692abde7874a2b17734fd404425ea08d57f25 Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 13:56:40 -0400
-Subject: [PATCH] Generalize CIP acceleration for symmetric ring systems
+Subject: [PATCH 12/14] Generalize CIP acceleration for symmetric ring systems
 
 ---
  Code/GraphMol/CIPLabeler/CIPLabeler.cpp       |   17 +-
- Code/GraphMol/CIPLabeler/CIPMol.cpp           | 1088 ++++++++++++++---
+ Code/GraphMol/CIPLabeler/CIPMol.cpp           | 1092 ++++++++++++++---
  Code/GraphMol/CIPLabeler/CIPMol.h             |  112 +-
  Code/GraphMol/CIPLabeler/Digraph.cpp          |    2 +-
  Code/GraphMol/CIPLabeler/Node.cpp             |  165 ++-
  Code/GraphMol/CIPLabeler/Node.h               |   60 +-
- Code/GraphMol/CIPLabeler/Sort.cpp             |   15 +-
+ Code/GraphMol/CIPLabeler/Sort.cpp             |   16 +-
  .../CIPLabeler/rules/SequenceRule.cpp         |  121 +-
  Code/GraphMol/CIPLabeler/rules/SequenceRule.h |   10 +-
- 9 files changed, 1282 insertions(+), 308 deletions(-)
+ 9 files changed, 1285 insertions(+), 310 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index 9a14a1dbc..fcce959fc 100644
+index 085c2a7eb..22bd38045 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -141,9 +141,12 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
@@ -52,7 +52,7 @@ index 9a14a1dbc..fcce959fc 100644
      }
      eligible[i] = 1u;
 diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
-index aef0c7572..1e80c5db5 100644
+index dc9803a30..e6bec4e5d 100644
 --- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
 @@ -10,31 +10,178 @@
@@ -245,7 +245,7 @@ index aef0c7572..1e80c5db5 100644
    return result;
  }
  
-@@ -154,81 +301,274 @@ bool CIPMol::hasUniqueBond(Atom *begin, Atom *end) const {
+@@ -154,83 +301,274 @@ bool CIPMol::hasUniqueBond(Atom *begin, Atom *end) const {
    return count == 1u;
  }
  
@@ -309,6 +309,8 @@ index aef0c7572..1e80c5db5 100644
 -  // automorphisms than this bounded sample, a missing mapping merely disables
 -  // a shortcut for that query.
 -  params.maxMatches = 1024;
+-  // CIPLabeler comparison caches and callback counters are intentionally
+-  // single-threaded, so the nested matcher must remain serial as well.
 -  params.numThreads = 1;
 -  params.useChirality = false;
 -  params.extraAtomCheckOverridesDefaultCheck = true;
@@ -438,10 +440,9 @@ index aef0c7572..1e80c5db5 100644
 +        d_cyclic_core_distances[neighborIdx] =
 +            d_cyclic_core_distances[atomIdx] + 1u;
 +        coreQueue.push_back(neighborIdx);
-       }
--      d_constitutional_automorphisms.push_back(std::move(automorphism));
-     }
-   }
++      }
++    }
++  }
 +
 +  d_constitutional_automorphism_data_initialized = true;
 +}
@@ -503,10 +504,11 @@ index aef0c7572..1e80c5db5 100644
 +        signature.neighbors.emplace_back(
 +            static_cast<int>(bond->getBondType()), bond->getIsAromatic(),
 +            colors[d_component_local_indices[neighborIdx]]);
-+      }
+       }
+-      d_constitutional_automorphisms.push_back(std::move(automorphism));
 +      std::ranges::sort(signature.neighbors);
 +      order[localIdx] = localIdx;
-+    }
+     }
 +    std::ranges::sort(order, [&](const auto first, const auto second) {
 +      return signatures[first] < signatures[second];
 +    });
@@ -524,7 +526,7 @@ index aef0c7572..1e80c5db5 100644
 +      break;
 +    }
 +    classCount = nextClassCount;
-+  }
+   }
 +
 +  for (std::size_t localIdx = 0; localIdx < componentAtoms.size(); ++localIdx) {
 +    d_constitutional_symmetry_classes[componentAtoms[localIdx]] =
@@ -581,7 +583,7 @@ index aef0c7572..1e80c5db5 100644
  }
  
  bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
-@@ -236,6 +576,15 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
+@@ -238,6 +576,15 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
    if (root == nullptr || from == nullptr || to == nullptr) {
      return false;
    }
@@ -597,7 +599,7 @@ index aef0c7572..1e80c5db5 100644
    if (!hasUniqueBond(root, from) || !hasUniqueBond(root, to)) {
      return false;
    }
-@@ -243,158 +592,507 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
+@@ -245,158 +592,509 @@ bool CIPMol::hasConstitutionalAutomorphism(Atom *root, Atom *from,
      return true;
    }
  
@@ -1051,6 +1053,8 @@ index aef0c7572..1e80c5db5 100644
 +  params.recursionPossible = false;
 +  params.uniquify = false;
 +  params.maxMatches = 1;
++  // CIPLabeler comparison caches and callback counters are intentionally
++  // single-threaded, so the nested matcher must remain serial as well.
 +  params.numThreads = 1;
 +  params.useChirality = false;
 +  params.extraAtomCheckOverridesDefaultCheck = true;
@@ -1695,20 +1699,20 @@ index 2c30d65c9..e9ba4d4f3 100644
    Node *newChild(int idx, Atom *atom) const;
  
 diff --git a/Code/GraphMol/CIPLabeler/Sort.cpp b/Code/GraphMol/CIPLabeler/Sort.cpp
-index 32bb3a4c3..9118d0d0a 100644
+index 61ac40033..d2580765b 100644
 --- a/Code/GraphMol/CIPLabeler/Sort.cpp
 +++ b/Code/GraphMol/CIPLabeler/Sort.cpp
-@@ -13,7 +13,9 @@
+@@ -13,6 +13,9 @@
  #include "rules/SequenceRule.h"
  
  #include <algorithm>
 +#include <array>
- #include <atomic>
 +#include <span>
- 
++
  #include <RDGeneral/ControlCHandler.h>
  
-@@ -57,7 +59,11 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
+ namespace RDKit {
+@@ -55,7 +58,11 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
      return {cachedUnique, cachedPseudoAsymmetric};
    }
  
@@ -1721,7 +1725,7 @@ index 32bb3a4c3..9118d0d0a 100644
    bool unique = true;
    int numPseudoAsym = 0;
  
-@@ -81,8 +87,11 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
+@@ -79,8 +86,11 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
    }
  
    const Priority result{unique, numPseudoAsym == 1};
@@ -1736,10 +1740,10 @@ index 32bb3a4c3..9118d0d0a 100644
  }
  
 diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-index c70beec2c..3dba7e119 100644
+index 45faddbe7..f6d20ed47 100644
 --- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 +++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-@@ -81,8 +81,6 @@ struct ComparisonSessionState {
+@@ -80,8 +80,6 @@ struct ComparisonSessionState {
    ComparisonMap currentConstitutionalResults;
    ComparisonMap previousConstitutionalResults;
  
@@ -1748,7 +1752,7 @@ index c70beec2c..3dba7e119 100644
    struct SortKey {
      std::uint64_t sortId;
      const Node *node;
-@@ -91,7 +89,7 @@ struct ComparisonSessionState {
+@@ -90,7 +88,7 @@ struct ComparisonSessionState {
      const Atom *rule6Ref;
      bool deep;
      std::uint8_t inputCount;
@@ -1757,7 +1761,7 @@ index c70beec2c..3dba7e119 100644
  
      bool operator==(const SortKey &other) const {
        return sortId == other.sortId && node == other.node &&
-@@ -120,7 +118,7 @@ struct ComparisonSessionState {
+@@ -119,7 +117,7 @@ struct ComparisonSessionState {
    };
  
    struct SortValue {
@@ -1766,7 +1770,7 @@ index c70beec2c..3dba7e119 100644
      std::uint8_t sortedCount;
      Priority priority;
    };
-@@ -150,8 +148,7 @@ std::uint64_t nextCacheId() {
+@@ -151,8 +149,7 @@ std::uint64_t nextCacheId() {
    return ++nextId;
  }
  
@@ -1776,7 +1780,7 @@ index c70beec2c..3dba7e119 100644
    std::uint8_t result = 0;
    for (std::size_t i = 0; i < edges.size(); ++i) {
      if (edges[i]->isBeg(node)) {
-@@ -239,17 +236,28 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -240,17 +237,28 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
      throw ControlCCaught();
    }
  
@@ -1814,7 +1818,7 @@ index c70beec2c..3dba7e119 100644
    auto &currentResults =
        d_auxiliaryIndependent
            ? comparisonSessionState.currentConstitutionalResults
-@@ -280,15 +288,16 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -281,15 +289,16 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
        findResult(previousResults, key, cachedResult)) {
      return cachedResult;
    }
@@ -1840,7 +1844,7 @@ index c70beec2c..3dba7e119 100644
    if (firstGraph == secondGraph) {
      if (findResult(currentResults, reverseKey, cachedResult) ||
          findResult(previousResults, reverseKey, cachedResult)) {
-@@ -296,12 +305,13 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -297,12 +306,13 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
      }
    }
  
@@ -1860,7 +1864,7 @@ index c70beec2c..3dba7e119 100644
    }
  
    if (!isRecursiveComparisonNeeded(a, b) ||
-@@ -318,18 +328,20 @@ bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
+@@ -319,18 +329,20 @@ bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
                                   std::vector<Edge *> &edges, bool &unique,
                                   bool &pseudoAsymmetric) {
    if (node == nullptr || edges.size() < 2u ||
@@ -1890,7 +1894,7 @@ index c70beec2c..3dba7e119 100644
    std::copy(edges.begin(), edges.end(), key.input.begin());
    const auto findSort = [&](const auto &sorts) {
      const auto found = sorts.find(key);
-@@ -353,11 +365,11 @@ bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
+@@ -354,11 +366,11 @@ bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
  
  void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
                               bool auxiliaryIndependent,
@@ -1904,7 +1908,7 @@ index c70beec2c..3dba7e119 100644
      return;
    }
    auto &currentSorts = auxiliaryIndependent
-@@ -371,14 +383,15 @@ void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
+@@ -372,14 +384,15 @@ void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
      currentSorts.clear();
    }
    const auto graph = node->getDigraph();
@@ -1928,7 +1932,7 @@ index c70beec2c..3dba7e119 100644
    std::copy(input.begin(), input.end(), key.input.begin());
    ComparisonSessionState::SortValue value{
        {}, static_cast<std::uint8_t>(sorted.size()), priority};
-@@ -533,14 +546,6 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+@@ -534,14 +547,6 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
      return false;
    }
  
@@ -1943,7 +1947,7 @@ index c70beec2c..3dba7e119 100644
    bool equivalent = false;
    if (root == graph->getOriginalRoot()) {
      equivalent = graph->getMol().hasConstitutionalAutomorphism(
-@@ -551,7 +556,7 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+@@ -552,7 +557,7 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
      // distance used for ring-duplicate ordering under Rule 1b.
      equivalent = graph->getMol().hasConstitutionalAutomorphism(
          root->getAtom(), aEnd->getAtom(), bEnd->getAtom(),

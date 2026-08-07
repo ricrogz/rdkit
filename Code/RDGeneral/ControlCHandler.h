@@ -11,9 +11,7 @@
 #ifndef CONTROLCHANDLER_H
 #define CONTROLCHANDLER_H
 
-#include <atomic>
 #include <csignal>
-#include <mutex>
 #include <stdexcept>
 
 namespace RDKit {
@@ -32,7 +30,8 @@ class ControlCCaught : public std::runtime_error {
 //! flag installed by the first instance; only the last instance resets them.
 //! This allows an outer operation to observe an interrupt caught by an inner
 //! operation. Resetting the signal handler and flag after the last instance is
-//! essential because they are static variables.
+//! essential because they are static variables. Handler scopes must all run on
+//! the same thread.
 //! Example usage, inside a boost::python wrapper:
 //!  ResultsObject results;
 //!  {
@@ -47,7 +46,6 @@ class ControlCCaught : public std::runtime_error {
 class ControlCHandler {
  public:
   ControlCHandler() {
-    const std::lock_guard<std::mutex> lock(d_stateMutex);
     if (d_nestingDepth++ == 0) {
       d_prev_handler = std::signal(SIGINT, signalHandler);
     }
@@ -57,34 +55,29 @@ class ControlCHandler {
   ControlCHandler &operator=(const ControlCHandler &) = delete;
   ControlCHandler &operator=(ControlCHandler &&) = delete;
   ~ControlCHandler() {
-    const std::lock_guard<std::mutex> lock(d_stateMutex);
     if (--d_nestingDepth == 0) {
       std::signal(SIGINT, d_prev_handler);
-      d_gotSignal.clear(std::memory_order_relaxed);
+      d_gotSignal = 0;
     }
   }
-  static bool getGotSignal() {
-    return d_gotSignal.test(std::memory_order_relaxed);
-  }
+  static bool getGotSignal() { return d_gotSignal != 0; }
   static void signalHandler(int signalNumber) {
     if (signalNumber == SIGINT) {
-      d_gotSignal.test_and_set(std::memory_order_relaxed);
+      d_gotSignal = 1;
       std::signal(SIGINT, d_prev_handler);
     }
   }
   static void reset() {
-    const std::lock_guard<std::mutex> lock(d_stateMutex);
-    d_gotSignal.clear(std::memory_order_relaxed);
+    d_gotSignal = 0;
     std::signal(SIGINT, signalHandler);
   }
 
  private:
-  // atomic_flag is guaranteed lock-free and can therefore be touched safely
-  // by the asynchronous signal handler on every supported platform.
-  inline static std::atomic_flag d_gotSignal = ATOMIC_FLAG_INIT;
+  // sig_atomic_t is the standard type that may be read and written by an
+  // asynchronous signal handler in this otherwise single-threaded lifecycle.
+  inline static volatile std::sig_atomic_t d_gotSignal{0};
   inline static unsigned int d_nestingDepth{0};
   inline static void (*d_prev_handler)(int);
-  inline static std::mutex d_stateMutex;
 };
 }  // namespace RDKit
 #endif  // CONTROLCHANDLER_H

@@ -1,4 +1,4 @@
-From 10a4fa8ff983b1f54b5239292e6e23c8e1ac4b05 Mon Sep 17 00:00:00 2001
+From 9d0a158af221b088e38708625c0aa38b9416e264 Mon Sep 17 00:00:00 2001
 From: Ricardo R-S <rodriguez@schrodinger.com>
 Date: Thu, 6 Aug 2026 16:36:05 -0400
 Subject: [PATCH 14/14] Prune exact-symmetry CIP auxiliary work
@@ -20,7 +20,7 @@ Add focused coverage for below-root ring equality and configuration-preserving r
  8 files changed, 463 insertions(+), 22 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index 04e9e88cf..a3e8bd6c4 100644
+index 10cd0dafa..ce8eefa89 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -120,12 +120,31 @@ ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
@@ -97,7 +97,7 @@ index 04e9e88cf..a3e8bd6c4 100644
  // The chiral centers in current rdkit examples that can be resolved using only
  // the constitutional rules average about 8 iterations (the highest count is
  // 1039, in one of the examples in the CIP validation suite). We use 2000 as
-@@ -392,6 +445,14 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
+@@ -394,6 +447,14 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
      if (desc != Descriptor::UNKNOWN) {
        conf->setPrimaryLabel(desc);
      } else {
@@ -113,7 +113,7 @@ index 04e9e88cf..a3e8bd6c4 100644
          desc = conf->label(all_rules);
  
 diff --git a/Code/GraphMol/CIPLabeler/CIPMol.cpp b/Code/GraphMol/CIPLabeler/CIPMol.cpp
-index 88bde70d5..56207ed18 100644
+index 466ddce0a..1241a8c15 100644
 --- a/Code/GraphMol/CIPLabeler/CIPMol.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPMol.cpp
 @@ -237,6 +237,42 @@ void CIPMol::setConfigurationFoci(boost::dynamic_bitset<> foci) {
@@ -520,10 +520,10 @@ index bf1b93918..a6a947cf1 100644
                                 std::vector<unsigned int> &seen,
                                 unsigned int &generation) const;
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index ff14509f4..0eac8ef01 100644
+index 329a3b936..732d73f02 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -571,6 +571,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
+@@ -545,6 +545,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
  
      CHECK(rule.getSorter()->prioritize(origin, edges).isUnique());
    }
@@ -599,10 +599,10 @@ index ff14509f4..0eac8ef01 100644
  
  TEST_CASE("Rule2", "[accurateCIP]") {
 diff --git a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-index f1b23f921..f1b5dab21 100644
+index 37861ef48..0ee33dc8a 100644
 --- a/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
 +++ b/Code/GraphMol/CIPLabeler/rules/SequenceRule.cpp
-@@ -251,14 +251,16 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -252,14 +252,16 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
  
    const auto firstGraph = a->getBeg()->getDigraph();
    const auto secondGraph = b->getBeg()->getDigraph();
@@ -621,7 +621,7 @@ index f1b23f921..f1b5dab21 100644
        d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref(),
        d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref()};
    auto &currentResults =
-@@ -297,8 +299,8 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -298,8 +300,8 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
        a,
        b->getEnd(),
        a->getEnd(),
@@ -632,7 +632,7 @@ index f1b23f921..f1b5dab21 100644
        d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref(),
        d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref()};
    if (firstGraph == secondGraph) {
-@@ -322,7 +324,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+@@ -323,7 +325,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
  
    if (!isRecursiveComparisonNeeded(a, b) ||
        hasEquivalentAcyclicContinuation(a, b) ||
@@ -641,7 +641,7 @@ index f1b23f921..f1b5dab21 100644
      return cacheResult(0);
    }
  
-@@ -544,7 +546,7 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
+@@ -545,7 +547,7 @@ bool SequenceRule::hasEquivalentAcyclicContinuation(const Edge *a,
    return graph->isAcyclicBranchWithoutConfiguration(a);
  }
  
@@ -650,7 +650,7 @@ index f1b23f921..f1b5dab21 100644
      const Edge *a, const Edge *b) const {
    if (!d_useConstitutionalRootEquivalence) {
      return false;
-@@ -555,29 +557,69 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
+@@ -556,29 +558,69 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
    const auto aEnd = a->getEnd();
    const auto bEnd = b->getEnd();
    const auto graph = aBeg->getDigraph();

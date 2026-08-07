@@ -1,20 +1,20 @@
-From 665245cb9181f34da1de9c9ef9f8da55c6e0e470 Mon Sep 17 00:00:00 2001
+From 10efe29592ee739a1d26302ba24d041ce08f0b8b Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:25:21 -0400
 Subject: [PATCH 05/14] Apply iteration limits across CIP labeling
 
 ---
- Code/GraphMol/CIPLabeler/CIPLabeler.cpp       | 75 ++++++++++++++++---
- Code/GraphMol/CIPLabeler/CIPLabeler.h         | 27 ++++---
- .../GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp | 10 ++-
+ Code/GraphMol/CIPLabeler/CIPLabeler.cpp       | 77 ++++++++++++++++---
+ Code/GraphMol/CIPLabeler/CIPLabeler.h         | 32 +++++---
+ .../GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp | 12 ++-
  Code/GraphMol/CIPLabeler/catch_tests.cpp      | 24 +++++-
- 4 files changed, 108 insertions(+), 28 deletions(-)
+ 4 files changed, 117 insertions(+), 28 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index 7bad406c5..ffd2eb2dc 100644
+index 7bad406c5..c5cd3c4a9 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-@@ -169,16 +169,75 @@ bool labelAux(std::vector<std::unique_ptr<Configuration>> &configs,
+@@ -169,16 +169,77 @@ bool labelAux(std::vector<std::unique_ptr<Configuration>> &configs,
    return true;
  }
  
@@ -64,7 +64,9 @@ index 7bad406c5..ffd2eb2dc 100644
 +  unsigned int remainingPreliminary = 0;
 +};
 +
-+thread_local IterationBudget iterationBudget;
++// CIPLabeler calls are serialized by contract, so one shared budget is enough.
++// ScopedIterationBudget restores it after nested calls and exceptions.
++IterationBudget iterationBudget;
 +
 +class ScopedIterationBudget {
 + public:
@@ -92,7 +94,7 @@ index 7bad406c5..ffd2eb2dc 100644
    // First, if the specified number of iterations allows it, run all centers
    // through a fast pass with the constitutional rules allow easy stuff to be
    // resolved.
-@@ -186,8 +245,8 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+@@ -186,8 +247,8 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
      // Make sure this stereo center has no label
      conf->resetPrimaryLabel();
  
@@ -102,7 +104,7 @@ index 7bad406c5..ffd2eb2dc 100644
        auto desc = conf->label(constitutional_rules);
        if (desc != Descriptor::UNKNOWN) {
          conf->setPrimaryLabel(desc);
-@@ -196,14 +255,6 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
+@@ -196,14 +257,6 @@ void label(std::vector<std::unique_ptr<Configuration>> &configs,
      }
    }
  
@@ -117,7 +119,7 @@ index 7bad406c5..ffd2eb2dc 100644
    // try again on everything that hasn't been resolved yet
    for (const auto &conf : configs) {
      if (conf->hasPrimaryLabel()) {
-@@ -265,7 +316,7 @@ void assignCIPLabels(ROMol &mol, unsigned int maxRecursiveIterations) {
+@@ -265,7 +318,7 @@ void assignCIPLabels(ROMol &mol, unsigned int maxRecursiveIterations) {
  namespace CIPLabeler_detail {
  
  bool decrementRemainingCallCountAndCheck() {
@@ -127,7 +129,7 @@ index 7bad406c5..ffd2eb2dc 100644
  
  }  // namespace CIPLabeler_detail
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.h b/Code/GraphMol/CIPLabeler/CIPLabeler.h
-index 6a1342b94..c689484aa 100644
+index 6a1342b94..d03c0af6f 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.h
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.h
 @@ -27,19 +27,19 @@ RDKIT_CIPLABELER_EXPORT bool decrementRemainingCallCountAndCheck();
@@ -157,17 +159,19 @@ index 6a1342b94..c689484aa 100644
  };
  
  /**
-@@ -61,6 +61,9 @@ class RDKIT_CIPLABELER_EXPORT MaxIterationsExceeded
+@@ -61,6 +61,11 @@ class RDKIT_CIPLABELER_EXPORT MaxIterationsExceeded
   *          bond directions will be labelled.
   *   \note Labels will be stored under the common_properties::_CIPCode
   *          property of the relevant atoms/bonds.
++ *   \warning This implementation is single-threaded. Calls to either
++ *          assignCIPLabels() overload must not overlap.
 + *   \param maxRecursiveIterations - maximum total number of recursive
 + *          comparisons across all labeling passes; zero means no
 + *          caller-specified limit.
   */
  RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
      ROMol &mol, unsigned int maxRecursiveIterations = 0);
-@@ -74,10 +77,12 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+@@ -74,10 +79,15 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
   *
   *   \param bonds - bitset with the bond indexes to be labeled.
   *
@@ -181,14 +185,26 @@ index 6a1342b94..c689484aa 100644
 + *      about 1 second. Most structures require fewer than 10,000 comparisons.
 + *      A peptide with MW~3000 took about 100 comparisons, and a 20,000 MW
 + *      protein took about 600 comparisons.
++ *
++ *   \warning This implementation is single-threaded. Calls to either
++ *      assignCIPLabels() overload must not overlap.
   *
   */
  RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
 diff --git a/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp b/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp
-index fe3c4cc4f..04f15c0f4 100644
+index fe3c4cc4f..804271cbb 100644
 --- a/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/Wrap/rdCIPLabeler.cpp
-@@ -72,10 +72,12 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
+@@ -65,6 +65,8 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
+ 
+   std::string docString =
+       "New implementation of Stereo assignment using a true CIP ranking.\n"
++      "This implementation is single-threaded; concurrent calls are "
++      "unsupported.\n"
+       "On return:  The molecule to contains CIP flags\n"
+       "Errors:  when maxRecursiveIterations is exceeded, throws a "
+       "MaxIterationsExceeded error\nARGUMENTS:\n\n"
+@@ -72,10 +74,12 @@ BOOST_PYTHON_MODULE(rdCIPLabeler) {
        " - atomsToLabel: (optional) list of atoms to label\n"
        " - bondsToLabel: (optional) list of bonds to label\n"
        " - maxRecursiveIterations: (optional) protects against pseudo-infinite\n"
@@ -206,10 +222,10 @@ index fe3c4cc4f..04f15c0f4 100644
    python::def(
        "AssignCIPLabels", assignCIPLabelsWrapHelper,
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 63b37a763..437565cf2 100644
+index b6229f47b..985dc888c 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -286,6 +286,26 @@ $$$$
+@@ -258,6 +258,26 @@ $$$$
    }
  }
  
@@ -221,8 +237,8 @@ index 63b37a763..437565cf2 100644
 +  CHECK_THROWS_AS(CIPLabeler::assignCIPLabels(*mol, 1),
 +                  CIPLabeler::MaxIterationsExceeded);
 +
-+  // A bounded call must not leave the thread-local budget exhausted for
-+  // standalone rule comparisons on the same thread.
++  // A bounded call must not leave the shared budget exhausted for a later
++  // standalone rule comparison.
 +  auto comparisonMol = "COC"_smiles;
 +  REQUIRE(comparisonMol);
 +  CIPLabeler::CIPMol cipmol(*comparisonMol);
@@ -236,7 +252,7 @@ index 63b37a763..437565cf2 100644
  void check_incoming_edge_count(Node *root) {
    auto queue = std::list<Node *>({root});
  
-@@ -1589,7 +1609,9 @@ $$$$
+@@ -1539,7 +1559,9 @@ $$$$
    auto mol = v2::FileParsers::MolFromMolBlock(molBlock, params);
  
    REQUIRE(mol);
@@ -247,3 +263,6 @@ index 63b37a763..437565cf2 100644
                      CIPLabeler::MaxIterationsExceeded);
  
    auto at = mol->getAtomWithIdx(22);
+-- 
+2.34.1
+

@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <span>
 
 #include <RDGeneral/ControlCHandler.h>
@@ -24,7 +23,7 @@ namespace CIPLabeler {
 
 namespace {
 std::uint64_t nextSortCacheId() {
-  static std::atomic<std::uint64_t> nextId{0};
+  static std::uint64_t nextId = 0;
   return ++nextId;
 }
 }  // namespace

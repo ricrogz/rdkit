@@ -14,7 +14,7 @@ They are no longer functionally equivalent, however. The two projects have evolv
 The highest-priority C++ findings are:
 
 1. The charged-Mancude translation assigns a running prefix fraction to each atom instead of one final component fraction. This was reproduced and makes priorities atom-order dependent.
-2. `const` global rule objects are modified through `const_cast`; that is undefined behavior even in one thread and is also a first-use data race between threads.
+2. `const` global rule objects are modified through `const_cast`; that is undefined behavior even under the required single-threaded execution model.
 3. Selective labeling omits unselected configurations needed as auxiliary stereochemical dependencies, yet marks the whole molecule `_CIPComputed`. A targeted example loses a valid pseudoasymmetric label, and downstream RDKit fingerprints can then skip the required full calculation.
 4. C++ Rule 6 returns `+/-1` instead of Java's corrected `+/-2`, so Rule-6 decisions are not reported as pseudoasymmetric decisions.
 5. The C++ visit-distance array uses ordinary `char`. On the current platform it corrupts Rule 1b distances after depth 127 and the visited set at depth 256. A 260-atom acyclic-chain probe generated false ring and primary nodes.
@@ -30,6 +30,8 @@ This review compares these source snapshots:
 - Java: `centres/core/src/main/java/com/simolecule/centres` at centres commit `d4b3cf07557b` (`develop`).
 
 The comparison covered the public entry points, molecule adapters, configuration classes, digraph/node/edge implementation, Mancude processing, all sequence rules, sorting and pairing, state written back to the molecule, exception/limit behavior, and relevant RDKit consumers of `_CIPComputed`.
+
+The C++ implementation is intentionally single-threaded. Calls to either `assignCIPLabels()` overload must be serialized, and its internal exact-matching work is pinned to one thread. This review therefore does not require concurrent CIPLabeler calls to be safe; process-global budget and comparison-cache state are acceptable under that contract. Nested Ctrl-C scopes use an ordinary nesting count and `sig_atomic_t` so an inner serial operation cannot erase an interrupt before its outer operation observes it; this is signal handling, not parallel execution.
 
 Findings described as **confirmed** follow directly from control/data flow or were reproduced against the built C++ library. **Likely** findings are direct semantic mismatches with a later Java correction but do not have a new C++ end-to-end regression in this workspace. **Latent** findings require unusually deep, malformed, or otherwise uncommon input but have a concrete unsafe code path.
 
@@ -204,17 +206,17 @@ Java semantics give every atom `24/5`. The result is atom-index dependent and vi
 
 **Recommended fix:** collect component members and calculate the final numerator/denominator first; assign the same final value to every member in a second pass. Test equality and CIP-label invariance before/after atom renumbering.
 
-### C++-2 — Global `const Rules` objects are mutated and race during first use
+### C++-2 — Global `const Rules` objects are mutated during first use
 
-**Severity:** high. **Confidence:** confirmed C++ language violation; concurrent failure is timing dependent.
+**Severity:** high. **Confidence:** confirmed C++ language violation.
 
 `constitutional_rules` and `all_rules` are objects originally declared `const` (`CIPLabeler.cpp:42-47`). Their parent `dp_sorter` is initially null. `Rules::getSorter()` casts away constness and installs a `unique_ptr` lazily (`Rules.h:48-52`; `SequenceRule.cpp:45-49,134`).
 
-Modifying an object that was originally defined `const` through `const_cast` is undefined behavior even in a single thread. Two threads making the first calls on separate molecules additionally race on the same `unique_ptr`; one can replace/delete a sorter while the other is returning or dereferencing it. The thread-local comparison budget does not protect this global cache.
+Modifying an object that was originally defined `const` through `const_cast` is undefined behavior even in the required single thread. The execution contract removes concurrency from consideration, but it cannot make this mutation legal or guarantee that an optimizer will preserve the intended behavior.
 
 Java creates independent rule/sorter objects per call and has no analogous shared cache.
 
-**Recommended fix:** eagerly construct the parent sorter while each `Rules` object is still being constructed, then expose a truly immutable rule graph. An alternative is a correctly declared mutable cache guarded by `std::call_once`, but eager construction is simpler and removes the first-call branch as well.
+**Recommended fix:** eagerly construct the parent sorter while each `Rules` object is still being constructed, then expose a truly immutable rule graph. Eager construction also removes the first-call branch.
 
 ### C++-3 — Selective labeling drops required auxiliary configurations and falsely marks the whole molecule computed
 
@@ -476,7 +478,7 @@ The last optimization only needs immutable eager sorter construction to remove C
 - **Atrop both-end pseudo:** construct an axis for which both ends use pseudoasymmetric decisions and require upper-case `M/P`.
 - **State invalidation:** relabel after (a) making two ligands identical, (b) removing an atom chiral tag, and (c) removing bond stereo; assert both `_CIPCode` and `_CIPNeighborOrder` are absent where appropriate.
 - **Isotopes:** compare known and deliberately unlisted isotope mass numbers.
-- **Concurrency:** make simultaneous first-ever calls on separate molecules under ThreadSanitizer.
+- **Sorter lifetime:** construct every standalone and composite rule sorter eagerly, then verify repeated sequential access returns the same immutable sorter graph.
 - **Limits/robustness:** exact node-cap enforcement, more than 64 pair descriptors under UBSan, mismatched Rule4b groups, malformed tetrahedral tags, and rejected atrop markers.
 - **Selection robustness:** oversized bitsets and deliberately overlapping auxiliary configurations.
 - **Mancude pruning:** exocyclic typed neighbors must not preserve atoms excluded from the eventual ring component.

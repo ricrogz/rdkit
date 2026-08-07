@@ -1,7 +1,7 @@
-From 29d802d45c4bba6e0ebf88891b01a5a9ed0c2cd8 Mon Sep 17 00:00:00 2001
+From 1a6c2c1922ab031c0773a6d1c2386ed08fe71cfd Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:29:38 -0400
-Subject: [PATCH 3/7] Skip kekulization for nonaromatic CIP molecules
+Subject: [PATCH 03/14] Skip kekulization for nonaromatic CIP molecules
 
 ---
  Code/GraphMol/CIPLabeler/CIPMol.cpp | 41 +++++++++++++++++++----------
@@ -67,3 +67,6 @@ index 23f78915a..e8c5c1768 100644
      }
    }
  
+-- 
+2.34.1
+

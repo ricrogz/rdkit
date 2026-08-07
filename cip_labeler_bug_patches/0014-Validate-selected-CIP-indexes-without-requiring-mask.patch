@@ -1,4 +1,4 @@
-From 86de04e77db37fdeb396218de37a0b07b94901f3 Mon Sep 17 00:00:00 2001
+From 286f7ec6b4c61c6e6f405d88bf5ad19e9083153b Mon Sep 17 00:00:00 2001
 From: Ric R <ricrogz@gmail.com>
 Date: Thu, 6 Aug 2026 09:42:53 -0400
 Subject: [PATCH 14/14] Validate selected CIP indexes without requiring mask
@@ -11,7 +11,7 @@ Subject: [PATCH 14/14] Validate selected CIP indexes without requiring mask
  3 files changed, 46 insertions(+), 16 deletions(-)
 
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
-index f8e85c169..0e5e3535c 100644
+index 7fe406026..1a4f1d3c9 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.cpp
 @@ -56,7 +56,7 @@ struct ConfigEntry {
@@ -23,7 +23,7 @@ index f8e85c169..0e5e3535c 100644
  }
  
  ConfigList findConfigs(CIPMol &mol, const boost::dynamic_bitset<> &atoms,
-@@ -310,18 +310,24 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
+@@ -312,18 +312,24 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
  
  void validateSelection(const boost::dynamic_bitset<> &selection,
                         size_t expectedSize, const char *kind) {
@@ -56,10 +56,10 @@ index f8e85c169..0e5e3535c 100644
  
  template <typename T>
 diff --git a/Code/GraphMol/CIPLabeler/CIPLabeler.h b/Code/GraphMol/CIPLabeler/CIPLabeler.h
-index 1574bffb5..a6e1a93af 100644
+index 5d35a67ec..f7ac298b9 100644
 --- a/Code/GraphMol/CIPLabeler/CIPLabeler.h
 +++ b/Code/GraphMol/CIPLabeler/CIPLabeler.h
-@@ -74,14 +74,16 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
+@@ -76,14 +76,16 @@ RDKIT_CIPLABELER_EXPORT void assignCIPLabels(
   *   \param mol - the molecule to be labelled.
   *
   *   \param atoms - bitset with the atom indexes to be labeled.
@@ -83,10 +83,10 @@ index 1574bffb5..a6e1a93af 100644
   *   \param maxRecursiveIterations - maximum total number of recursive
   *      comparisons across the preliminary and full labeling passes. A value
 diff --git a/Code/GraphMol/CIPLabeler/catch_tests.cpp b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-index 5d657877d..0d6ed92a6 100644
+index 2ed53c1c2..222cac1e9 100644
 --- a/Code/GraphMol/CIPLabeler/catch_tests.cpp
 +++ b/Code/GraphMol/CIPLabeler/catch_tests.cpp
-@@ -800,15 +800,37 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
+@@ -772,15 +772,37 @@ TEST_CASE("assign specific atoms and bonds", "[accurateCIP]") {
  
      boost::dynamic_bitset<> noBonds;
      boost::dynamic_bitset<> wrongAtoms(mol->getNumAtoms() + 1);
@@ -126,3 +126,6 @@ index 5d657877d..0d6ed92a6 100644
    }
  }
  
+-- 
+2.34.1
+
