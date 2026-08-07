@@ -260,7 +260,8 @@ template <class Graph, class VertexCompatible, class EdgeCompatible>
 CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
                                      VertexCompatible &vertexCompatible,
                                      EdgeCompatible &edgeCompatible,
-                                     bool exactMatch) {
+                                     bool exactMatch,
+                                     bool allowSubstructureMatch = false) {
   constexpr std::size_t minQuerySize = 32;
   constexpr std::size_t maxCandidateCells = 1U << 20;
   constexpr std::size_t absoluteMaxRefinementWork = 8U << 20;
@@ -271,10 +272,14 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
   CandidateMatrix result;
   const auto querySize = boost::num_vertices(g1);
   const auto targetSize = boost::num_vertices(g2);
-  // The eager relation is reserved for large graph-isomorphism searches. It
-  // solves the highly symmetric equal-size case without adding quadratic
-  // setup to ordinary substructure searches (including repeated FMCS calls).
-  if (!exactMatch || querySize < minQuerySize || !targetSize ||
+  const bool substructureMatch =
+      allowSubstructureMatch && querySize < targetSize;
+  // The eager relation is reserved for large graph-isomorphism and explicitly
+  // enabled substructure searches. It solves highly symmetric cases without
+  // adding quadratic setup to ordinary substructure searches (including
+  // repeated FMCS calls).
+  if ((!exactMatch && !substructureMatch) || querySize < minQuerySize ||
+      !targetSize ||
       querySize > maxCandidateCells / targetSize) {
     return result;
   }
@@ -298,8 +303,10 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
           RDKit::ControlCHandler::getGotSignal()) {
         return result;
       }
-      if (queryDegree == targetDegrees[target] &&
-          vertexCompatible(query, target)) {
+      const bool degreeMatches = exactMatch
+                                     ? queryDegree == targetDegrees[target]
+                                     : queryDegree <= targetDegrees[target];
+      if (degreeMatches && vertexCompatible(query, target)) {
         result.values[static_cast<std::size_t>(query) * targetSize + target] =
             1;
         ++result.rowCounts[query];
@@ -310,8 +317,11 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
     }
     // The legacy traversal starts at query vertex zero. If that root already
     // has few choices, normal VF2 avoids the pathological branching and is
-    // cheaper than completing a quadratic compatibility relation.
-    if (!query && result.rowCounts[query] <= maxUnrefinedRootCandidates) {
+    // cheaper than completing a quadratic compatibility relation. Explicitly
+    // enabled all-match substructure searches still need the relation to order
+    // and prune the remainder of the query after that constrained root.
+    if (!query && !substructureMatch &&
+        result.rowCounts[query] <= maxUnrefinedRootCandidates) {
       return CandidateMatrix{};
     }
   }
@@ -356,6 +366,111 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
   return result;
 }
 
+// For a candidate relation with one more target than query vertex, count the
+// target vertices which can be left unmatched by some query-saturating
+// matching. Every subgraph embedding is such a matching, so this is a safe
+// upper bound on the number of results unique by target vertex set.
+inline unsigned int CountPossibleUnmatchedTargets(
+    const CandidateMatrix &candidateMatrix) {
+  const auto querySize = candidateMatrix.rowCounts.size();
+  const auto targetSize = candidateMatrix.targetSize;
+  if (!candidateMatrix || targetSize != querySize + 1) {
+    return 0;
+  }
+
+  std::vector<unsigned int> queryOrder(querySize);
+  for (unsigned int query = 0; query < querySize; ++query) {
+    queryOrder[query] = query;
+  }
+  std::sort(queryOrder.begin(), queryOrder.end(),
+            [&candidateMatrix](unsigned int lhs, unsigned int rhs) {
+              return candidateMatrix.rowCounts[lhs] <
+                     candidateMatrix.rowCounts[rhs];
+            });
+
+  std::vector<int> targetMatches(targetSize, -1);
+  std::vector<unsigned char> seen(targetSize, 0);
+  constexpr std::size_t maxMatchingWork = 8U << 20;
+  std::size_t matchingWork = 0;
+  bool incomplete = false;
+  auto augment = [&](auto &self, unsigned int query) -> bool {
+    if (incomplete) {
+      return false;
+    }
+    for (node_id target = 0; target < targetSize; ++target) {
+      if (!(matchingWork++ & 0x3ffU) &&
+          RDKit::ControlCHandler::getGotSignal()) {
+        incomplete = true;
+        return false;
+      }
+      if (matchingWork > maxMatchingWork) {
+        incomplete = true;
+        return false;
+      }
+      if (!candidateMatrix.get(query, target) || seen[target]) {
+        continue;
+      }
+      seen[target] = 1;
+      if (targetMatches[target] < 0 ||
+          self(self, static_cast<unsigned int>(targetMatches[target]))) {
+        targetMatches[target] = static_cast<int>(query);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (const auto query : queryOrder) {
+    std::fill(seen.begin(), seen.end(), 0);
+    if (!augment(augment, query) || incomplete) {
+      return 0;
+    }
+  }
+
+  std::vector<node_id> queryMatches(querySize, NULL_NODE);
+  node_id unmatchedTarget = NULL_NODE;
+  for (node_id target = 0; target < targetSize; ++target) {
+    if (targetMatches[target] < 0) {
+      unmatchedTarget = target;
+    } else {
+      queryMatches[static_cast<unsigned int>(targetMatches[target])] = target;
+    }
+  }
+  assert(unmatchedTarget != NULL_NODE);
+
+  // Flipping an alternating path which starts at the unmatched target makes
+  // its other endpoint unmatched. Therefore the reachable target vertices are
+  // exactly those which can be omitted by a saturating candidate matching.
+  std::vector<unsigned char> reachableQueries(querySize, 0);
+  std::vector<unsigned char> reachableTargets(targetSize, 0);
+  std::queue<node_id> targets;
+  reachableTargets[unmatchedTarget] = 1;
+  targets.push(unmatchedTarget);
+  unsigned int result = 1;
+  while (!targets.empty()) {
+    if (RDKit::ControlCHandler::getGotSignal()) {
+      return 0;
+    }
+    const auto target = targets.front();
+    targets.pop();
+    for (node_id query = 0; query < querySize; ++query) {
+      if (reachableQueries[query] || queryMatches[query] == target ||
+          !candidateMatrix.get(query, target)) {
+        continue;
+      }
+      reachableQueries[query] = 1;
+      const auto matchedTarget = queryMatches[query];
+      assert(matchedTarget != NULL_NODE);
+      if (!reachableTargets[matchedTarget]) {
+        reachableTargets[matchedTarget] = 1;
+        targets.push(matchedTarget);
+        ++result;
+      }
+    }
+  }
+  return result;
+}
+
 /*----------------------------------------------------
  * Sorts the nodes of a graphs, returning a
  * heap-allocated vector (using new) with the node ids
@@ -366,13 +481,15 @@ CandidateMatrix BuildCandidateMatrix(const Graph &g1, const Graph &g2,
  *    2 - The valence of the nodes.
  *    3 - The number of compatible target candidates, when available.
  *    4 - The number of already ordered neighbors.
+ *    5 - Optional deferral of terminal vertices.
  * The nodes at the beginning of the vector are
  * the most singular, from which the matching should start. Components are
  * kept contiguous and ring closures are prioritized.
  *--------------------------------------------------*/
 template <class Graph>
 node_id *SortNodesByFrequency(
-    const Graph *g, const CandidateMatrix *candidateMatrix = nullptr) {
+    const Graph *g, const CandidateMatrix *candidateMatrix = nullptr,
+    bool deferTerminalVertices = false) {
   std::vector<NodeInfo> vect;
   vect.reserve(boost::num_vertices(*g));
   typename Graph::vertex_iterator bNode, eNode;
@@ -406,13 +523,18 @@ node_id *SortNodesByFrequency(
     node_id id;
     unsigned int selectedNbrs;
     unsigned int rank;
+    bool terminal;
   };
-  auto candidateComp = [](const Candidate &a, const Candidate &b) {
-    if (a.selectedNbrs != b.selectedNbrs) {
-      return a.selectedNbrs < b.selectedNbrs;
-    }
-    return a.rank > b.rank;
-  };
+  auto candidateComp =
+      [deferTerminalVertices](const Candidate &a, const Candidate &b) {
+        if (a.selectedNbrs != b.selectedNbrs) {
+          return a.selectedNbrs < b.selectedNbrs;
+        }
+        if (deferTerminalVertices && a.terminal != b.terminal) {
+          return a.terminal;
+        }
+        return a.rank > b.rank;
+      };
 
   // A linear scan has lower overhead for normal-sized queries, while the
   // lazy heap prevents ordering itself from becoming quadratic for very
@@ -432,7 +554,7 @@ node_id *SortNodesByFrequency(
     for (unsigned int rank = 0; rank < vect.size(); ++rank) {
       const auto id = vect[rank].id;
       ranks[id] = rank;
-      candidates.push({id, 0, rank});
+      candidates.push({id, 0, rank, boost::out_degree(id, *g) == 1});
     }
   }
 
@@ -448,11 +570,19 @@ node_id *SortNodesByFrequency(
       candidates.pop();
     } else {
       unsigned int mostSelectedNbrs = 0;
+      bool bestIsTerminal = false;
       for (const auto &node : vect) {
-        if (!selected[node.id] &&
-            (best == NULL_NODE || selectedNbrs[node.id] > mostSelectedNbrs)) {
+        if (selected[node.id]) {
+          continue;
+        }
+        const bool nodeIsTerminal = boost::out_degree(node.id, *g) == 1;
+        if (best == NULL_NODE || selectedNbrs[node.id] > mostSelectedNbrs ||
+            (deferTerminalVertices &&
+             selectedNbrs[node.id] == mostSelectedNbrs && bestIsTerminal &&
+             !nodeIsTerminal)) {
           best = node.id;
           mostSelectedNbrs = selectedNbrs[node.id];
+          bestIsTerminal = nodeIsTerminal;
         }
       }
     }
@@ -467,7 +597,8 @@ node_id *SortNodesByFrequency(
         ++selectedNbrs[*nbrBeg];
         if (useHeap) {
           candidates.push({static_cast<node_id>(*nbrBeg), selectedNbrs[*nbrBeg],
-                           ranks[*nbrBeg]});
+                           ranks[*nbrBeg],
+                           boost::out_degree(*nbrBeg, *g) == 1});
         }
       }
       ++nbrBeg;
@@ -510,7 +641,8 @@ class VF2SubState {
   VF2SubState(Graph *ag1, Graph *ag2, VertexCompatible &avc,
               EdgeCompatible &aec, MatchChecking &amc, bool sortNodes = false,
               const CandidateMatrix *candidates = nullptr,
-              bool requireExactMatch = false)
+              bool requireExactMatch = false,
+              bool deferTerminalVertices = false)
       : g1(ag1),
         g2(ag2),
         vc(avc),
@@ -522,7 +654,8 @@ class VF2SubState {
         exactMatch(requireExactMatch) {
     std::unique_ptr<node_id[]> newOrder;
     if (sortNodes) {
-      newOrder.reset(SortNodesByFrequency(ag1, candidateMatrix));
+      newOrder.reset(SortNodesByFrequency(ag1, candidateMatrix,
+                                          deferTerminalVertices));
     }
 
     core_len = 0;
@@ -683,7 +816,9 @@ class VF2SubState {
               while (targetNbrBeg != targetNbrEnd &&
                      (bestTargetNbr == NULL_NODE ||
                       candidateCount < fewestCandidates)) {
-                if (core_2[*targetNbrBeg] == NULL_NODE) {
+                if (core_2[*targetNbrBeg] == NULL_NODE &&
+                    (!candidateMatrix ||
+                     candidateMatrix->get(pair.n1, *targetNbrBeg))) {
                   ++candidateCount;
                 }
                 ++targetNbrBeg;
@@ -1104,32 +1239,74 @@ template <class Graph, class VertexLabeling  // binary predicate
           >
 bool vf2_all(const Graph &g1, const Graph &g2, VertexLabeling &vertex_labeling,
              EdgeLabeling &edge_labeling, MatchChecking &match_checking,
-             DoubleBackInsertionSequence &F, unsigned int max_results = 1000) {
+             DoubleBackInsertionSequence &F, unsigned int max_results = 1000,
+             bool uniquifyByTargetVertexSet = false) {
   F.clear();
-  if (num_vertices(g1) > num_vertices(g2) || num_edges(g1) > num_edges(g2)) {
+  const auto querySize = num_vertices(g1);
+  const auto targetSize = num_vertices(g2);
+  if (querySize > targetSize || num_edges(g1) > num_edges(g2)) {
     return false;
   }
 
   RDKit::ControlCHandler hdlr;
 
   const bool exactMatch =
-      num_vertices(g1) == num_vertices(g2) && num_edges(g1) == num_edges(g2);
+      querySize == targetSize && num_edges(g1) == num_edges(g2);
+  constexpr std::size_t minOptimizedQuerySize = 64;
+  const bool allowSubstructureMatch = uniquifyByTargetVertexSet &&
+                                     querySize >= minOptimizedQuerySize;
   auto candidateMatrix = detail::BuildCandidateMatrix(
-      g1, g2, vertex_labeling, edge_labeling, exactMatch);
+      g1, g2, vertex_labeling, edge_labeling, exactMatch,
+      allowSubstructureMatch);
   const auto *candidateMatrixPtr = candidateMatrix ? &candidateMatrix : nullptr;
 
-  // Use the optimized query order to reject impossible matches without
-  // changing the order in which successful matches are returned.
+  // Candidate refinement can prove an upper bound on unique target vertex
+  // sets for large spanning and near-spanning searches. Once that many sets
+  // have been accepted, every remaining embedding is necessarily a duplicate.
+  // Keep ordinary searches on the legacy path; aside from avoiding setup cost,
+  // this preserves their final-check invocation behavior.
+  unsigned int uniqueTargetSetLimit = 0;
+  if (candidateMatrixPtr && uniquifyByTargetVertexSet &&
+      querySize >= minOptimizedQuerySize) {
+    if (querySize == targetSize) {
+      uniqueTargetSetLimit = 1;
+    } else if (querySize < targetSize && targetSize - querySize == 1) {
+      uniqueTargetSetLimit =
+          detail::CountPossibleUnmatchedTargets(candidateMatrix);
+    }
+  }
+  auto resultLimit = max_results;
+  if (uniqueTargetSetLimit &&
+      (!resultLimit || uniqueTargetSetLimit < resultLimit)) {
+    resultLimit = uniqueTargetSetLimit;
+  }
+
+  // Large uniquified substructure searches enumerate directly in the refined
+  // query order. Running a legacy traversal first can itself be the expensive
+  // part of the search, while restarting afterward repeats the full path to
+  // the first result. Terminal query vertices are deferred so choices which
+  // change the target vertex set occur at the deepest levels, before the
+  // traversal revisits equivalent mappings of the constrained scaffold. A
+  // one-result search retains the legacy order entirely.
+  const bool useOptimizedEnumeration =
+      allowSubstructureMatch && candidateMatrixPtr &&
+      querySize < targetSize && (!resultLimit || resultLimit > 1);
+
+  // Legacy searches retain the non-mutating optimized feasibility precheck.
+  // The optimized all-match traversal already uses that same query order, so
+  // a separate precheck would only duplicate its path to the first result.
   if ((!candidateMatrixPtr || !candidateMatrix.hasEmptyRow()) &&
-      detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling,
-                                candidateMatrixPtr, exactMatch)) {
+      (useOptimizedEnumeration ||
+       detail::hasPotentialMatch(g1, g2, vertex_labeling, edge_labeling,
+                                 candidateMatrixPtr, exactMatch))) {
     detail::VF2SubState<const Graph, VertexLabeling, EdgeLabeling,
                         MatchChecking>
-        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking, false,
-           candidateMatrixPtr, exactMatch);
+        s0(&g1, &g2, vertex_labeling, edge_labeling, match_checking,
+           useOptimizedEnumeration, candidateMatrixPtr, exactMatch,
+           useOptimizedEnumeration);
     auto ni1 = std::make_unique<detail::node_id[]>(num_vertices(g1));
     auto ni2 = std::make_unique<detail::node_id[]>(num_vertices(g2));
-    match(ni1.get(), ni2.get(), s0, F, max_results);
+    match(ni1.get(), ni2.get(), s0, F, resultLimit);
   }
 
   if (hdlr.getGotSignal()) {

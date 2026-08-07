@@ -527,7 +527,8 @@ std::vector<MatchVectType> SubstructMatch(
   std::vector<detail::ssPairType> pms;
   bool found =
       boost::vf2_all(query.getTopology(), mol.getTopology(), atomLabeler,
-                     bondLabeler, matchChecker, pms, params.maxMatches);
+                     bondLabeler, matchChecker, pms, params.maxMatches,
+                     params.uniquify);
   if (found) {
     const unsigned int nQueryAtoms = query.getNumAtoms();
     matches.reserve(pms.size());
@@ -566,7 +567,8 @@ unsigned int SubstructMatchCount(const ROMol &mol, const ROMol &query,
 
   detail::MatchCounter counter;
   boost::vf2_all(query.getTopology(), mol.getTopology(), atomLabeler,
-                 bondLabeler, matchChecker, counter, params.maxMatches);
+                 bondLabeler, matchChecker, counter, params.maxMatches,
+                 params.uniquify);
   return static_cast<unsigned int>(counter.size());
 }
 
@@ -675,7 +677,8 @@ unsigned int RecursiveMatcher(const ROMol &mol, const ROMol &query,
   std::vector<detail::ssPairType> pms;
   bool found =
       boost::vf2_all(query.getTopology(), mol.getTopology(), atomLabeler,
-                     bondLabeler, matchChecker, pms, lparams.maxMatches);
+                     bondLabeler, matchChecker, pms, lparams.maxMatches,
+                     lparams.uniquify);
   unsigned int res = 0;
   if (found) {
     matches.reserve(pms.size());
