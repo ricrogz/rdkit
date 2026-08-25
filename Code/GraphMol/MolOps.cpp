@@ -371,8 +371,7 @@ void cleanUpOrganometallics(RWMol &mol) {
 }
 
 namespace {
-void adjustHs(RWMol &mol,
-              const boost::dynamic_bitset<> *atomsToAdjust) {
+void adjustHs(RWMol &mol, const boost::dynamic_bitset<> *atomsToAdjust) {
   //
   //  Go through and adjust the number of implicit and explicit Hs
   //  on each atom in the molecule.
@@ -966,7 +965,7 @@ std::map<T, std::unique_ptr<ROMol>> getTheFragsWithQuery(
     }
     assignments[i] = where;
     if (res.find(where) == res.end()) {
-      res[where] = std::unique_ptr<ROMol>(new ROMol());
+      res[where] = std::unique_ptr<ROMol>(new RWMol());
     }
     auto *frag = static_cast<RWMol *>(res[where].get());
     ids[i] = frag->addAtom(mol.getAtomWithIdx(i)->copy(), false, true);
