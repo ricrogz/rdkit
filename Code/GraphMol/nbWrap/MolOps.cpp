@@ -442,11 +442,6 @@ RWMol *getEditable(const ROMol &mol) {
   return res;
 }
 
-ROMol *getNormal(const RWMol &mol) {
-  auto *res = static_cast<ROMol *>(new RWMol(mol));
-  return res;
-}
-
 void kekulizeMol(ROMol &mol, bool clearAromaticFlags = false,
                  bool canonical = true) {
   auto &wmol = static_cast<RWMol &>(mol);
