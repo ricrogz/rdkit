@@ -164,7 +164,7 @@ class ReadWriteMol : public RWMol {
     setStereoGroups(std::move(groups));
   }
   ROMol *GetMol() const {
-    auto *res = new ROMol(*this);
+    auto *res = new RWMol(*this);
     return res;
   }
 
@@ -256,6 +256,7 @@ struct mol_wrapper {
                 "query conformer ID")
         .def_rw("tol2", &RDKit::AtomCoordsMatchFunctor::d_tol2,
                 "squared distance tolerance");
+
     nb::class_<RDKit::SubstructMatchParameters>(
         m, "SubstructMatchParameters",
         "Parameters controlling substructure matching")
@@ -351,6 +352,7 @@ struct mol_wrapper {
             nb::keep_alive<0, 1>())
         .def("__getitem__", &AtomSeqHolder<>::operator[],
              nb::rv_policy::reference_internal, "idx"_a);
+
     nb::class_<AtomSeqHolder<AtomNeighborsIterator>>(
         m, "_AtomSeqHolder2", "A sequence-like holder of an atom's neighbors")
         .def("__len__", &AtomSeqHolder<AtomNeighborsIterator>::size)
@@ -364,6 +366,7 @@ struct mol_wrapper {
             nb::keep_alive<0, 1>())
         .def("__getitem__", &AtomSeqHolder<AtomNeighborsIterator>::operator[],
              nb::rv_policy::reference_internal, "idx"_a);
+
     nb::class_<BondSeqHolder<>>(m, "_BondSeqHolder1",
                                 "A sequence-like holder of a molecule's bonds")
         .def(nb::init<ROMol &>(), "mol"_a)
@@ -377,6 +380,7 @@ struct mol_wrapper {
             nb::keep_alive<0, 1>())
         .def("__getitem__", &BondSeqHolder<>::operator[],
              nb::rv_policy::reference_internal, "idx"_a);
+
     nb::class_<BondSeqHolder<AtomBondsIterator>>(
         m, "_BondSeqHolder2", "A sequence-like holder of an atom's bonds")
         .def("__len__", &BondSeqHolder<AtomBondsIterator>::size)
@@ -403,6 +407,7 @@ struct mol_wrapper {
             nb::keep_alive<0, 1>())
         .def("__getitem__", &ConformerIterSeq::operator[],
              nb::rv_policy::reference_internal, "idx"_a);
+
     nb::class_<QueryAtomIterSeq>(
         m, "_ROQAtomSeq",
         "A sequence-like holder of atoms matching a query atom")
@@ -417,38 +422,35 @@ struct mol_wrapper {
         .def("__getitem__", &QueryAtomIterSeq::operator[],
              nb::rv_policy::reference_internal, "idx"_a);
 
-    nb::class_<ROMol>(m, "Mol", nb::dynamic_attr())
-        .def(nb::new_([]() {
-      return new ROMol(); }),
+    nb::class_<ROMol>(m, "Mol", nb::dynamic_attr() NB_POOLED_IF_AVAILABLE)
+        .def(nb::new_([]() -> ROMol * { return new RWMol(); }),
              "Constructor, takes no arguments")
-        .def(nb::new_([](nb::bytes b) {
-      return new ROMol(std::string(static_cast<const char *>(b.data()),
-                                   static_cast<size_t>(b.size())));
+        .def(nb::new_([](nb::bytes b) -> ROMol * {
+               return new RWMol(std::string(static_cast<const char *>(b.data()),
+                                             static_cast<size_t>(b.size())));
              }),
              "Constructor from a binary string", "pklString"_a)
-        .def(nb::new_([](nb::bytes b, unsigned int propertyFlags) {
-      return new ROMol(std::string(static_cast<const char *>(b.data()),
-                                   static_cast<size_t>(b.size())),
-                       propertyFlags);
+        .def(nb::new_([](nb::bytes b, unsigned int propertyFlags) -> ROMol * {
+               return new RWMol(std::string(static_cast<const char *>(b.data()),
+                                             static_cast<size_t>(b.size())),
+                                             propertyFlags);
              }),
              "Constructor from a binary string with property flags",
              "pklString"_a, "propertyFlags"_a)
-        .def(nb::new_([](std::string pkl) {
-      return new ROMol(pkl);
-             }),
+        .def(nb::new_([](std::string pkl) -> ROMol * { return new RWMol(pkl); }),
              "Constructor from a binary string", "pklString"_a)
-        .def(nb::new_([](std::string pkl, unsigned int propertyFlags) {
-      return new ROMol(pkl, propertyFlags);
+        .def(nb::new_([](std::string pkl, unsigned int propertyFlags) -> ROMol * {
+               return new RWMol(pkl, propertyFlags);
              }),
              "Constructor from a binary string with property flags",
              "pklString"_a, "propertyFlags"_a)
-        .def(nb::new_([](const ROMol &m, bool quickCopy, int confId) {
-      return new ROMol(m, quickCopy, confId);
+        .def(nb::new_([](const ROMol &m, bool quickCopy, int confId) -> ROMol * {
+               return new RWMol(m, quickCopy, confId);
              }),
              "Constructor from another molecule", "mol"_a,
              "quickCopy"_a = false, "confId"_a = -1)
-        .def("__copy__", &generic__copy__<ROMol>)
-        .def("__deepcopy__", &generic__deepcopy__<ROMol>, "memo"_a)
+        .def("__copy__", &generic__copy__<RWMol>)
+        .def("__deepcopy__", &generic__deepcopy__<RWMol>, "memo"_a)
         .def(
             "GetAtoms", [](ROMol &mol) {
       return AtomSeqHolder<>(mol); },
