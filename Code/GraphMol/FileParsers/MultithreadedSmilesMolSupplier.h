@@ -37,8 +37,6 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier final
 
   ~MultithreadedSmilesMolSupplier() final { close(); };
 
-  bool getEOFHitOnRead() const final { return false; }
-
   //! reads next record and returns whether or not EOF was hit
   bool extractNextRecord(std::string &record, unsigned int &lineNum,
                          unsigned int &index) final;
