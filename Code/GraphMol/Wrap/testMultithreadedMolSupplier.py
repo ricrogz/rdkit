@@ -185,27 +185,36 @@ class TestCase(unittest.TestCase):
     self.assertEqual(noneMols, 0)
 
   def testEmptySDEOFMatchesForwardSupplier(self):
+
     with tempfile.TemporaryDirectory() as tmpDir:
       fileN = os.path.join(tmpDir, 'empty.sdf')
+
       with open(fileN, 'wb'):
         pass  # create an empty file
+
       with self.assertRaises(OSError):
         Chem.MultithreadedSDMolSupplier(fileN)
 
       with open(fileN, 'wb') as tmp:
         tmp.write(b'\n')
+
       with open(fileN, 'rb') as forwardInput:
         forwardMols = list(Chem.ForwardSDMolSupplier(forwardInput))
+
       multithreadedMols = list(Chem.MultithreadedSDMolSupplier(fileN))
+
     self.assertEqual(multithreadedMols, forwardMols)
 
   def testEmptySmilesEOFMatchesSupplier(self):
+
     with tempfile.TemporaryDirectory() as tmpDir:
       fileN = os.path.join(tmpDir, 'empty.smi')
       with open(fileN, 'wb'):
         pass  # create an empty file
+
       with self.assertRaises(OSError):
         Chem.SmilesMolSupplier(fileN, titleLine=False)
+
       with self.assertRaises(OSError):
         Chem.MultithreadedSmilesMolSupplier(fileN, titleLine=False)
 
@@ -213,10 +222,11 @@ class TestCase(unittest.TestCase):
         with self.subTest(content=content):
           with open(fileN, 'wb') as tmp:
             tmp.write(content)
-      singleMols = list(Chem.SmilesMolSupplier(fileN, titleLine=False))
-      multithreadedMols = list(Chem.MultithreadedSmilesMolSupplier(fileN, titleLine=False))
-      self.assertEqual(singleMols, [])
-      self.assertEqual(multithreadedMols, singleMols)
+
+        singleMols = list(Chem.SmilesMolSupplier(fileN, titleLine=False))
+        multithreadedMols = list(Chem.MultithreadedSmilesMolSupplier(fileN, titleLine=False))
+        self.assertEqual(singleMols, [])
+        self.assertEqual(multithreadedMols, singleMols)
 
 
 if __name__ == '__main__':

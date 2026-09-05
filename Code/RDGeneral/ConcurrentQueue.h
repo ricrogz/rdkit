@@ -32,7 +32,7 @@ class ConcurrentQueue {
 
  public:
   ConcurrentQueue(unsigned int capacity)
-      : d_capacity(capacity), d_done(false), d_head(0), d_tail(0) {
+      : d_done(false), d_capacity(capacity), d_head(0), d_tail(0) {
     std::vector<E> elements(capacity);
     d_elements = elements;
   }

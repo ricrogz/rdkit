@@ -74,7 +74,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
 
   //! included for the interface. Python wrappers check this
   //! each time next() is called.  It is not used in the C++ code.
-  bool getEOFHitOnRead();
+  virtual bool getEOFHitOnRead() const final;
 
   //! returns the record id of the last extracted item
   //! Note: d_LastRecordId = 0, initially therefore the value 0 is returned
@@ -113,7 +113,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedMolSupplier : public MolSupplier {
   void setReadCallback(readCallBackFn_t cb) { readCallback = cb; }
 
   //! not yet implemented
-  void init() final{};
+  void init() final {};
 
   //! not yet implemented
   void reset() final;

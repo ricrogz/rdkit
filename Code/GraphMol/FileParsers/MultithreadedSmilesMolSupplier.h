@@ -108,7 +108,7 @@ class RDKIT_FILEPARSERS_EXPORT MultithreadedSmilesMolSupplier
         inStream, takeOwnership, params, parseParams));
   }
 
-  bool getEOFHitOnRead() const {
+  virtual bool getEOFHitOnRead() const final {
     if (dp_supplier) {
       return static_cast<ContainedType *>(dp_supplier.get())->getEOFHitOnRead();
     }
