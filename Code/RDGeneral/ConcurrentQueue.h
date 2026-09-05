@@ -18,14 +18,15 @@ namespace RDKit {
 template <typename E>
 class ConcurrentQueue {
  private:
-  unsigned int d_capacity;
-  bool d_done;
+  bool d_done = false;
+  unsigned int d_capacity = 0;
+  unsigned int d_head = 0;
+  unsigned int d_tail = 0;
   std::vector<E> d_elements;
-  unsigned int d_head, d_tail;
   mutable std::mutex d_lock;
-  std::condition_variable d_notEmpty, d_notFull;
+  std::condition_variable d_notEmpty;
+  std::condition_variable d_notFull;
 
- private:
   ConcurrentQueue(const ConcurrentQueue<E> &);
   ConcurrentQueue &operator=(const ConcurrentQueue<E> &);
 
