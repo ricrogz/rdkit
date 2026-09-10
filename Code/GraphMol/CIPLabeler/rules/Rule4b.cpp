@@ -10,7 +10,7 @@
 //
 
 #include <algorithm>
-#include <list>
+#include <vector>
 
 #include <RDGeneral/Invariant.h>
 
@@ -203,9 +203,10 @@ std::vector<PairList> Rule4b::newPairLists(
 void Rule4b::fillPairs(const Node *beg, PairList &plist) const {
   const Rule4b replacement_rule(plist.getRefDescriptor());
   const auto &sorter = getRefSorter(&replacement_rule);
-  auto queue = std::list<const Node *>({beg});
+  std::vector<const Node *> queue{beg};
 
-  for (const auto &node : queue) {
+  for (unsigned int pos = 0; pos < queue.size(); ++pos) {
+    const auto node = queue[pos];
     plist.add(node->getAux());
     auto edges = node->getEdges();
     sorter.prioritize(node, edges);
