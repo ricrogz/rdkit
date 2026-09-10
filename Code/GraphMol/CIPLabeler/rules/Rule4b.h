@@ -37,6 +37,9 @@ class Rule4b : public SequenceRule {
 
   int8_t compare(const Edge *a, const Edge *b) const override;
 
+ protected:
+  bool isRecursiveComparisonNeeded(const Edge *a, const Edge *b) const override;
+
  private:
   const Descriptor d_ref = Descriptor::NONE;
 

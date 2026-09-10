@@ -45,7 +45,27 @@ bool Edge::isBeg(const Node *node) const { return node == dp_beg; }
 
 bool Edge::isEnd(const Node *node) const { return node == dp_end; }
 
-void Edge::setAux(Descriptor aux) { d_aux = std::move(aux); }
+void Edge::setAux(Descriptor aux) {
+  const auto oldClass = getAuxDescriptorClass(d_aux);
+  const auto newClass = getAuxDescriptorClass(aux);
+  if (oldClass != newClass) {
+    Node *originalChild = nullptr;
+    if (dp_end->isOriginalChildOf(dp_beg)) {
+      originalChild = dp_end;
+    } else if (dp_beg->isOriginalChildOf(dp_end)) {
+      originalChild = dp_beg;
+    }
+    if (originalChild != nullptr) {
+      if (oldClass != 0u) {
+        originalChild->adjustAuxDescriptorCount(oldClass, -1);
+      }
+      if (newClass != 0u) {
+        originalChild->adjustAuxDescriptorCount(newClass, 1);
+      }
+    }
+  }
+  d_aux = aux;
+}
 
 void Edge::flip() { std::swap(dp_beg, dp_end); }
 

@@ -8,6 +8,7 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
+#include <bit>
 #include <vector>
 
 #include "Digraph.h"
@@ -31,8 +32,8 @@ Node *Node::newTerminalChild(int idx, Atom *atom, uint8_t flags) const {
   }
 
   auto atomic_num = atom ? atom->getAtomicNum() : 1;
-  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, new_dist,
-                        flags);
+  return &dp_g->addNode(std::move(new_visit), atom, atomic_num, new_dist, flags,
+                        this);
 }
 
 Node::Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
@@ -153,8 +154,47 @@ Node *Node::newImplicitHydrogenChild() const {
 void Node::add(Edge *e) { d_edges.push_back(e); }
 
 void Node::setAux(Descriptor desc) {
+  const auto oldClass = getAuxDescriptorClass(d_aux);
+  const auto newClass = getAuxDescriptorClass(desc);
+  if (oldClass != newClass) {
+    if (oldClass != 0u) {
+      adjustAuxDescriptorCount(oldClass, -1);
+    }
+    if (newClass != 0u) {
+      adjustAuxDescriptorCount(newClass, 1);
+    }
+  }
   d_aux = desc;
-  dp_g->noteAuxDescriptor(desc);
+}
+
+std::size_t Node::getAuxDescriptorCount(unsigned mask) const {
+  std::size_t result = 0;
+  for (unsigned i = 0; i < d_aux_descriptor_counts.size(); ++i) {
+    if ((mask & (1u << i)) != 0u) {
+      result += d_aux_descriptor_counts[i];
+    }
+  }
+  return result;
+}
+
+void Node::adjustAuxDescriptorCount(unsigned descriptorClass, int delta) {
+  PRECONDITION(
+      descriptorClass != 0u && (descriptorClass & (descriptorClass - 1u)) == 0u,
+      "descriptor class must contain exactly one bit")
+  const auto index = static_cast<unsigned>(std::countr_zero(descriptorClass));
+  PRECONDITION(index < d_aux_descriptor_counts.size(),
+               "invalid descriptor class")
+
+  for (auto node = this; node != nullptr;
+       node = const_cast<Node *>(node->dp_parent)) {
+    if (delta > 0) {
+      ++node->d_aux_descriptor_counts[index];
+    } else {
+      PRECONDITION(node->d_aux_descriptor_counts[index] != 0u,
+                   "auxiliary descriptor count underflow")
+      --node->d_aux_descriptor_counts[index];
+    }
+  }
 }
 
 const EdgeVector &Node::getEdges() const {

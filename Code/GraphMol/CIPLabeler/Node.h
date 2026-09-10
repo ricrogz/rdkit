@@ -10,6 +10,8 @@
 //
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -117,6 +119,15 @@ class Node {
 
   void setAux(Descriptor desc);
 
+  // Number of effective auxiliary descriptors in this node's immutable
+  // original-forward occurrence subtree. The mask is a combination of the
+  // AUX_DESCRIPTOR_* constants from Descriptor.h.
+  std::size_t getAuxDescriptorCount(unsigned mask) const;
+
+  // Adjust descriptor counts for this node and each of its original
+  // ancestors. Used by Node and Edge descriptor assignment.
+  void adjustAuxDescriptorCount(unsigned descriptorClass, int delta);
+
   const EdgeVector &getEdges() const;
 
   EdgeVector getEdges(Atom *end) const;
@@ -131,6 +142,7 @@ class Node {
   boost::rational<int> d_atomic_num;
   double d_atomic_mass = 0.0;
   Descriptor d_aux = Descriptor::NONE;
+  std::array<unsigned int, 3> d_aux_descriptor_counts{};
   uint8_t d_flags = 0x0;
 
   EdgeVector d_edges;

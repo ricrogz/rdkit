@@ -45,6 +45,7 @@ class Sort {
   std::vector<EdgeVector> getGroups(const EdgeVector &sorted) const;
 
  private:
+  std::uint64_t d_cacheId;
   const std::vector<const SequenceRule *> d_rules;
 
   int8_t compareSubstituents(const Node *node, const Edge *a, const Edge *b,
