@@ -40,12 +40,16 @@ inline int8_t three_way_comparison(const T &x, const T &y) {
 class SequenceRule {
  public:
   // Keeps exact comparison results alive across the nested sorts performed by
-  // one configuration-label calculation. Nested sessions share the cache;
-  // the outermost session owns its lifetime.
+  // one labeling operation. Nested sessions share the cache; the outermost
+  // session owns its lifetime.
   class ComparisonSession {
    public:
     ComparisonSession();
     ~ComparisonSession();
+
+    // Auxiliary descriptors change between distance spheres. Discard only
+    // descriptor-dependent entries while retaining constitutional work.
+    static void invalidateAuxiliaryCaches();
 
     ComparisonSession(const ComparisonSession &) = delete;
     ComparisonSession &operator=(const ComparisonSession &) = delete;
@@ -58,7 +62,8 @@ class SequenceRule {
     friend class Tetrahedral;
   };
 
-  explicit SequenceRule(bool useConstitutionalRootEquivalence = false);
+  explicit SequenceRule(bool useConstitutionalRootEquivalence = false,
+                        bool auxiliaryIndependent = false);
 
   virtual ~SequenceRule();
 
@@ -70,9 +75,11 @@ class SequenceRule {
 
   virtual const Sort *getSorter() const;
 
+  bool isAuxiliaryIndependent() const;
+
   int8_t recursiveCompare(const Edge *a, const Edge *b) const;
 
-  void setSorter(const Sort *sorter);
+  virtual void setSorter(const Sort *sorter);
 
   Priority sort(const Node *node, EdgeVector &edges, bool deep) const;
 
@@ -90,6 +97,7 @@ class SequenceRule {
  private:
   std::uint64_t d_cacheId;
   bool d_useConstitutionalRootEquivalence;
+  bool d_auxiliaryIndependent;
 
   bool areUpEdges(Node *aNode, Node *bNode, Edge *aEdge, Edge *bEdge) const;
   bool hasEquivalentAcyclicContinuation(const Edge *a, const Edge *b) const;
@@ -98,11 +106,11 @@ class SequenceRule {
   int8_t recursiveCompareEqual(const Edge *a, const Edge *b) const;
 
   static bool getCachedSort(std::uint64_t sortId, const Node *node, bool deep,
-                            EdgeVector &edges, bool &unique,
-                            bool &pseudoAsymmetric);
+                            bool auxiliaryIndependent, EdgeVector &edges,
+                            bool &unique, bool &pseudoAsymmetric);
   static void cacheSort(std::uint64_t sortId, const Node *node, bool deep,
-                        const EdgeVector &input, const EdgeVector &sorted,
-                        const Priority &priority);
+                        bool auxiliaryIndependent, const EdgeVector &input,
+                        const EdgeVector &sorted, const Priority &priority);
 
   friend class Sort;
 };

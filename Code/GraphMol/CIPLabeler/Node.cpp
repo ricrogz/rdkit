@@ -21,7 +21,7 @@ namespace CIPLabeler {
 
 Node *Node::newTerminalChild(int idx, Atom *atom, uint8_t flags) const {
   auto new_dist = flags & DUPLICATE ? getVisitedDistance(idx) : d_dist + 1;
-  std::vector<std::uint64_t> new_visit;
+  NodeVisitState new_visit;
 
   if (flags & BOND_DUPLICATE) {
     const auto &frac = dp_g->getMol().getFractionalAtomicNum(dp_atom);
@@ -36,7 +36,7 @@ Node *Node::newTerminalChild(int idx, Atom *atom, uint8_t flags) const {
                         this);
 }
 
-Node::Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
+Node::Node(Digraph *g, NodeVisitState &&visit, Atom *atom,
            boost::rational<int> &&frac, unsigned int dist, uint8_t flags,
            const Node *parent)
     : dp_g{g},
@@ -113,6 +113,10 @@ bool Node::isVisited(int idx) const {
 
 bool Node::isOriginalChildOf(const Node *parent) const {
   return dp_parent == parent;
+}
+
+std::span<const std::uint64_t> Node::getVisitedAtoms() const {
+  return {d_visit.data(), d_visit.size()};
 }
 
 unsigned int Node::getVisitedDistance(int idx) const {

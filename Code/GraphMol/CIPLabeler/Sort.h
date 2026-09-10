@@ -46,6 +46,7 @@ class Sort {
 
  private:
   std::uint64_t d_cacheId;
+  bool d_auxiliaryIndependent;
   const std::vector<const SequenceRule *> d_rules;
 
   int8_t compareSubstituents(const Node *node, const Edge *a, const Edge *b,
