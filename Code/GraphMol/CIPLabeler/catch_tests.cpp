@@ -1915,3 +1915,18 @@ TEST_CASE("GitHub #9516: update return values for Rule 6") {
   CHECK(priority.isPseudoAsymetric());
   CHECK(toSort == EdgeVector{refEdge, otherEdge});
 }
+
+TEST_CASE("Long running calculation") {
+  SECTION("chirality") {
+    // Adding more "C1CC(C1)" groups at the end makes this exponentially slower
+    auto mol = R"(C[C@@H]1C[C@@H](C1)C1CC(C1)C1CC(C1)C1CC(C1))"_smiles;
+    REQUIRE(mol);
+
+    for (auto i : {1, 3}) {
+      auto a = mol->getAtomWithIdx(i);
+      REQUIRE(a->getChiralTag() != Atom::CHI_UNSPECIFIED);
+    }
+
+    CIPLabeler::assignCIPLabels(*mol);
+  }
+}

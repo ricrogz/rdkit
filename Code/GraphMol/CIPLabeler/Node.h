@@ -101,6 +101,10 @@ class Node {
 
   bool isVisited(int idx) const;
 
+  // True when this node was created as a child of parent before any temporary
+  // digraph rerooting changed edge directions.
+  bool isOriginalChildOf(const Node *parent) const;
+
   Node *newChild(int idx, Atom *atom) const;
 
   Node *newBondDuplicateChild(int idx, Atom *atom) const;

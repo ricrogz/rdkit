@@ -30,6 +30,10 @@ Rule5New::Rule5New() = default;
 Rule5New::Rule5New(Descriptor ref) : d_ref{ref} {}
 
 int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
+  if (!a->getBeg()->getDigraph()->hasEffectiveAuxDescriptors() &&
+      !b->getBeg()->getDigraph()->hasEffectiveAuxDescriptors()) {
+    return 0;
+  }
   const auto &aBeg = a->getBeg();
   const auto &aEnd = a->getEnd();
   const auto &bBeg = b->getBeg();

@@ -49,6 +49,10 @@ PairListVector Rule4b::getReferenceDescriptorPairLists(const Node *node) const {
 }
 
 int8_t Rule4b::compare(const Edge *a, const Edge *b) const {
+  if (!a->getBeg()->getDigraph()->hasEffectiveAuxDescriptors() &&
+      !b->getBeg()->getDigraph()->hasEffectiveAuxDescriptors()) {
+    return 0;
+  }
   const auto &aBeg = a->getBeg();
   const auto &aEnd = a->getEnd();
   const auto &bBeg = b->getBeg();
