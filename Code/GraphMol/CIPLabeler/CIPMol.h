@@ -112,6 +112,11 @@ class CIPMol {
   // used as CIP priorities.
   bool hasConstitutionalAutomorphism(Atom *root, Atom *from, Atom *to) const;
 
+  // Also return the support of the concrete witness used for the proof.
+  bool hasConstitutionalAutomorphism(
+      Atom *root, Atom *from, Atom *to,
+      std::vector<unsigned int> &movedAtoms) const;
+
   // As above, but require every atom set in the path bitset to remain fixed.
   // This proves equality for a rerooted occurrence without losing the
   // path-history state that controls ring-duplicate construction.
@@ -119,6 +124,12 @@ class CIPMol {
       Atom *root, Atom *from, Atom *to,
       std::span<const std::uint64_t> fixedAtoms,
       std::span<const unsigned int> addedFixedAtoms = {}) const;
+
+  bool hasConstitutionalAutomorphism(
+      Atom *root, Atom *from, Atom *to,
+      std::span<const std::uint64_t> fixedAtoms,
+      std::span<const unsigned int> addedFixedAtoms,
+      std::vector<unsigned int> &movedAtoms) const;
 
   // Component membership is used to keep symmetry and auxiliary-label work
   // local to the connected structure containing the center of interest.
@@ -215,13 +226,15 @@ class CIPMol {
   bool hasConstitutionalAutomorphism(
       unsigned int rootIdx, unsigned int fromIdx, unsigned int toIdx,
       std::span<const std::uint64_t> fixedAtoms,
-      std::span<const unsigned int> addedFixedAtoms) const;
+      std::span<const unsigned int> addedFixedAtoms,
+      std::vector<unsigned int> *movedAtoms) const;
   ConstitutionalAutomorphismEvidence &getAutomorphismEvidence(
       const ConstitutionalAutomorphismKey &key) const;
   static std::optional<bool> findAutomorphismEvidence(
       const ConstitutionalAutomorphismEvidence &evidence,
       std::span<const std::uint64_t> fixedAtoms,
-      std::span<const unsigned int> addedFixedAtoms);
+      std::span<const unsigned int> addedFixedAtoms,
+      std::vector<unsigned int> *movedAtoms);
   void addAutomorphismWitness(ConstitutionalAutomorphismEvidence &evidence,
                               std::vector<unsigned int> movedAtoms) const;
   void addAutomorphismFailure(ConstitutionalAutomorphismEvidence &evidence,
