@@ -44,6 +44,7 @@ namespace {
 struct ConfigEntry {
   std::unique_ptr<Configuration> config;
   bool selected = false;
+  bool constitutionalPassComplete = false;
 };
 
 using ConfigList = std::vector<ConfigEntry>;
@@ -277,6 +278,7 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
     try {
       const ScopedPreliminaryBudget preliminaryBudget;
       auto desc = conf->label(constitutional_rules);
+      entry.constitutionalPassComplete = true;
       if (desc != Descriptor::UNKNOWN) {
         conf->setPrimaryLabel(desc);
       }
@@ -295,7 +297,12 @@ void label(ConfigList &configs, unsigned int maxRecursiveIterations) {
       continue;
     }
 
-    auto desc = conf->label(constitutional_rules);
+    // A completed constitutional pass is deterministic. Repeating it before
+    // adding auxiliary descriptors cannot change an UNKNOWN result.
+    auto desc = Descriptor::UNKNOWN;
+    if (!entry.constitutionalPassComplete) {
+      desc = conf->label(constitutional_rules);
+    }
     if (desc != Descriptor::UNKNOWN) {
       conf->setPrimaryLabel(desc);
     } else {
