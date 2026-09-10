@@ -227,7 +227,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
     CIPLabeler::CIPMol cipmol(*mol);
     Digraph graph(cipmol, cipmol.getAtom(0));
 
-    constexpr auto max_node_count = 100000;
+    constexpr auto max_node_count = 10000000;
     for (auto i = 1; i < max_node_count; ++i) {
       graph.addNode({}, nullptr, boost::rational<int>(1), 1,
                     Node::IMPL_HYDROGEN);
