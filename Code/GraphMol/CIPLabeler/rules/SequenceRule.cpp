@@ -81,8 +81,6 @@ struct ComparisonSessionState {
   ComparisonMap currentConstitutionalResults;
   ComparisonMap previousConstitutionalResults;
 
-  static constexpr std::size_t MAX_INLINE_SORT_EDGES = 8;
-
   struct SortKey {
     std::uint64_t sortId;
     const Node *node;
@@ -91,7 +89,7 @@ struct ComparisonSessionState {
     const Atom *rule6Ref;
     bool deep;
     std::uint8_t inputCount;
-    std::array<const Edge *, MAX_INLINE_SORT_EDGES> input;
+    std::array<const Edge *, SequenceRule::MAX_CACHED_SORT_EDGES> input;
 
     bool operator==(const SortKey &other) const {
       return sortId == other.sortId && node == other.node &&
@@ -120,7 +118,7 @@ struct ComparisonSessionState {
   };
 
   struct SortValue {
-    std::array<Edge *, MAX_INLINE_SORT_EDGES> sorted;
+    std::array<Edge *, SequenceRule::MAX_CACHED_SORT_EDGES> sorted;
     std::uint8_t sortedCount;
     Priority priority;
   };
@@ -150,7 +148,7 @@ std::uint64_t nextCacheId() {
   return ++nextId;
 }
 
-std::uint8_t getOutgoingMask(const Node *node, const EdgeVector &edges) {
+std::uint8_t getOutgoingMask(const Node *node, std::span<Edge *const> edges) {
   std::uint8_t result = 0;
   for (std::size_t i = 0; i < edges.size(); ++i) {
     if (edges[i]->isBeg(node)) {
@@ -238,17 +236,28 @@ int8_t SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     throw ControlCCaught();
   }
 
+  // Rules 1a, 1b, and 2 usually distinguish ligands using an inexpensive
+  // comparison at the current depth. Their nonzero direct results are not
+  // cached, so avoid constructing and probing a cache key unless they tie.
+  if (d_auxiliaryIndependent) {
+    const auto directResult = compare(a, b);
+    if (directResult != 0) {
+      return directResult;
+    }
+  }
+
   const auto firstGraph = a->getBeg()->getDigraph();
   const auto secondGraph = b->getBeg()->getDigraph();
-  const ComparisonKey key{d_cacheId,
-                          a,
-                          b,
-                          a->getEnd(),
-                          b->getEnd(),
-                          firstGraph->getCurrentRoot() == a->getBeg(),
-                          secondGraph->getCurrentRoot() == b->getBeg(),
-                          firstGraph->getRule6Ref(),
-                          secondGraph->getRule6Ref()};
+  const ComparisonKey key{
+      d_cacheId,
+      a,
+      b,
+      a->getEnd(),
+      b->getEnd(),
+      firstGraph->getCurrentRoot() == a->getBeg(),
+      secondGraph->getCurrentRoot() == b->getBeg(),
+      d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref(),
+      d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref()};
   auto &currentResults =
       d_auxiliaryIndependent
           ? comparisonSessionState.currentConstitutionalResults
@@ -279,15 +288,16 @@ int8_t SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
       findResult(previousResults, key, cachedResult)) {
     return cachedResult;
   }
-  const ComparisonKey reverseKey{d_cacheId,
-                                 b,
-                                 a,
-                                 b->getEnd(),
-                                 a->getEnd(),
-                                 secondGraph->getCurrentRoot() == b->getBeg(),
-                                 firstGraph->getCurrentRoot() == a->getBeg(),
-                                 secondGraph->getRule6Ref(),
-                                 firstGraph->getRule6Ref()};
+  const ComparisonKey reverseKey{
+      d_cacheId,
+      b,
+      a,
+      b->getEnd(),
+      a->getEnd(),
+      secondGraph->getCurrentRoot() == b->getBeg(),
+      firstGraph->getCurrentRoot() == a->getBeg(),
+      d_auxiliaryIndependent ? nullptr : secondGraph->getRule6Ref(),
+      d_auxiliaryIndependent ? nullptr : firstGraph->getRule6Ref()};
   if (firstGraph == secondGraph) {
     if (findResult(currentResults, reverseKey, cachedResult) ||
         findResult(previousResults, reverseKey, cachedResult)) {
@@ -295,12 +305,13 @@ int8_t SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     }
   }
 
-  const auto directResult = compare(a, b);
-  if (directResult != 0) {
-    // Direct Rule 4b/5 comparisons can include complete pair-list traversals.
-    // Constitutional direct comparisons are intentionally left uncached so
-    // cheap atomic-number/mass distinctions do not evict deep equalities.
-    return d_auxiliaryIndependent ? directResult : cacheResult(directResult);
+  if (!d_auxiliaryIndependent) {
+    const auto directResult = compare(a, b);
+    if (directResult != 0) {
+      // Direct Rule 4b/5 comparisons can include complete pair-list
+      // traversals.
+      return cacheResult(directResult);
+    }
   }
 
   if (!isRecursiveComparisonNeeded(a, b) ||
@@ -317,18 +328,20 @@ bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
                                  EdgeVector &edges, bool &unique,
                                  bool &pseudoAsymmetric) {
   if (node == nullptr || edges.size() < 2u ||
-      edges.size() > ComparisonSessionState::MAX_INLINE_SORT_EDGES) {
+      edges.size() > SequenceRule::MAX_CACHED_SORT_EDGES) {
     return false;
   }
   const auto graph = node->getDigraph();
-  ComparisonSessionState::SortKey key{sortId,
-                                      node,
-                                      graph->getCurrentRoot() == node,
-                                      getOutgoingMask(node, edges),
-                                      graph->getRule6Ref(),
-                                      deep,
-                                      static_cast<std::uint8_t>(edges.size()),
-                                      {}};
+  const auto edgeSpan = std::span<Edge *const>{edges.data(), edges.size()};
+  ComparisonSessionState::SortKey key{
+      sortId,
+      node,
+      graph->getCurrentRoot() == node,
+      getOutgoingMask(node, edgeSpan),
+      auxiliaryIndependent ? nullptr : graph->getRule6Ref(),
+      deep,
+      static_cast<std::uint8_t>(edges.size()),
+      {}};
   std::copy(edges.begin(), edges.end(), key.input.begin());
   const auto findSort = [&](const auto &sorts) {
     const auto found = sorts.find(key);
@@ -351,11 +364,12 @@ bool SequenceRule::getCachedSort(std::uint64_t sortId, const Node *node,
 }
 
 void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
-                             bool auxiliaryIndependent, const EdgeVector &input,
+                             bool auxiliaryIndependent,
+                             std::span<Edge *const> input,
                              const EdgeVector &sorted,
                              const Priority &priority) {
   if (node == nullptr || input.size() < 2u || sorted.size() != input.size() ||
-      input.size() > ComparisonSessionState::MAX_INLINE_SORT_EDGES) {
+      input.size() > SequenceRule::MAX_CACHED_SORT_EDGES) {
     return;
   }
   auto &currentSorts = auxiliaryIndependent
@@ -369,14 +383,15 @@ void SequenceRule::cacheSort(std::uint64_t sortId, const Node *node, bool deep,
     currentSorts.clear();
   }
   const auto graph = node->getDigraph();
-  ComparisonSessionState::SortKey key{sortId,
-                                      node,
-                                      graph->getCurrentRoot() == node,
-                                      getOutgoingMask(node, input),
-                                      graph->getRule6Ref(),
-                                      deep,
-                                      static_cast<std::uint8_t>(input.size()),
-                                      {}};
+  ComparisonSessionState::SortKey key{
+      sortId,
+      node,
+      graph->getCurrentRoot() == node,
+      getOutgoingMask(node, input),
+      auxiliaryIndependent ? nullptr : graph->getRule6Ref(),
+      deep,
+      static_cast<std::uint8_t>(input.size()),
+      {}};
   std::copy(input.begin(), input.end(), key.input.begin());
   ComparisonSessionState::SortValue value{
       {}, static_cast<std::uint8_t>(sorted.size()), priority};
@@ -528,14 +543,6 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
     return false;
   }
 
-  // Keep the exact-isomorphism cost focused on cyclic ligand systems, where
-  // path unfolding is combinatorial and the cheaper bridge shortcut cannot
-  // apply. Returning false only disables this optimization.
-  if (!graph->getMol().isInRing(a->getBond()) ||
-      !graph->getMol().isInRing(b->getBond())) {
-    return false;
-  }
-
   bool equivalent = false;
   if (root == graph->getOriginalRoot()) {
     equivalent = graph->getMol().hasConstitutionalAutomorphism(
@@ -546,7 +553,7 @@ bool SequenceRule::hasEquivalentConstitutionalRootContinuation(
     // distance used for ring-duplicate ordering under Rule 1b.
     equivalent = graph->getMol().hasConstitutionalAutomorphism(
         root->getAtom(), aEnd->getAtom(), bEnd->getAtom(),
-        root->getVisitedAtoms());
+        root->getVisitedAtomCheckpoint(), root->getVisitedAtomDeltas());
   }
   if (equivalent) {
     graph->noteConstitutionalRootEquivalence();

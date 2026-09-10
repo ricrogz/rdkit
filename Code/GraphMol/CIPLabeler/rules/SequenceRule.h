@@ -10,10 +10,13 @@
 //
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
-#include <stdexcept>
 #include <memory>
+#include <span>
+#include <stdexcept>
 #include <vector>
+
 #include "../CIPLabeler.h"
 
 #include "../Descriptor.h"
@@ -39,6 +42,8 @@ inline int8_t three_way_comparison(const T &x, const T &y) {
 
 class SequenceRule {
  public:
+  static constexpr std::size_t MAX_CACHED_SORT_EDGES = 8;
+
   // Keeps exact comparison results alive across the nested sorts performed by
   // one labeling operation. Nested sessions share the cache; the outermost
   // session owns its lifetime.
@@ -109,7 +114,7 @@ class SequenceRule {
                             bool auxiliaryIndependent, EdgeVector &edges,
                             bool &unique, bool &pseudoAsymmetric);
   static void cacheSort(std::uint64_t sortId, const Node *node, bool deep,
-                        bool auxiliaryIndependent, const EdgeVector &input,
+                        bool auxiliaryIndependent, std::span<Edge *const> input,
                         const EdgeVector &sorted, const Priority &priority);
 
   friend class Sort;
