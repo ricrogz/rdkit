@@ -213,9 +213,12 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
 
     CIPLabeler::CIPMol cipmol(mol);
     Digraph graph(cipmol, cipmol.getAtom(0));
+    CHECK(graph.seenAtom(cipmol.getAtom(0)));
+    CHECK_FALSE(graph.seenAtom(cipmol.getAtom(chain_length - 1)));
     expandAll(graph);
 
     CHECK(graph.getNumNodes() == chain_length);
+    CHECK(graph.seenAtom(cipmol.getAtom(chain_length - 1)));
     const auto terminal_nodes =
         graph.getNodes(cipmol.getAtom(chain_length - 1));
     REQUIRE(terminal_nodes.size() == 1);
@@ -226,6 +229,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
     auto mol = "C"_smiles;
     CIPLabeler::CIPMol cipmol(*mol);
     Digraph graph(cipmol, cipmol.getAtom(0));
+    CHECK_FALSE(graph.seenAtom(nullptr));
 
     constexpr auto max_node_count = 10000000;
     for (auto i = 1; i < max_node_count; ++i) {
@@ -233,6 +237,7 @@ TEST_CASE("Digraph safety limits", "[accurateCIP]") {
                     Node::IMPL_HYDROGEN);
     }
     CHECK(graph.getNumNodes() == max_node_count);
+    CHECK(graph.seenAtom(nullptr));
     CHECK_THROWS_AS(graph.addNode({}, nullptr, boost::rational<int>(1), 1,
                                   Node::IMPL_HYDROGEN),
                     TooManyNodesException);

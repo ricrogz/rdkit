@@ -45,8 +45,8 @@ Node::Node(Digraph *g, std::vector<std::uint64_t> &&visit, Atom *atom,
       d_atomic_num{std::move(frac)},
       d_flags{flags},
       d_visit{std::move(visit)} {
+  d_edges.reserve(d_visit.empty() ? 1u : 4u);
   if (d_flags & DUPLICATE) {
-    d_edges.reserve(4);
     d_atomic_mass = 0.;
   } else if (dp_atom != nullptr) {
     d_atomic_mass = dp_g->getMol().getAtomicMass(dp_atom);
