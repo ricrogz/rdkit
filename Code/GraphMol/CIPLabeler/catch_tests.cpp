@@ -373,6 +373,74 @@ TEST_CASE("Rule1a", "[accurateCIP]") {
 
     CHECK(rule.getSorter()->prioritize(origin, edges).isUnique());
   }
+
+  SECTION("Exact ring symmetry below the digraph root") {
+    auto mol = "CC1CCCCC1"_smiles;
+    REQUIRE(mol);
+    CIPLabeler::CIPMol cipmol(*mol);
+    Digraph graph(cipmol, cipmol.getAtom(0));
+
+    const auto outgoingEdgeTo = [](Node *node, unsigned int atomIdx) {
+      for (const auto edge : node->getEdges()) {
+        if (edge->isBeg(node) && !edge->getEnd()->isDuplicateOrH() &&
+            edge->getEnd()->getAtomIdx() == atomIdx) {
+          return edge;
+        }
+      }
+      return static_cast<Edge *>(nullptr);
+    };
+
+    const auto ringRootEdge =
+        outgoingEdgeTo(graph.getOriginalRoot(), 1u);
+    REQUIRE(ringRootEdge != nullptr);
+    const auto ringRoot = ringRootEdge->getEnd();
+    const auto firstDirection = outgoingEdgeTo(ringRoot, 2u);
+    const auto secondDirection = outgoingEdgeTo(ringRoot, 6u);
+    REQUIRE(firstDirection != nullptr);
+    REQUIRE(secondDirection != nullptr);
+    REQUIRE_FALSE(firstDirection->getEnd()->isExpanded());
+    REQUIRE_FALSE(secondDirection->getEnd()->isExpanded());
+
+    const auto nodeCount = graph.getNumNodes();
+    Rule1a rule;
+    CHECK(rule.recursiveCompare(firstDirection, secondDirection) == 0);
+    CHECK(graph.getNumNodes() == nodeCount);
+    CHECK_FALSE(firstDirection->getEnd()->isExpanded());
+    CHECK_FALSE(secondDirection->getEnd()->isExpanded());
+  }
+
+  SECTION("Configuration-preserving root symmetry remains an exact tie") {
+    auto mol = "CC1CCCCC1"_smiles;
+    REQUIRE(mol);
+    CIPLabeler::CIPMol cipmol(*mol);
+    boost::dynamic_bitset<> configurationFoci(mol->getNumAtoms());
+    configurationFoci.set(1u);
+    CIPLabeler::CIPMol::ConfigurationAtomSet configurationAtoms{
+        {1u}, {0u, 1u, 2u, 6u}};
+    cipmol.setConfigurationData(std::move(configurationFoci),
+                                {std::move(configurationAtoms)});
+    Digraph graph(cipmol, cipmol.getAtom(1));
+
+    const auto outgoingEdgeTo = [](Node *node, unsigned int atomIdx) {
+      for (const auto edge : node->getEdges()) {
+        if (edge->isBeg(node) && !edge->getEnd()->isDuplicateOrH() &&
+            edge->getEnd()->getAtomIdx() == atomIdx) {
+          return edge;
+        }
+      }
+      return static_cast<Edge *>(nullptr);
+    };
+    const auto firstDirection =
+        outgoingEdgeTo(graph.getOriginalRoot(), 2u);
+    const auto secondDirection =
+        outgoingEdgeTo(graph.getOriginalRoot(), 6u);
+    REQUIRE(firstDirection != nullptr);
+    REQUIRE(secondDirection != nullptr);
+
+    Rule1a rule;
+    CHECK(rule.recursiveCompare(firstDirection, secondDirection) == 0);
+    CHECK(graph.hasAuxiliaryInvariantRootTie());
+  }
 }
 
 TEST_CASE("Rule2", "[accurateCIP]") {

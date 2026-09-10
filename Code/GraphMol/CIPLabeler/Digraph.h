@@ -102,6 +102,12 @@ class Digraph {
   bool usedConstitutionalRootEquivalence() const;
   const boost::dynamic_bitset<> &getConstitutionalEquivalenceMovedAtoms() const;
 
+  // A pair of ligands at a configuration root was proven equivalent by an
+  // exact molecular automorphism that fixes every other stereo annotation.
+  // No auxiliary descriptor can break that tie.
+  void noteAuxiliaryInvariantRootTie();
+  bool hasAuxiliaryInvariantRootTie() const;
+
   /**
    * Access the reference atom for Rule 6 (if one is set).
    */
@@ -151,6 +157,7 @@ class Digraph {
   Atom *dp_rule6Ref = nullptr;
 
   bool d_usedConstitutionalRootEquivalence = false;
+  bool d_hasAuxiliaryInvariantRootTie = false;
   boost::dynamic_bitset<> d_constitutional_equivalence_moved_atoms;
 
   // Insertion at either end of a deque preserves element references, which
@@ -163,6 +170,7 @@ class Digraph {
                                    bool pruneConfigurationFreeBranches) const;
   bool canReachUnvisitedTarget(const Node *node,
                                const boost::dynamic_bitset<> &targets,
+                               std::span<const unsigned int> nextTowardTarget,
                                std::vector<unsigned int> &queue,
                                std::vector<unsigned int> &seen,
                                unsigned int &generation) const;

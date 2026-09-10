@@ -74,6 +74,11 @@ class CIPMolSpan {
 
 class CIPMol {
  public:
+  struct ConfigurationAtomSet {
+    std::vector<unsigned int> foci;
+    std::vector<unsigned int> atoms;
+  };
+
   CIPMol() = delete;
 
   explicit CIPMol(ROMol &mol);
@@ -103,6 +108,14 @@ class CIPMol {
   // acyclic branch cannot contain auxiliary stereochemical information.
   void setConfigurationFoci(boost::dynamic_bitset<> foci);
 
+  // Also retain each configuration's complete local annotation. Exact
+  // constitutional symmetry searches use this only to request a witness that
+  // fixes unrelated stereo annotations; malformed or ambiguous ownership
+  // always falls back to broad auxiliary discovery.
+  void setConfigurationData(
+      boost::dynamic_bitset<> foci,
+      std::vector<ConfigurationAtomSet> configurationAtomSets);
+
   // Returns true only when bond is acyclic and the molecular component on the
   // endAtom side contains no registered configuration focus.
   bool isAcyclicBranchWithoutConfiguration(Bond *bond, Atom *endAtom) const;
@@ -131,6 +144,24 @@ class CIPMol {
       std::span<const unsigned int> addedFixedAtoms,
       std::vector<unsigned int> &movedAtoms) const;
 
+  // A constitutional witness may compose the requested ligand swap with an
+  // unrelated symmetry elsewhere in the molecule. Report whether its support
+  // moves any local stereo annotation other than the configuration owning the
+  // current digraph.
+  bool constitutionalAutomorphismMovesConfiguration(
+      std::span<const unsigned int> movedAtoms,
+      const Atom *configurationOwner) const;
+
+  // Retry an exact constitutional proof while fixing every other local stereo
+  // annotation pointwise. Success supplies a witness that cannot force broad
+  // auxiliary discovery merely because it composed an independent symmetry.
+  bool hasConfigurationPreservingConstitutionalAutomorphism(
+      Atom *root, Atom *from, Atom *to,
+      std::span<const std::uint64_t> fixedAtoms,
+      std::span<const unsigned int> addedFixedAtoms,
+      const Atom *configurationOwner,
+      std::vector<unsigned int> &movedAtoms) const;
+
   // Component membership is used to keep symmetry and auxiliary-label work
   // local to the connected structure containing the center of interest.
   bool isInSameComponent(Atom *first, Atom *second) const;
@@ -149,6 +180,7 @@ class CIPMol {
   mutable std::vector<double> d_atomic_masses;
   mutable std::vector<unsigned char> d_atomic_mass_cached;
   boost::dynamic_bitset<> d_configuration_foci;
+  std::vector<ConfigurationAtomSet> d_configuration_atom_sets;
   // Two directed sides per bond: 0=unknown, 1=contains a focus, 2=no focus.
   mutable std::vector<unsigned char> d_configuration_branch_cache;
   struct ConstitutionalAutomorphismKey {
@@ -239,6 +271,8 @@ class CIPMol {
                               std::vector<unsigned int> movedAtoms) const;
   void addAutomorphismFailure(ConstitutionalAutomorphismEvidence &evidence,
                               std::vector<unsigned int> fixedAtoms) const;
+  std::optional<std::size_t> findConfigurationOwnedBy(
+      const Atom *configurationOwner) const;
 };
 
 }  // namespace CIPLabeler
