@@ -10,6 +10,8 @@
 //
 #pragma once
 
+#include <vector>
+
 #include "SequenceRule.h"
 
 namespace RDKit {
@@ -31,7 +33,9 @@ class Rule5New : public SequenceRule {
  private:
   const Descriptor d_ref = Descriptor::NONE;
 
-  void fillPairs(const Node *beg, PairList &plist) const;
+  void fillPairs(const Node *beg, PairList &plist,
+                 std::vector<const Node *> &queue,
+                 std::vector<Edge *> &edges) const;
 
   Sort getRefSorter(const SequenceRule *replacement_rule) const;
 };

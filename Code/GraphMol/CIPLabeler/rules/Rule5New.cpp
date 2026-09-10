@@ -52,10 +52,13 @@ int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
     auto listRB = PairList(Descriptor::R);
     auto listSA = PairList(Descriptor::S);
     auto listSB = PairList(Descriptor::S);
-    fillPairs(aEnd, listRA);
-    fillPairs(aEnd, listSA);
-    fillPairs(bEnd, listRB);
-    fillPairs(bEnd, listSB);
+    std::vector<const Node *> queue;
+    std::vector<Edge *> edges;
+    edges.reserve(4);
+    fillPairs(aEnd, listRA, queue, edges);
+    fillPairs(aEnd, listSA, queue, edges);
+    fillPairs(bEnd, listRB, queue, edges);
+    fillPairs(bEnd, listSB, queue, edges);
     auto cmpR = listRA.compareTo(listRB);
     auto cmpS = listSA.compareTo(listSB);
     // -2/+2 for pseudo-asymetric
@@ -70,15 +73,19 @@ int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
   }
 }
 
-void Rule5New::fillPairs(const Node *beg, PairList &plist) const {
+void Rule5New::fillPairs(const Node *beg, PairList &plist,
+                         std::vector<const Node *> &queue,
+                         std::vector<Edge *> &edges) const {
   const Rule5New replacement_rule(plist.getRefDescriptor());
   const auto &sorter = getRefSorter(&replacement_rule);
-  std::vector<const Node *> queue{beg};
+  queue.clear();
+  queue.push_back(beg);
 
   for (unsigned int pos = 0; pos < queue.size(); ++pos) {
     const auto node = queue[pos];
     plist.add(node->getAux());
-    auto edges = node->getEdges();
+    const auto &nodeEdges = node->getEdges();
+    edges.assign(nodeEdges.begin(), nodeEdges.end());
     sorter.prioritize(node, edges);
     for (const auto &edge : edges) {
       if (edge->isBeg(node) && !edge->getEnd()->isTerminal()) {

@@ -33,23 +33,19 @@ class Rule4b : public SequenceRule {
  private:
   const Descriptor d_ref = Descriptor::NONE;
 
-  std::vector<Descriptor> getReferenceDescriptors(const Node *node) const;
+  std::vector<PairList> getReferenceDescriptorPairLists(const Node *node) const;
 
-  bool getReference(const std::vector<const Node *> &nodes,
-                    std::vector<Descriptor> &result) const;
+  bool getReferencePairList(const std::vector<const Node *> &nodes,
+                            std::vector<PairList> &result) const;
 
   std::vector<std::vector<const Node *>> initialLevel(const Node *node) const;
 
   std::vector<std::vector<const Node *>> getNextLevel(
       const std::vector<std::vector<const Node *>> &prevLevel) const;
 
-  std::vector<const Node *> toNodeList(
-      const std::vector<Edge *> &eqEdges) const;
-
-  std::vector<PairList> newPairLists(
-      const std::vector<Descriptor> &descriptors) const;
-
-  void fillPairs(const Node *beg, PairList &plist) const;
+  void fillPairs(const Node *beg, PairList &plist,
+                 std::vector<const Node *> &queue,
+                 std::vector<Edge *> &edges) const;
 
   int8_t comparePairs(const Node *a, const Node *b, Descriptor refA,
                       Descriptor refB) const;
