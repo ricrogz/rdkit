@@ -8,6 +8,9 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
+#include <algorithm>
+#include <ranges>
+#include <vector>
 
 #include <GraphMol/MolOps.h>
 
@@ -67,23 +70,41 @@ bool CIPMol::isInRing(Bond *bond) const {
 int CIPMol::getBondOrder(Bond *bond) const {
   PRECONDITION(bond, "bad bond")
   if (d_kekulized_bonds.empty()) {
-    RWMol tmp{d_mol};
-    try {
-      MolOps::Kekulize(tmp);
-    } catch (const MolSanitizeException &) {
-    }
     auto &bonds =
         const_cast<std::vector<RDKit::Bond::BondType> &>(d_kekulized_bonds);
     bonds.reserve(d_mol.getNumBonds());
-    for (const auto &b : tmp.bonds()) {
-      bonds.push_back(b->getBondType());
+
+    const bool hasAromaticBond =
+        std::ranges::any_of(d_bonds, [](const Bond *candidate) {
+          return candidate->getBondType() == Bond::AROMATIC;
+        });
+
+    if (hasAromaticBond) {
+      RWMol tmp{d_mol};
+      const ROMol *bond_source = &tmp;
+      try {
+        constexpr bool markAtomsBonds = true;
+        constexpr bool canonical = false;
+        MolOps::Kekulize(tmp, markAtomsBonds, canonical);
+      } catch (const MolSanitizeException &) {
+        // Kekulize() may have changed some bonds before discovering that no
+        // valid assignment exists. Fall back to the untouched input instead
+        // of caching that partial assignment.
+        bond_source = &d_mol;
+      }
+      for (const auto candidate : bond_source->bonds()) {
+        bonds.push_back(candidate->getBondType());
+      }
+    } else {
+      for (const auto candidate : d_bonds) {
+        bonds.push_back(candidate->getBondType());
+      }
     }
   }
 
-  const auto bond_type = d_kekulized_bonds.at(bond->getIdx());
-
   // Dative bonds might need to be considered with a different bond order
   // for the end atom at the end of the bond.
+  const auto bond_type = d_kekulized_bonds[bond->getIdx()];
   switch (bond_type) {
     case Bond::ZERO:
     case Bond::HYDROGEN:
