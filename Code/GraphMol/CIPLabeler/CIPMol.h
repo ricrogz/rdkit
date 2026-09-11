@@ -11,6 +11,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include <GraphMol/RDKitBase.h>
 
@@ -93,11 +94,15 @@ class CIPMol {
   // Dative bonds get bond order 0.
   int getBondOrder(Bond *bond) const;
 
+  double getAtomicMass(Atom *atom) const;
+
  private:
   ROMol &d_mol;
   std::vector<RDKit::Bond::BondType> d_kekulized_bonds;
   std::vector<FractionalAtomicNum> d_atomnums;
-  std::vector<RDKit::Bond* > d_bonds;
+  std::vector<RDKit::Bond *> d_bonds;
+  mutable std::vector<double> d_atomic_masses;
+  mutable std::vector<unsigned char> d_atomic_mass_cached;
 };
 
 }  // namespace CIPLabeler

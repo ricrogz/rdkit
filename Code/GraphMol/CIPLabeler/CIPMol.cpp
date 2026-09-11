@@ -19,6 +19,8 @@ namespace CIPLabeler {
 CIPMol::CIPMol(ROMol &mol) : d_mol{mol} {
   d_bonds.reserve(mol.getNumBonds());
   std::ranges::copy(mol.bonds(), std::back_inserter(d_bonds));
+  d_atomic_masses.resize(mol.getNumAtoms());
+  d_atomic_mass_cached.resize(mol.getNumAtoms(), false);
 }
 
 const FractionalAtomicNum &CIPMol::getFractionalAtomicNum(Atom *atom) const {
@@ -70,7 +72,8 @@ int CIPMol::getBondOrder(Bond *bond) const {
       MolOps::Kekulize(tmp);
     } catch (const MolSanitizeException &) {
     }
-    auto& bonds = const_cast<std::vector<RDKit::Bond::BondType>&>(d_kekulized_bonds);
+    auto &bonds =
+        const_cast<std::vector<RDKit::Bond::BondType> &>(d_kekulized_bonds);
     bonds.reserve(d_mol.getNumBonds());
     for (const auto &b : tmp.bonds()) {
       bonds.push_back(b->getBondType());
@@ -108,7 +111,28 @@ int CIPMol::getBondOrder(Bond *bond) const {
     default:
       throw std::runtime_error("Non integer-order bonds are not allowed.");
   }
-};
+}
+
+double CIPMol::getAtomicMass(Atom *atom) const {
+  PRECONDITION(atom, "bad atom")
+  const auto index = atom->getIdx();
+  if (!d_atomic_mass_cached[index]) {
+    const auto &table = RDKit::PeriodicTable::getTable();
+    auto atomic_number = atom->getAtomicNum();
+    auto isotope = atom->getIsotope();
+    if (isotope == 0u) {
+      d_atomic_masses[index] = table->getAtomicWeight(atomic_number);
+    } else {
+      d_atomic_masses[index] = table->getMassForIsotope(atomic_number, isotope);
+      // Fall back to the isotope number if we can't get the mass
+      if (atomic_number != 0 && d_atomic_masses[index] == 0.0) {
+        d_atomic_masses[index] = isotope;
+      }
+    }
+    d_atomic_mass_cached[index] = true;
+  }
+  return d_atomic_masses[index];
+}
 
 }  // namespace CIPLabeler
 }  // namespace RDKit
