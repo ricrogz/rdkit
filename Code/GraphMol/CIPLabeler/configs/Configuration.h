@@ -187,15 +187,15 @@ class Configuration {
   virtual bool hasPrimaryLabel() const = 0;
 
  protected:
-  Edge *findInternalEdge(const std::vector<Edge *> &edges, Atom *f1, Atom *f2);
+  Edge *findInternalEdge(const EdgeVector &edges, Atom *f1, Atom *f2);
 
   bool isInternalEdge(const Edge *edge, Atom *f1, Atom *f2);
 
-  void removeInternalEdges(std::vector<Edge *> &edges, Atom *f1, Atom *f2);
+  void removeInternalEdges(EdgeVector &edges, Atom *f1, Atom *f2);
 
   bool isDuplicateOrHydrogenEdge(const Edge *edge);
 
-  void removeDuplicatesAndHs(std::vector<Edge *> &edges);
+  void removeDuplicatesAndHs(EdgeVector &edges);
 
   void setCarriers(std::vector<Atom *> &&carriers);
 

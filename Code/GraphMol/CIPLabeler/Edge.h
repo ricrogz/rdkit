@@ -10,6 +10,8 @@
 //
 #pragma once
 
+#include <boost/container/small_vector.hpp>
+
 #include "Descriptor.h"
 
 namespace RDKit {
@@ -19,6 +21,9 @@ class Bond;
 namespace CIPLabeler {
 
 class Node;
+class Edge;
+
+using EdgeVector = boost::container::small_vector<Edge *, 4>;
 
 class Edge {
  public:

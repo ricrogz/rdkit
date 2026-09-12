@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include "Priority.h"
 
 namespace RDKit {
@@ -21,6 +23,8 @@ namespace CIPLabeler {
 class SequenceRule;
 class Edge;
 class Node;
+
+using EdgeVector = boost::container::small_vector<Edge *, 4>;
 
 /**
  * A simple insertion sort for substituents. The number of substituents is not
@@ -35,11 +39,10 @@ class Sort {
 
   const std::vector<const SequenceRule *> &getRules() const;
 
-  Priority prioritize(const Node *node, std::vector<Edge *> &edges,
+  Priority prioritize(const Node *node, EdgeVector &edges,
                       bool deep = true) const;
 
-  std::vector<std::vector<Edge *>> getGroups(
-      const std::vector<Edge *> &sorted) const;
+  std::vector<EdgeVector> getGroups(const EdgeVector &sorted) const;
 
  private:
   const std::vector<const SequenceRule *> d_rules;

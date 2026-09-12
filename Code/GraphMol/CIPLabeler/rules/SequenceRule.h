@@ -51,9 +51,9 @@ class SequenceRule {
 
   void setSorter(const Sort *sorter);
 
-  Priority sort(const Node *node, std::vector<Edge *> &edges, bool deep) const;
+  Priority sort(const Node *node, EdgeVector &edges, bool deep) const;
 
-  Priority sort(const Node *node, std::vector<Edge *> &edges) const;
+  Priority sort(const Node *node, EdgeVector &edges) const;
 
   virtual int8_t compare(const Edge *a, const Edge *b) const = 0;
 

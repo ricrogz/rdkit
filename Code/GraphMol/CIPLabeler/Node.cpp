@@ -150,7 +150,7 @@ void Node::add(Edge *e) { d_edges.push_back(e); }
 
 void Node::setAux(Descriptor desc) { d_aux = desc; }
 
-const std::vector<Edge *> &Node::getEdges() const {
+const EdgeVector &Node::getEdges() const {
   if (!isExpanded()) {
     auto non_const_this = const_cast<Node *>(this);
     non_const_this->d_flags |= EXPANDED;
@@ -159,8 +159,8 @@ const std::vector<Edge *> &Node::getEdges() const {
   return d_edges;
 }
 
-std::vector<Edge *> Node::getEdges(Atom *end) const {
-  std::vector<Edge *> res;
+EdgeVector Node::getEdges(Atom *end) const {
+  EdgeVector res;
   for (auto &edge : getEdges()) {
     if (edge->getEnd()->isDuplicate()) {
       continue;
@@ -172,8 +172,8 @@ std::vector<Edge *> Node::getEdges(Atom *end) const {
   return res;
 }
 
-std::vector<Edge *> Node::getNonTerminalOutEdges() const {
-  std::vector<Edge *> edges;
+EdgeVector Node::getNonTerminalOutEdges() const {
+  EdgeVector edges;
   for (auto &edge : getEdges()) {
     if (edge->isBeg(this) && !edge->getEnd()->isTerminal()) {
       edges.push_back(edge);

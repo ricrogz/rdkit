@@ -10,12 +10,19 @@
 //
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 #include "SequenceRule.h"
 
+namespace boost {
+template <class T, std::size_t N, class Allocator = void, class Options = void>
+class small_vector;
+}
 namespace RDKit {
 namespace CIPLabeler {
+
+using PairListVector = boost::container::small_vector<PairList, 2>;
 
 /**
  * A descriptor pair rule. This rule defines that like descriptor pairs have
@@ -33,10 +40,10 @@ class Rule4b : public SequenceRule {
  private:
   const Descriptor d_ref = Descriptor::NONE;
 
-  std::vector<PairList> getReferenceDescriptorPairLists(const Node *node) const;
+  PairListVector getReferenceDescriptorPairLists(const Node *node) const;
 
   bool getReferencePairList(const std::vector<const Node *> &nodes,
-                            std::vector<PairList> &result) const;
+                            PairListVector &result) const;
 
   std::vector<std::vector<const Node *>> initialLevel(const Node *node) const;
 
@@ -44,8 +51,7 @@ class Rule4b : public SequenceRule {
       const std::vector<std::vector<const Node *>> &prevLevel) const;
 
   void fillPairs(const Node *beg, PairList &plist,
-                 std::vector<const Node *> &queue,
-                 std::vector<Edge *> &edges) const;
+                 std::vector<const Node *> &queue, EdgeVector &edges) const;
 
   int8_t comparePairs(const Node *a, const Node *b, Descriptor refA,
                       Descriptor refB) const;

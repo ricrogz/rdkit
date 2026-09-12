@@ -13,6 +13,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include <RDGeneral/Invariant.h>
 
 #include "Rule4b.h"
@@ -27,10 +29,8 @@ Rule4b::Rule4b() = default;
 
 Rule4b::Rule4b(Descriptor ref) : d_ref{ref} {}
 
-std::vector<PairList> Rule4b::getReferenceDescriptorPairLists(
-    const Node *node) const {
-  std::vector<PairList> result;
-  result.reserve(2);
+PairListVector Rule4b::getReferenceDescriptorPairLists(const Node *node) const {
+  PairListVector result;
   auto prev = initialLevel(node);
   while (!prev.empty()) {
     for (const auto &nodes : prev) {
@@ -81,8 +81,7 @@ int8_t Rule4b::compare(const Edge *a, const Edge *b) const {
                           list2[0].getRefDescriptor());
     } else if (list1.size() > 1) {
       std::vector<const Node *> queue;
-      std::vector<Edge *> edges;
-      edges.reserve(4);
+      EdgeVector edges;
       for (auto &plist : list1) {
         fillPairs(aEnd, plist, queue, edges);
       }
@@ -105,7 +104,7 @@ int8_t Rule4b::compare(const Edge *a, const Edge *b) const {
 }
 
 bool Rule4b::getReferencePairList(const std::vector<const Node *> &nodes,
-                                  std::vector<PairList> &result) const {
+                                  PairListVector &result) const {
   unsigned int right = 0;
   unsigned int left = 0;
   for (const auto &node : nodes) {
@@ -153,7 +152,7 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
   nextLevel.reserve(4 * prevLevel.size());
 
   for (const auto &prev : prevLevel) {
-    std::vector<std::vector<std::vector<Edge *>>> tmp;
+    std::vector<std::vector<EdgeVector>> tmp;
     tmp.reserve(prev.size());
     for (const auto &node : prev) {
       auto edges = node->getNonTerminalOutEdges();
@@ -194,7 +193,7 @@ std::vector<std::vector<const Node *>> Rule4b::getNextLevel(
 
 void Rule4b::fillPairs(const Node *beg, PairList &plist,
                        std::vector<const Node *> &queue,
-                       std::vector<Edge *> &edges) const {
+                       EdgeVector &edges) const {
   const Rule4b replacement_rule(plist.getRefDescriptor());
   const auto &sorter = getRefSorter(&replacement_rule);
   queue.clear();
@@ -221,10 +220,8 @@ int8_t Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
   const auto &aSorter = getRefSorter(&replacementA);
   const auto &bSorter = getRefSorter(&replacementB);
   std::vector<std::pair<const Node *, const Node *>> queue{{a, b}};
-  std::vector<Edge *> aEdges;
-  std::vector<Edge *> bEdges;
-  aEdges.reserve(4);
-  bEdges.reserve(4);
+  EdgeVector aEdges;
+  EdgeVector bEdges;
 
   for (unsigned int pos = 0; pos < queue.size(); ++pos) {
     const auto [aNode, bNode] = queue[pos];

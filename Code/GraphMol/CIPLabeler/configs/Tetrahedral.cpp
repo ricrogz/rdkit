@@ -123,7 +123,7 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
       // S4 symmetric case
       node->getDigraph()->setRule6Ref(edges[0]->getEnd()->getAtom());
       comp.sort(node, edges);
-      auto nbrs1 = std::vector<Edge *>(edges.begin(), edges.end());
+      auto nbrs1 = EdgeVector(edges.begin(), edges.end());
 
       node->getDigraph()->setRule6Ref(edges[1]->getEnd()->getAtom());
       priority = comp.sort(node, edges);

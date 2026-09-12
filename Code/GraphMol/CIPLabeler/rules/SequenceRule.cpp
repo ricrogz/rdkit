@@ -56,10 +56,8 @@ int8_t SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
   }
 
   std::vector<std::pair<const Edge *, const Edge *>> queue{{a, b}};
-  std::vector<Edge *> as;
-  std::vector<Edge *> bs;
-  as.reserve(4);
-  bs.reserve(4);
+  EdgeVector as;
+  EdgeVector bs;
 
   for (unsigned int pos = 0; pos < queue.size(); ++pos) {
     const auto [aParent, bParent] = queue[pos];
@@ -126,13 +124,12 @@ int8_t SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
 
 void SequenceRule::setSorter(const Sort *sorter) { dp_sorter.reset(sorter); }
 
-Priority SequenceRule::sort(const Node *node, std::vector<Edge *> &edges,
+Priority SequenceRule::sort(const Node *node, EdgeVector &edges,
                             bool deep) const {
   return getSorter()->prioritize(node, edges, deep);
 }
 
-Priority SequenceRule::sort(const Node *node,
-                            std::vector<Edge *> &edges) const {
+Priority SequenceRule::sort(const Node *node, EdgeVector &edges) const {
   return sort(node, edges, true);
 }
 

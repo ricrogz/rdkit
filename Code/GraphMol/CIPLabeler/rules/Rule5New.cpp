@@ -53,8 +53,7 @@ int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
     auto listSA = PairList(Descriptor::S);
     auto listSB = PairList(Descriptor::S);
     std::vector<const Node *> queue;
-    std::vector<Edge *> edges;
-    edges.reserve(4);
+    EdgeVector edges;
     fillPairs(aEnd, listRA, queue, edges);
     fillPairs(aEnd, listSA, queue, edges);
     fillPairs(bEnd, listRB, queue, edges);
@@ -75,7 +74,7 @@ int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
 
 void Rule5New::fillPairs(const Node *beg, PairList &plist,
                          std::vector<const Node *> &queue,
-                         std::vector<Edge *> &edges) const {
+                         EdgeVector &edges) const {
   const Rule5New replacement_rule(plist.getRefDescriptor());
   const auto &sorter = getRefSorter(&replacement_rule);
   queue.clear();

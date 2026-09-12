@@ -141,7 +141,7 @@ void Digraph::setRule6Ref(Atom *ref) { dp_rule6Ref = ref; }
  * @param newroot the new root
  */
 void Digraph::changeRoot(Node *newroot) {
-  std::vector<Edge *> toflip;
+  EdgeVector toflip;
   std::vector<Node *> queue{newroot};
   for (unsigned int pos = 0; pos < queue.size(); ++pos) {
     const auto node = queue[pos];

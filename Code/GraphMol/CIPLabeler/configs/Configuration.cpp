@@ -8,7 +8,6 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
-
 #include "Configuration.h"
 
 #include "../Priority.h"
@@ -17,8 +16,8 @@
 namespace RDKit {
 namespace CIPLabeler {
 
-Edge *Configuration::findInternalEdge(const std::vector<Edge *> &edges,
-                                      Atom *f1, Atom *f2) {
+Edge *Configuration::findInternalEdge(const EdgeVector &edges, Atom *f1,
+                                      Atom *f2) {
   for (const auto &edge : edges) {
     if (edge->getBeg()->isDuplicate() || edge->getEnd()->isDuplicate()) {
       continue;
@@ -41,9 +40,8 @@ bool Configuration::isInternalEdge(const Edge *edge, Atom *f1, Atom *f2) {
   return false;
 }
 
-void Configuration::removeInternalEdges(std::vector<Edge *> &edges, Atom *f1,
-                                        Atom *f2) {
-  std::vector<Edge *> new_edges;
+void Configuration::removeInternalEdges(EdgeVector &edges, Atom *f1, Atom *f2) {
+  EdgeVector new_edges;
   for (auto &&e : edges) {
     if (!isInternalEdge(e, f1, f2)) {
       new_edges.push_back(std::move(e));
@@ -56,8 +54,8 @@ bool Configuration::isDuplicateOrHydrogenEdge(const Edge *edge) {
   return edge->getBeg()->isDuplicateOrH() || edge->getEnd()->isDuplicateOrH();
 }
 
-void Configuration::removeDuplicatesAndHs(std::vector<Edge *> &edges) {
-  std::vector<Edge *> new_edges;
+void Configuration::removeDuplicatesAndHs(EdgeVector &edges) {
+  EdgeVector new_edges;
   for (auto &&e : edges) {
     if (!isDuplicateOrHydrogenEdge(e)) {
       new_edges.push_back(std::move(e));

@@ -34,8 +34,7 @@ class Rule5New : public SequenceRule {
   const Descriptor d_ref = Descriptor::NONE;
 
   void fillPairs(const Node *beg, PairList &plist,
-                 std::vector<const Node *> &queue,
-                 std::vector<Edge *> &edges) const;
+                 std::vector<const Node *> &queue, EdgeVector &edges) const;
 
   Sort getRefSorter(const SequenceRule *replacement_rule) const;
 };

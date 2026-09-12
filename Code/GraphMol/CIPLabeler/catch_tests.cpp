@@ -1909,9 +1909,9 @@ TEST_CASE("GitHub #9516: update return values for Rule 6") {
   CHECK(rule.compare(otherEdge, refEdge) == -2);
 
   Sort sorter(&rule);
-  std::vector<Edge *> toSort{otherEdge, refEdge};
+  EdgeVector toSort{otherEdge, refEdge};
   const auto priority = sorter.prioritize(root, toSort, false);
   CHECK(priority.isUnique());
   CHECK(priority.isPseudoAsymetric());
-  CHECK(toSort == std::vector<Edge *>{refEdge, otherEdge});
+  CHECK(toSort == EdgeVector{refEdge, otherEdge});
 }

@@ -113,11 +113,11 @@ class Node {
 
   void setAux(Descriptor desc);
 
-  const std::vector<Edge *> &getEdges() const;
+  const EdgeVector &getEdges() const;
 
-  std::vector<Edge *> getEdges(Atom *end) const;
+  EdgeVector getEdges(Atom *end) const;
 
-  std::vector<Edge *> getNonTerminalOutEdges() const;
+  EdgeVector getNonTerminalOutEdges() const;
 
  private:
   Digraph *dp_g = nullptr;
@@ -129,7 +129,7 @@ class Node {
   Descriptor d_aux = Descriptor::NONE;
   uint8_t d_flags = 0x0;
 
-  std::vector<Edge *> d_edges;
+  EdgeVector d_edges;
 
   std::vector<std::uint64_t> d_visit;
 
