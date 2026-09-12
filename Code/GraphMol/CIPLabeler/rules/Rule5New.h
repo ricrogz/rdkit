@@ -36,7 +36,10 @@ class Rule5New : public SequenceRule {
   void fillPairs(const Node *beg, PairList &plist,
                  std::vector<const Node *> &queue, EdgeVector &edges) const;
 
-  Sort getRefSorter(const SequenceRule *replacement_rule) const;
+  const Sort &getRefSorter(Descriptor ref) const;
+
+  std::unique_ptr<const Sort> makeRefSorter(
+      const SequenceRule *replacementRule) const;
 };
 
 }  // namespace CIPLabeler

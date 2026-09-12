@@ -10,7 +10,7 @@
 //
 #pragma once
 
-#include <cstddef>
+#include <memory>
 #include <vector>
 
 #include "SequenceRule.h"
@@ -56,7 +56,10 @@ class Rule4b : public SequenceRule {
   int8_t comparePairs(const Node *a, const Node *b, Descriptor refA,
                       Descriptor refB) const;
 
-  Sort getRefSorter(const SequenceRule *replacement_rule) const;
+  const Sort &getRefSorter(Descriptor ref) const;
+
+  std::unique_ptr<const Sort> makeRefSorter(
+      const SequenceRule *replacementRule) const;
 };
 
 }  // namespace CIPLabeler

@@ -8,6 +8,7 @@
 //  which is included in the file license.txt, found at the root
 //  of the RDKit source tree.
 //
+#include <memory>
 #include <vector>
 
 #include <RDGeneral/Invariant.h>
@@ -18,6 +19,11 @@
 
 namespace RDKit {
 namespace CIPLabeler {
+
+static Rule5New referenceR(Descriptor::R);
+static Rule5New referenceS(Descriptor::S);
+std::unique_ptr<const Sort> referenceSorterR;
+std::unique_ptr<const Sort> referenceSorterS;
 
 Rule5New::Rule5New() = default;
 
@@ -75,8 +81,7 @@ int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
 void Rule5New::fillPairs(const Node *beg, PairList &plist,
                          std::vector<const Node *> &queue,
                          EdgeVector &edges) const {
-  const Rule5New replacement_rule(plist.getRefDescriptor());
-  const auto &sorter = getRefSorter(&replacement_rule);
+  const auto &sorter = getRefSorter(plist.getRefDescriptor());
   queue.clear();
   queue.push_back(beg);
 
@@ -94,12 +99,25 @@ void Rule5New::fillPairs(const Node *beg, PairList &plist,
   }
 }
 
-Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {
+const Sort &Rule5New::getRefSorter(Descriptor ref) const {
+  if (ref == Descriptor::R) {
+    if (!referenceSorterR) {
+      referenceSorterR = makeRefSorter(&referenceR);
+    }
+    return *referenceSorterR;
+  }
+  if (ref == Descriptor::S) {
+    if (!referenceSorterS) {
+      referenceSorterS = makeRefSorter(&referenceS);
+    }
+    return *referenceSorterS;
+  }
+  throw std::logic_error("Invalid Rule 5 reference descriptor");
+}
+
+std::unique_ptr<const Sort> Rule5New::makeRefSorter(
+    const SequenceRule *replacementRule) const {
   const auto &rules = getSorter()->getRules();
-
-  CHECK_INVARIANT(std::find(rules.begin(), rules.end(), this) != rules.end(),
-                  "Rule5New instance not in rule set");
-
   std::vector<const SequenceRule *> new_rules;
   new_rules.reserve(rules.size());
   for (const auto &rule : rules) {
@@ -107,8 +125,8 @@ Sort Rule5New::getRefSorter(const SequenceRule *replacement_rule) const {
       new_rules.push_back(rule);
     }
   }
-  new_rules.push_back(replacement_rule);
-  return {new_rules};
+  new_rules.push_back(replacementRule);
+  return std::make_unique<const Sort>(std::move(new_rules));
 }
 
 }  // namespace CIPLabeler
