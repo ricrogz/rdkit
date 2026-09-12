@@ -16,7 +16,7 @@ namespace CIPLabeler {
 
 Rule1b::Rule1b() = default;
 
-int Rule1b::compare(const Edge *a, const Edge *b) const {
+int8_t Rule1b::compare(const Edge *a, const Edge *b) const {
   if (IUPAC_2013) {
     return -three_way_comparison(a->getEnd()->getDistance(),
                                  b->getEnd()->getDistance());

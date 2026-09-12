@@ -17,7 +17,7 @@ namespace CIPLabeler {
 Rule1a::Rule1a() = default;
 
 // CIP Rule 1a: Higher atomic number precedes lower.
-int Rule1a::compare(const Edge *a, const Edge *b) const {
+int8_t Rule1a::compare(const Edge *a, const Edge *b) const {
   const auto afrac = a->getEnd()->getAtomicNumFraction();
   const auto bfrac = b->getEnd()->getAtomicNumFraction();
 

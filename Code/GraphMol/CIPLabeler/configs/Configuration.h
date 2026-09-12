@@ -33,7 +33,7 @@ class Rules;
 class Configuration {
  public:
   template <typename T>
-  static int parity4(const std::vector<T> &trg, const std::vector<T> &ref) {
+  static int8_t parity4(const T &trg, const T &ref) {
     if (ref.size() != 4 || trg.size() != ref.size()) {
       throw std::runtime_error("Parity vectors must have size 4.");
     }

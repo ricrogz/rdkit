@@ -26,12 +26,12 @@ namespace {
  * Upper limit on the size of the digraph, stops out of memory error with a
  * more graceful failure. 0=Infinite
  */
-constexpr int MAX_NODE_COUNT = 10000000;
+constexpr unsigned int MAX_NODE_COUNT = 10000000;
 
 /**
  * Used for debugging only, 0=Infinite
  */
-constexpr int MAX_NODE_DIST = 0;
+constexpr unsigned int MAX_NODE_DIST = 0;
 }  // namespace
 
 Node &Digraph::addNode(std::vector<std::uint32_t> &&visit, Atom *atom,
@@ -85,13 +85,13 @@ Node *Digraph::getOriginalRoot() const { return dp_origin; };
 
 Node *Digraph::getCurrentRoot() const { return dp_root; }
 
-int Digraph::getNumNodes() const { return d_nodes.size(); }
+unsigned int Digraph::getNumNodes() const { return d_nodes.size(); }
 
 std::vector<Node *> Digraph::getNodes(Atom *atom) const {
   std::vector<Node *> result;
   std::vector<Node *> queue = {getCurrentRoot()};
 
-  for (size_t i = 0; i < queue.size(); ++i) {
+  for (unsigned int i = 0; i < queue.size(); ++i) {
     auto node = queue[i];
     if (atom == node->getAtom()) {
       result.push_back(node);

@@ -15,7 +15,7 @@ namespace RDKit {
 namespace CIPLabeler {
 
 namespace {
-int ord(Descriptor lab) {
+int8_t ord(Descriptor lab) {
   switch (lab) {
     case Descriptor::E:
       return 1;
@@ -29,7 +29,7 @@ int ord(Descriptor lab) {
 
 Rule3::Rule3() = default;
 
-int Rule3::compare(const Edge *a, const Edge *b) const {
+int8_t Rule3::compare(const Edge *a, const Edge *b) const {
   return three_way_comparison(ord(a->getEnd()->getAux()),
                               ord(b->getEnd()->getAux()));
 }

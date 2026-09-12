@@ -150,8 +150,9 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
       continue;
     }
 
-    if (idx < 0 || static_cast<size_t>(idx) >= ordered.size()) {
-      throw std::runtime_error("Could not calculate parity! invalid atom index");
+    if (idx < 0 || static_cast<unsigned int>(idx) >= ordered.size()) {
+      throw std::runtime_error(
+          "Could not calculate parity! invalid atom index");
     }
     auto atom = edge->getEnd()->getAtom();
     ordered[idx] = atom;
@@ -174,7 +175,7 @@ Descriptor Tetrahedral::label(Node *node, const Rules &comp) {
     ordered[idx] = focus;
   }
 
-  int parity = parity4(ordered, getCarriers());
+  auto parity = parity4(ordered, getCarriers());
 
   if (parity == 0) {
     throw std::runtime_error("Could not calculate parity! Carrier mismatch");

@@ -33,18 +33,18 @@ Descriptor SequenceRule::getBondLabel(const Edge *edge) const {
   return label;
 }
 
-int SequenceRule::getComparision(const Edge *a, const Edge *b) const {
-  return getComparision(a, b, true);
+int8_t SequenceRule::getComparison(const Edge *a, const Edge *b) const {
+  return getComparison(a, b, true);
 }
 
-int SequenceRule::getComparision(const Edge *a, const Edge *b,
-                                 bool deep) const {
+int8_t SequenceRule::getComparison(const Edge *a, const Edge *b,
+                                   bool deep) const {
   return deep ? recursiveCompare(a, b) : compare(a, b);
 }
 
 const Sort *SequenceRule::getSorter() const { return dp_sorter.get(); }
 
-int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
+int8_t SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
   if (!CIPLabeler_detail::decrementRemainingCallCountAndCheck()) {
     throw MaxIterationsExceeded();
   }
@@ -52,7 +52,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     throw ControlCCaught();
   }
 
-  int cmp = compare(a, b);
+  auto cmp = compare(a, b);
   if (cmp != 0) {
     return cmp;
   }
@@ -70,8 +70,7 @@ int SequenceRule::recursiveCompare(const Edge *a, const Edge *b) const {
     sort(a->getEnd(), as, false);
     sort(b->getEnd(), bs, false);
 
-    int sizediff = three_way_comparison(static_cast<int>(as.size()),
-                                        static_cast<int>(bs.size()));
+    auto sizediff = three_way_comparison(as.size(), bs.size());
 
     {
       auto aIt = as.begin();

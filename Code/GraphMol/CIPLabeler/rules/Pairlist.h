@@ -105,7 +105,7 @@ class PairList {
     }
   }
 
-  int compareTo(const PairList &that) const {
+  int8_t compareTo(const PairList &that) const {
     if (d_descriptors.size() != that.d_descriptors.size()) {
       throw std::runtime_error("Descriptor lists should be the same length!");
     }

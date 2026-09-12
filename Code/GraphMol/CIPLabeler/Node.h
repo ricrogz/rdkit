@@ -68,7 +68,7 @@ class Node {
   Node &operator=(const Node &) = delete;
 
   Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
-       boost::rational<int> &&frac, int dist, uint8_t flags);
+       boost::rational<int> &&frac, unsigned int dist, uint8_t flags);
 
   Digraph *getDigraph() const;
 
@@ -76,7 +76,7 @@ class Node {
 
   unsigned int getAtomIdx() const;
 
-  int getDistance() const;
+  unsigned int getDistance() const;
 
   boost::rational<int> getAtomicNumFraction() const;
 
@@ -119,11 +119,11 @@ class Node {
   std::vector<Edge *> getNonTerminalOutEdges() const;
 
  private:
-  Digraph *dp_g;
-  Atom *dp_atom;
-  int d_dist;
+  Digraph *dp_g = nullptr;
+  Atom *dp_atom = nullptr;
+  unsigned int d_dist = 0;
   boost::rational<int> d_atomic_num;
-  double d_atomic_mass;
+  double d_atomic_mass = 0.0;
   Descriptor d_aux = Descriptor::NONE;
   uint8_t d_flags = 0x0;
 

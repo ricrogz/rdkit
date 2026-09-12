@@ -27,11 +27,11 @@ const std::vector<const SequenceRule *> &Sort::getRules() const {
 Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
                           bool deep) const {
   bool unique = true;
-  int numPseudoAsym = 0;
+  unsigned int numPseudoAsym = 0;
 
   for (auto i = 0u; i < edges.size(); ++i) {
     for (auto j = i; j > 0; --j) {
-      int cmp = compareSubstituents(node, edges[j - 1], edges[j], deep);
+      auto cmp = compareSubstituents(node, edges[j - 1], edges[j], deep);
 
       if (cmp < -1 || cmp > +1) {
         ++numPseudoAsym;
@@ -51,8 +51,8 @@ Priority Sort::prioritize(const Node *node, std::vector<Edge *> &edges,
   return {unique, numPseudoAsym == 1};
 }
 
-int Sort::compareSubstituents(const Node *node, const Edge *a, const Edge *b,
-                              bool deep) const {
+int8_t Sort::compareSubstituents(const Node *node, const Edge *a, const Edge *b,
+                                 bool deep) const {
   // ensure 'out' edges are moved to the front
   if (!a->isBeg(node) && b->isBeg(node)) {
     return +1;
@@ -61,7 +61,7 @@ int Sort::compareSubstituents(const Node *node, const Edge *a, const Edge *b,
   }
 
   for (const auto &rule : d_rules) {
-    int cmp = rule->getComparision(a, b, deep);
+    auto cmp = rule->getComparison(a, b, deep);
 
     if (cmp != 0) {
       return cmp;

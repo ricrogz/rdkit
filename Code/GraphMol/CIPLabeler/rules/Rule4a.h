@@ -25,7 +25,7 @@ class Rule4a : public SequenceRule {
  public:
   Rule4a();
 
-  int compare(const Edge *a, const Edge *b) const override;
+  int8_t compare(const Edge *a, const Edge *b) const override;
 };
 
 }  // namespace CIPLabeler

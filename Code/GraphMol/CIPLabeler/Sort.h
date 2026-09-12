@@ -10,7 +10,9 @@
 //
 #pragma once
 
+#include <cstdint>
 #include <vector>
+
 #include "Priority.h"
 
 namespace RDKit {
@@ -42,8 +44,8 @@ class Sort {
  private:
   const std::vector<const SequenceRule *> d_rules;
 
-  int compareSubstituents(const Node *node, const Edge *a, const Edge *b,
-                          bool deep) const;
+  int8_t compareSubstituents(const Node *node, const Edge *a, const Edge *b,
+                             bool deep) const;
 };  // namespace CIPLabeler
 
 }  // namespace CIPLabeler

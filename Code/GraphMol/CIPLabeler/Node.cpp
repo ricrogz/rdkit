@@ -19,7 +19,7 @@ namespace RDKit {
 namespace CIPLabeler {
 
 Node *Node::newTerminalChild(int idx, Atom *atom, uint8_t flags) const {
-  int new_dist = flags & DUPLICATE ? d_visit[idx] : d_dist + 1;
+  auto new_dist = flags & DUPLICATE ? d_visit[idx] : d_dist + 1;
   std::vector<std::uint32_t> new_visit;
 
   if (flags & BOND_DUPLICATE) {
@@ -36,7 +36,7 @@ Node *Node::newTerminalChild(int idx, Atom *atom, uint8_t flags) const {
 }
 
 Node::Node(Digraph *g, std::vector<std::uint32_t> &&visit, Atom *atom,
-           boost::rational<int> &&frac, int dist, uint8_t flags)
+           boost::rational<int> &&frac, unsigned int dist, uint8_t flags)
     : dp_g{g},
       dp_atom{atom},
       d_dist{dist},
@@ -77,7 +77,7 @@ unsigned int Node::getAtomIdx() const {
   return dp_atom->getIdx();
 }
 
-int Node::getDistance() const { return d_dist; }
+unsigned int Node::getDistance() const { return d_dist; }
 
 boost::rational<int> Node::getAtomicNumFraction() const { return d_atomic_num; }
 

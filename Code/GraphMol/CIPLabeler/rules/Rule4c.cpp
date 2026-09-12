@@ -15,7 +15,7 @@ namespace RDKit {
 namespace CIPLabeler {
 
 namespace {
-int ord(Descriptor lab) {
+int8_t ord(Descriptor lab) {
   switch (lab) {
     case Descriptor::m:
     case Descriptor::r:
@@ -31,11 +31,11 @@ int ord(Descriptor lab) {
 
 Rule4c::Rule4c() = default;
 
-int Rule4c::compare(const Edge *a, const Edge *b) const {
+int8_t Rule4c::compare(const Edge *a, const Edge *b) const {
   // m vs p
-  int aOrdinal = ord(getBondLabel(a));
-  int bOrdinal = ord(getBondLabel(b));
-  int cmp = three_way_comparison(aOrdinal, bOrdinal);
+  auto aOrdinal = ord(getBondLabel(a));
+  auto bOrdinal = ord(getBondLabel(b));
+  auto cmp = three_way_comparison(aOrdinal, bOrdinal);
   if (cmp != 0) {
     return cmp;
   }

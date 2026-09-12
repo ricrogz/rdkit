@@ -28,7 +28,7 @@ class CIPMol;
 
 namespace {
 template <typename T>
-inline int three_way_comparison(const T &x, const T &y) {
+inline int8_t three_way_comparison(const T &x, const T &y) {
   return x < y ? -1 : (x == y ? 0 : 1);
 }
 }  // namespace
@@ -41,13 +41,13 @@ class SequenceRule {
 
   Descriptor getBondLabel(const Edge *edge) const;
 
-  int getComparision(const Edge *a, const Edge *b) const;
+  int8_t getComparison(const Edge *a, const Edge *b) const;
 
-  virtual int getComparision(const Edge *a, const Edge *b, bool deep) const;
+  virtual int8_t getComparison(const Edge *a, const Edge *b, bool deep) const;
 
   virtual const Sort *getSorter() const;
 
-  int recursiveCompare(const Edge *a, const Edge *b) const;
+  int8_t recursiveCompare(const Edge *a, const Edge *b) const;
 
   void setSorter(const Sort *sorter);
 
@@ -55,7 +55,7 @@ class SequenceRule {
 
   Priority sort(const Node *node, std::vector<Edge *> &edges) const;
 
-  virtual int compare(const Edge *a, const Edge *b) const = 0;
+  virtual int8_t compare(const Edge *a, const Edge *b) const = 0;
 
  protected:
   std::unique_ptr<const Sort> dp_sorter = nullptr;

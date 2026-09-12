@@ -26,7 +26,7 @@ class Rule5New : public SequenceRule {
 
   Rule5New(Descriptor ref);
 
-  int compare(const Edge *a, const Edge *b) const override;
+  int8_t compare(const Edge *a, const Edge *b) const override;
 
  private:
   const Descriptor d_ref = Descriptor::NONE;

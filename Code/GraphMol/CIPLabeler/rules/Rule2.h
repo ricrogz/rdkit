@@ -34,7 +34,7 @@ class Rule2 : public SequenceRule {
  public:
   Rule2();
 
-  int compare(const Edge *a, const Edge *b) const override;
+  int8_t compare(const Edge *a, const Edge *b) const override;
 };
 
 }  // namespace CIPLabeler

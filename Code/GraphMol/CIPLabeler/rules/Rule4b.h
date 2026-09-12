@@ -28,14 +28,12 @@ class Rule4b : public SequenceRule {
 
   Rule4b(Descriptor ref);
 
-  int compare(const Edge *a, const Edge *b) const override;
+  int8_t compare(const Edge *a, const Edge *b) const override;
 
  private:
   const Descriptor d_ref = Descriptor::NONE;
 
   std::vector<Descriptor> getReferenceDescriptors(const Node *node) const;
-
-  bool hasDescriptors(const Node *node) const;
 
   bool getReference(const std::vector<const Node *> &nodes,
                     std::vector<Descriptor> &result) const;
@@ -53,8 +51,8 @@ class Rule4b : public SequenceRule {
 
   void fillPairs(const Node *beg, PairList &plist) const;
 
-  int comparePairs(const Node *a, const Node *b, Descriptor refA,
-                   Descriptor refB) const;
+  int8_t comparePairs(const Node *a, const Node *b, Descriptor refA,
+                      Descriptor refB) const;
 
   Sort getRefSorter(const SequenceRule *replacement_rule) const;
 };

@@ -23,7 +23,7 @@ Rule5New::Rule5New() = default;
 
 Rule5New::Rule5New(Descriptor ref) : d_ref{ref} {}
 
-int Rule5New::compare(const Edge *a, const Edge *b) const {
+int8_t Rule5New::compare(const Edge *a, const Edge *b) const {
   const auto &aBeg = a->getBeg();
   const auto &aEnd = a->getEnd();
   const auto &bBeg = b->getBeg();
@@ -56,8 +56,8 @@ int Rule5New::compare(const Edge *a, const Edge *b) const {
     fillPairs(aEnd, listSA);
     fillPairs(bEnd, listRB);
     fillPairs(bEnd, listSB);
-    int cmpR = listRA.compareTo(listRB);
-    int cmpS = listSA.compareTo(listSB);
+    auto cmpR = listRA.compareTo(listRB);
+    auto cmpS = listSA.compareTo(listSB);
     // -2/+2 for pseudo-asymetric
     // -1/+1 if not (e.g. the R > R and S > S lists)
     if (cmpR < 0) {

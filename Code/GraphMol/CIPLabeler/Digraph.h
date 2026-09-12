@@ -62,7 +62,7 @@ class Digraph {
 
   Node *getCurrentRoot() const;
 
-  int getNumNodes() const;
+  unsigned int getNumNodes() const;
 
   /**
    * Get all nodes which refer to `atom` in order of

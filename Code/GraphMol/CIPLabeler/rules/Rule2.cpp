@@ -21,7 +21,7 @@ namespace CIPLabeler {
 
 Rule2::Rule2() = default;
 
-int Rule2::compare(const Edge *a, const Edge *b) const {
+int8_t Rule2::compare(const Edge *a, const Edge *b) const {
   auto a_end = a->getEnd();
   auto b_end = b->getEnd();
 

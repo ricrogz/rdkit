@@ -27,14 +27,14 @@ class Rule1b : public SequenceRule {
  public:
   Rule1b();
 
-  int compare(const Edge *a, const Edge *b) const override;
+  int8_t compare(const Edge *a, const Edge *b) const override;
 
   /**
    * Flag indicates whether to match the problematic
    * IUPAC 2013 recommendations for Rule 1B.
    */
  private:
-  static const bool IUPAC_2013 = false;
+  static constexpr bool IUPAC_2013 = false;
 };
 
 }  // namespace CIPLabeler

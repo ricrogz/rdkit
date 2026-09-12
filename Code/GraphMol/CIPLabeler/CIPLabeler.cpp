@@ -172,7 +172,7 @@ bool labelAux(ConfigList &configs, const Rules &rules, ConfigEntry &center) {
   // Using a boost::unordered_map because it is more performant
   // than the STL version.
   boost::unordered_map<Node *, Descriptor> queue;
-  int prev = std::numeric_limits<int>::max();
+  unsigned int prev = std::numeric_limits<unsigned int>::max();
   for (const auto &e : aux) {
     const auto &node = e.first;
 

@@ -23,7 +23,7 @@ class Rules : public SequenceRule {
  public:
   Rules() = delete;
 
-  Rules(std::initializer_list<SequenceRule *>&& rules) {
+  Rules(std::initializer_list<SequenceRule *> &&rules) {
     for (auto &rule : rules) {
       add(rule);
     }
@@ -35,14 +35,14 @@ class Rules : public SequenceRule {
     }
   }
 
-  int getNumSubRules() const { return d_rules.size(); }
+  unsigned int getNumSubRules() const { return d_rules.size(); }
 
-  int compare(const Edge *o1, const Edge *o2) const override {
+  int8_t compare(const Edge *o1, const Edge *o2) const override {
     // Try using each rules. The rules will expand the search exhaustively
     // to all child substituents
     for (const auto &rule : d_rules) {
       // compare expands exhaustively across the whole graph
-      int value = rule->recursiveCompare(o1, o2);
+      auto value = rule->recursiveCompare(o1, o2);
       if (value != 0) {
         return value;
       }
@@ -50,13 +50,13 @@ class Rules : public SequenceRule {
     return 0;
   }
 
-  int getComparision(const Edge *a, const Edge *b,
-                     bool /* unused */) const override {
+  int8_t getComparison(const Edge *a, const Edge *b,
+                       bool /* unused */) const override {
     // Try using each rules. The rules will expand the search exhaustively
     // to all child substituents
     for (const auto &rule : d_rules) {
       // compare expands exhaustively across the whole graph
-      int value = rule->recursiveCompare(a, b);
+      auto value = rule->recursiveCompare(a, b);
 
       if (value != 0) {
         return value;

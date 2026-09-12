@@ -41,7 +41,7 @@ std::vector<Descriptor> Rule4b::getReferenceDescriptors(
   return {};
 }
 
-int Rule4b::compare(const Edge *a, const Edge *b) const {
+int8_t Rule4b::compare(const Edge *a, const Edge *b) const {
   const auto &aBeg = a->getBeg();
   const auto &aEnd = a->getEnd();
   const auto &bBeg = b->getBeg();
@@ -89,7 +89,7 @@ int Rule4b::compare(const Edge *a, const Edge *b) const {
       std::sort(list2.rbegin(), list2.rend());
 
       for (auto i = 0u; i < list1.size(); ++i) {
-        int cmp = list1[i].compareTo(list2[i]);
+        auto cmp = list1[i].compareTo(list2[i]);
         if (cmp != 0) {
           return cmp;
         }
@@ -99,30 +99,10 @@ int Rule4b::compare(const Edge *a, const Edge *b) const {
   }
 }
 
-bool Rule4b::hasDescriptors(const Node *node) const {
-  auto queue = std::list<const Node *>({node});
-
-  for (const auto &node : queue) {
-    if (node->getAux() != Descriptor::NONE) {
-      return true;
-    }
-    for (const auto &e : node->getEdges()) {
-      if (e->getEnd() == node) {
-        continue;
-      }
-      if (getBondLabel(e) != Descriptor::NONE) {
-        return true;
-      }
-      queue.push_back(e->getEnd());
-    }
-  }
-  return false;
-}
-
 bool Rule4b::getReference(const std::vector<const Node *> &nodes,
                           std::vector<Descriptor> &result) const {
-  int right = 0;
-  int left = 0;
+  unsigned int right = 0;
+  unsigned int left = 0;
   for (const auto &node : nodes) {
     auto desc = node->getAux();
     switch (desc) {
@@ -237,8 +217,8 @@ void Rule4b::fillPairs(const Node *beg, PairList &plist) const {
   }
 }
 
-int Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
-                         Descriptor refB) const {
+int8_t Rule4b::comparePairs(const Node *a, const Node *b, Descriptor refA,
+                            Descriptor refB) const {
   const Rule4b replacementA(refA);
   const Rule4b replacementB(refB);
   const auto &aSorter = getRefSorter(&replacementA);

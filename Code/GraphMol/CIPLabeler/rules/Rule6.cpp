@@ -18,7 +18,7 @@ namespace CIPLabeler {
 
 Rule6::Rule6() = default;
 
-int Rule6::compare(const Edge *a, const Edge *b) const {
+int8_t Rule6::compare(const Edge *a, const Edge *b) const {
   const auto &digraph = a->getBeg()->getDigraph();
   const auto &ref = digraph->getRule6Ref();
   if (ref == nullptr) {
