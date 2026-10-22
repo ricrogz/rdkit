@@ -5,7 +5,7 @@ on:
 
 jobs:
   Ubuntu_x64_nb:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       PYTHON: python=3.14
@@ -14,8 +14,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Set up CI environment
         uses: ./.github/actions/ci-env
-      - name: Set up package management
-        uses: ./.github/actions/setup-package-management
+      # This will be required when we change the image to ubuntu-26.04
+      # - name: Set up package management
+      #  uses: ./.github/actions/setup-package-management
       - name: Setup build environment (no Qt due to versioning problems)
         run: |
           sudo apt-get install g++ wget make libgl1-mesa-dev mesa-common-dev
