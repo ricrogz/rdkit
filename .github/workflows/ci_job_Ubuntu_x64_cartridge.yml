@@ -15,17 +15,22 @@ jobs:
         uses: ./.github/actions/ci-env
       - name: Set up package management
         uses: ./.github/actions/setup-package-management
-      - name: Setup build environment
+      - name: Instal PostgreSQL server development files
+        # install PostgreSQL from the official repo, as described in:
+        # https://www.postgresql.org/download/linux/ubuntu/
         run: |
+          if [ ! -f /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh ]; then
+              sudo apt update && sudo apt install -y postgresql-common
+          fi
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get update
-          sudo apt search postgresql
-          sudo ls -l /etc/apt/sources.list.d
+          sudo apt update
           sudo apt-get install -y postgresql-server-dev-16
           echo "start postgres server"
           sudo systemctl start postgresql.service
           echo "add postgres user"
           sudo -u postgres createuser -s `whoami`
+      - name: Setup build environment
+        run: |
           source ${CONDA}/etc/profile.d/conda.sh
           conda config --set always_yes yes --set changeps1 no
           conda update -q conda
