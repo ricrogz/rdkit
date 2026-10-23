@@ -24,6 +24,8 @@ jobs:
           fi
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt update
+          echo "purging system postgresql packages"
+          sudo apt purge -y *postgresql*
           sudo apt-get install -y postgresql-16 postgresql-server-dev-16
           echo "start postgres server"
           sudo systemctl start postgresql.service
