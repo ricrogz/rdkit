@@ -17,10 +17,11 @@ jobs:
         uses: ./.github/actions/setup-package-management
       - name: Setup build environment
         run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get update
           sudo apt search postgresql
           sudo ls -l /etc/apt/sources.list.d
-          sudo apt-get install -y -f --upgrade postgresql-18 postgresql-client-18 postgresql-server-dev-18 postgresql-common
+          sudo apt-get install -y postgresql-server-dev-16
           echo "start postgres server"
           sudo systemctl start postgresql.service
           echo "add postgres user"
