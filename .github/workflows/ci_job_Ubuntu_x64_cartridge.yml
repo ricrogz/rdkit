@@ -5,7 +5,7 @@ on:
 
 jobs:
   Ubuntu_x64_cartridge:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     env:
       BOOST_VERSION: "1.92"
@@ -18,7 +18,7 @@ jobs:
       - name: Setup build environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-16 postgresql-client-16 postgresql-server-dev-16 postgresql-common
+          sudo apt-get install -y -f --upgrade postgresql-18 postgresql-client-18 postgresql-server-dev-18 postgresql-common
           echo "start postgres server"
           sudo systemctl start postgresql.service
           echo "add postgres user"
