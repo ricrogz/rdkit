@@ -32,6 +32,8 @@ jobs:
           echo "add postgres user"
           sudo -u postgres createuser -s `whoami`
           dpkg -l *postgre* | grep ^ii
+          dpkg -l libpq* | grep ^ii
+          dpkg -S /usr/lib/x86_64-linux-gnu/libpq.so
       - name: Setup build environment
         run: |
           source ${CONDA}/etc/profile.d/conda.sh
