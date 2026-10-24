@@ -81,8 +81,11 @@ jobs:
           source ${CONDA}/etc/profile.d/conda.sh
           conda activate rdkit_build
           cd build
-          make -j $(nproc) install
+          make -j $(nproc)
+          sudo make install
+          echo -e "\n\Installing PostgreSQL extension...\n"
           cat ./Code/PgSQL/rdkit/pgsql_install.sh
+          echo -e "\n\Finished dumping pgsql_install.sh\n"
           sudo sh ./Code/PgSQL/rdkit/pgsql_install.sh
       - name: Trim and store ccache
         uses: ./.github/actions/store-ccache
@@ -99,9 +102,6 @@ jobs:
         run: |
           source ${CONDA}/etc/profile.d/conda.sh
           conda activate rdkit_build
-          export LD_LIBRARY_PATH=${RDBASE}/lib:${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH}
-          ls -l /usr/lib/postgresql/18/lib/rdkit.so
-          ldd /usr/lib/postgresql/18/lib/rdkit.so || true
           cd build
           sh ./Code/PgSQL/rdkit/pgsql_regress.sh || status=$?
           if [ -e ./Code/PgSQL/rdkit/regression.diffs ]; then
