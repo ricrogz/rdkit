@@ -38,7 +38,7 @@
 extern "C" {
 #endif
 
-#include <postgresql/18/server/postgres.h>
+#include <postgres.h>
 #ifdef PG_VERSION_NUM
 #if PG_VERSION_NUM >= 160000
 #include <varatt.h>

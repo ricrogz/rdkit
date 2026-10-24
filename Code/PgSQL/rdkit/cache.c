@@ -29,7 +29,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-#include <postgresql/18/server/postgres.h>
+#include <postgres.h>
 #include <fmgr.h>
 #include <utils/memutils.h>
 
@@ -41,13 +41,7 @@
  * Deconstructed values cache
  */
 
-typedef enum EntryKind {
-  MolKind,
-  BfpKind,
-  SfpKind,
-  ReactionKind,
-  XQMolKind
-} EntryKind;
+typedef enum EntryKind { MolKind, BfpKind, SfpKind, ReactionKind, XQMolKind } EntryKind;
 
 typedef struct ValueCacheEntry {
   Datum toastedValue;
@@ -426,8 +420,7 @@ static void fetchData(ValueCache *ac, ValueCacheEntry *entry, void **detoasted,
       if (internal) {
         if (entry->detoasted.xqmol.mol == NULL) {
           fetchData(ac, entry, &_tmp, NULL, NULL);
-          entry->detoasted.mol.mol =
-              constructXQMol(entry->detoasted.xqmol.value);
+          entry->detoasted.mol.mol = constructXQMol(entry->detoasted.xqmol.value);
         }
         *internal = entry->detoasted.xqmol.mol;
       }
@@ -655,7 +648,7 @@ void *searchMolCache(void *cache, struct MemoryContextData *ctx, Datum a,
 }
 
 void *searchXQMolCache(void *cache, struct MemoryContextData *ctx, Datum a,
-                       XQMol **m, CXQMol *mol, bytea **val) {
+                     XQMol **m, CXQMol *mol, bytea **val) {
   return SearchValueCache(cache, ctx,
                           /*  in: */ a, XQMolKind,
                           /* out: */ (void **)m, (void **)mol, (void **)val);
