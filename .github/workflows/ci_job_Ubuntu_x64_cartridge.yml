@@ -26,7 +26,7 @@ jobs:
           sudo apt update
           echo "purging system postgresql packages"
           sudo apt purge -y *postgresql* libpq*
-          sudo apt install -y postgresql-16 postgresql-server-dev-16 postgresql-common-dev
+          sudo apt install -y postgresql-18 postgresql-server-dev-18 postgresql-common-dev
           echo "start postgres server"
           sudo systemctl start postgresql.service
           echo "add postgres user"
