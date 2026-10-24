@@ -29,7 +29,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <postgres.h>
+#include <postgresql/18/server/postgres.h>
 
 #include <access/gin.h>
 #include <access/stratnum.h>

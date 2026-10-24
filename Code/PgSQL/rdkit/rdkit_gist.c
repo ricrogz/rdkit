@@ -29,7 +29,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-#include <postgres.h>
+#include <postgresql/18/server/postgres.h>
 #include <fmgr.h>
 #include <access/gist.h>
 #include <access/skey.h>
@@ -542,18 +542,15 @@ Datum gmol_consistent(PG_FUNCTION_ARGS) {
   PG_RETURN_BOOL(res);
 }
 
-
 /*
  * Sortsupport function
  *
  * Returns a comparator function to sort data in a way that preserves locality.
  */
-static int
-gmol_cmp(Datum x, Datum y, SortSupport ssup)
-{
+static int gmol_cmp(Datum x, Datum y, SortSupport ssup) {
   /* establish order between x and y */
-  bytea *a = (bytea*)PG_DETOAST_DATUM(x);
-  bytea *b = (bytea*)PG_DETOAST_DATUM(y);
+  bytea *a = (bytea *)PG_DETOAST_DATUM(x);
+  bytea *b = (bytea *)PG_DETOAST_DATUM(y);
 
   Assert(!ISALLTRUE(a));
   Assert(!ISALLTRUE(b));
@@ -567,12 +564,10 @@ gmol_cmp(Datum x, Datum y, SortSupport ssup)
   return retval;
 }
 
-PGDLLEXPORT Datum  gmol_sortsupport(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum gmol_sortsupport(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(gmol_sortsupport);
-Datum
-gmol_sortsupport(PG_FUNCTION_ARGS)
-{
-  SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
+Datum gmol_sortsupport(PG_FUNCTION_ARGS) {
+  SortSupport ssup = (SortSupport)PG_GETARG_POINTER(0);
   ssup->comparator = gmol_cmp;
   PG_RETURN_VOID();
 }
