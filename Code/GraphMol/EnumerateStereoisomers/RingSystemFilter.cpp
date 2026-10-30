@@ -314,21 +314,11 @@ void getRingPatternsParityRelations(
       // For patterns with more than 2 parities, these will
       // be visited multiple times, so cache them here.
       std::unordered_map<int, bool> swappedParitiesCache;
-
-      int iParity = 0;
-      int jParity = 0;
-      for (auto i = 0u; i + 1 < pattern.getNumAtoms(); ++i) {
-        auto iQAtom = pattern.getAtomWithIdx(i);
-        if (!iQAtom->getPropIfPresent("parity", iParity)) {
-          continue;
-        }
-
-        for (auto j = i + 1; j < pattern.getNumAtoms(); ++j) {
-          auto jQAtom = pattern.getAtomWithIdx(j);
-          if (!jQAtom->getPropIfPresent("parity", jParity)) {
-            continue;
+      for(auto [i, iParity] : parityRelations) {
+        for(auto [j, jParity] : parityRelations) {
+          if (i >= j){ 
+            continue; 
           }
-
           bool paritiesSame = iParity == jParity;
           if (isParitySwapped(mol, pattern, forwardMapping, reverseMapping,
                               swappedParitiesCache, i)) {
