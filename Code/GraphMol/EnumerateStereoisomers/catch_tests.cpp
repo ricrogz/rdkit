@@ -56,6 +56,30 @@ TEST_CASE("Simple test") {
   }
 }
 
+TEST_CASE("StereoisomerEnumerator is a forward range") {
+  STATIC_REQUIRE(std::ranges::forward_range<StereoisomerEnumerator>);
+
+  auto mol = "BrC=CC1OC(C2)(F)C2(Cl)C1"_smiles;
+  REQUIRE(mol);
+
+  StereoEnumerationOptions options;
+  options.onlyUnassigned = false;
+  options.randomSeed = 23;
+  StereoisomerEnumerator iterated(*mol, options);
+  StereoisomerEnumerator consumed(*mol, options);
+
+  std::vector<std::string> expected;
+  while (auto isomer = consumed.next()) {
+    expected.push_back(MolToSmiles(*isomer));
+  }
+
+  std::vector<std::string> got;
+  for (const auto &isomer : iterated) {
+    got.push_back(MolToSmiles(isomer));
+  }
+  CHECK(got == expected);
+}
+
 TEST_CASE("Embedding") {
   auto m1 = "BrC=CC1OC(C2)(F)C2(Cl)C1"_smiles;
   REQUIRE(m1);
