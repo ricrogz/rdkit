@@ -279,19 +279,31 @@ class RDKIT_GRAPHMOL_EXPORT SpecialSymmetryAtomCompareFunctor {
 };
 
 namespace {
+unsigned int countCommonNeighbors(const canon_atom &center,
+                                  const canon_atom &neighbor) {
+  const auto centerNeighbors = center.nbrIds.first(center.degree);
+  const auto neighbors = neighbor.nbrIds.first(neighbor.degree);
+  return std::count_if(centerNeighbors.begin(), centerNeighbors.end(),
+                       [&](int id) {
+                         return std::find(neighbors.begin(), neighbors.end(),
+                                          id) != neighbors.end();
+                       });
+}
+
 unsigned int getChiralRank(const ROMol *dp_mol, canon_atom *dp_atoms,
                            unsigned int i) {
   unsigned int res = 0;
-  std::vector<unsigned int> perm;
+  std::vector<std::pair<int, unsigned int>> perm;
   perm.reserve(dp_atoms[i].atom->getDegree());
   for (const auto nbr : dp_mol->atomNeighbors(dp_atoms[i].atom)) {
-    auto rnk = dp_atoms[nbr->getIdx()].index;
-    // make sure we don't have duplicate ranks
-    if (std::find(perm.begin(), perm.end(), rnk) != perm.end()) {
+    const auto &neighbor = dp_atoms[nbr->getIdx()];
+    const auto rank = std::make_pair(
+        neighbor.index, countCommonNeighbors(dp_atoms[i], neighbor));
+    // Equal symmetry ranks can still be distinguished by shared neighbors.
+    if (std::find(perm.begin(), perm.end(), rank) != perm.end()) {
       break;
-    } else {
-      perm.push_back(rnk);
     }
+    perm.push_back(rank);
   }
   if (perm.size() == dp_atoms[i].atom->getDegree()) {
     auto ctag = dp_atoms[i].atom->getChiralTag();
