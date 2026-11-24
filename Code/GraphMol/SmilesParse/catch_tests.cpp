@@ -3311,7 +3311,7 @@ TEST_CASE(
     unsigned int cxFlags = 0;
     auto smi = MolToCXSmiles(*m, ps, cxFlags);
     CHECK(smi ==
-          "O=C(N[C@H]1C[C@@H](C(=O)O)[C@@H]2C[C@@H]21)C1CC(=O)N(Cc2ccccn2)C1");
+          "O=C(N[C@H]1C[C@@H](C(=O)O)[C@@H]2C[C@H]12)C1CC(=O)N(Cc2ccccn2)C1");
   }
 }
 

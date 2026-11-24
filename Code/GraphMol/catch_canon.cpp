@@ -1640,9 +1640,9 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
       {R"smi([H]/N=C(C=C)\C(/N=C\[O-])=N\[H])smi", false, true},  // #7759
       {R"smi([H]N=C(/N=C\[O-])/C(C=C)=N\[H])smi", true, true},    // #7759
       {R"smi([H]/N=C(/C=C)C(=N)/N=C\[O-])smi", true, true},       // #7759
-      {R"smi([C@H]12[C@H]3[C@@H]4[C@H]5[C@@H]([C@H]1N24)N53)smi", false,
+      {R"smi([C@H]12[C@H]3[C@@H]4[C@H]5[C@@H]([C@H]1N24)N53)smi", true,
        true},  // #7759
-      {R"smi([C@H]12[C@H]3[C@H]4[C@@H]5[C@@H]([C@H]1N25)N34)smi", false,
+      {R"smi([C@H]12[C@H]3[C@H]4[C@@H]5[C@@H]([C@H]1N25)N34)smi", true,
        true},                                                      // #7759
       {R"smi([CH]1C[C@H]2C[C@H](C2)[C@]12CC2)smi", false, true},   // #7759
       {R"smi([CH]1O[C@H]2C[C@H](C2)[C@]12CC2)smi", false, true},   // #7759
@@ -1738,8 +1738,8 @@ TEST_CASE("Canonicalization issues watch (see GitHub Issue #8775)") {
       {R"smi([H]/[O+]=C1/[C@H]2C[C@H](C2)[C@]12CC2)smi", false, true},  // #7759
       {R"smi([CH+]1[C@H]2C[C@H](C2)[C@]12CC2)smi", false, true},        // #7759
       {R"smi(C1[C@H]2O[C@@H]3C[C@H]4[C@@H]3[C@@H]1[C@@H]24)smi", false,
-       true},                                                          // #7759
-      {R"smi(O=C1N2[C@H]3[C@@H]2[C@@H]2[C@H]3N12)smi", false, false},  // #7759
+       true},                                                        // #7759
+      {R"smi(O=C1N2[C@H]3[C@@H]2[C@@H]2[C@H]3N12)smi", true, true},  // #7759
       {R"smi(O1[C@H]2[C@@H]3O[C@H]4[C@@H]3[C@@H]1[C@@H]24)smi", false,
        true},                                                    // #7759
       {R"smi(O=C1[C@H]2C[C@H](C2)[C@@]12CC2)smi", false, true},  // #7759
